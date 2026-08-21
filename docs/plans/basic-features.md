@@ -84,8 +84,14 @@ Swift / TypeScript 双方に同じモデルを定義する。スキーマは `su
 
 #### Phase 3: 地図表示
 
-- iOS: MapKit で trip の軌跡(ポリライン)とポイント表示
-- Web: MapLibre GL JS で同等の表示
+詳細仕様: [docs/specs/phase3-map-display.md](../specs/phase3-map-display.md)
+
+- [x] iOS: MapKit で trip 詳細に軌跡を表示 — `Views/TripMapView.swift`(SwiftUI `Map` + `MapPolyline`、開始/最新マーカー、カメラは `.automatic`)
+- [x] Web: MapLibre GL JS で同等の表示 — `web/src/app/trips/[id]/trip-map.tsx`(GeoJSON LineString + fitBounds)。タイルは当面 OSM 公式ラスタタイル(本番向け差し替えは TODO に記載)
+- [x] 検証: `xcodebuild test` 16/16 passed、`npm run lint` + `npm run build` 成功(2026-08-21)
+- [ ] 残タスク(要ユーザー操作): 実データでの見た目確認(Phase 2 の手動確認と合わせて実施)
+
+個々の位置情報のドット表示は数千点になり得るため行わず、ポリライン + 開始/最新マーカーのみとした。点の詳細は既存のタイムラインで確認する。
 
 #### Phase 4: 写真撮影と動画撮影
 

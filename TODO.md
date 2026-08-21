@@ -9,7 +9,12 @@
     - [x] Web: 認証（@supabase/ssr + proxy.ts）と trip 一覧・詳細
     - [x] 検証: xcodebuild test（16/16）/ npm run lint / npm run build
     - [ ] 手動: Supabase プロジェクト作成〜実機・ブラウザで同期と閲覧を確認（手順は supabase/README.md）
-  - [ ] Phase 3: 地図表示
+  - [ ] Phase 3: 地図表示 [spec](docs/specs/phase3-map-display.md)
+    - [x] iOS: MapKit で trip 詳細に軌跡(ポリライン)を表示
+    - [x] Web: MapLibre GL JS で trip 詳細に軌跡を表示(OSM ラスタタイル)
+    - [x] 検証: xcodebuild test（16/16）/ npm run lint / npm run build
+    - [ ] 手動: 実データで地図表示を確認（Supabase セットアップ後、Phase 2 の手動確認と合わせて実施）
   - [ ] Phase 4: 写真撮影と動画撮影
 - [ ] Supabase プロジェクトを作成し `web/.env.local` と `ios/TripNote/Resources/Supabase.plist` を設定する（要 Supabase アカウント。手順: supabase/README.md）
+- [ ] Web の地図タイルを本番向けに差し替える（現状は OSM 公式ラスタタイル。大量アクセスには利用ポリシー上不適のため MapTiler / Protomaps 等を検討）
 - [ ] Android 版（Kotlin）を作る（基本機能完成後の後続タスク）

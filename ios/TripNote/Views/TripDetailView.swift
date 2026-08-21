@@ -1,11 +1,22 @@
+import CoreLocation
 import SwiftUI
 
-/// trip の詳細。ヘッダに統計、続けて位置情報のタイムラインを表示する。
+/// trip の詳細。地図と統計ヘッダ、続けて位置情報のタイムラインを表示する。
 struct TripDetailView: View {
     let trip: TripEntity
 
     var body: some View {
         List {
+            let coordinates = trip.sortedPoints.map {
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            if !coordinates.isEmpty {
+                Section {
+                    TripMapView(coordinates: coordinates, isActive: trip.isActive)
+                        .frame(height: 300)
+                        .listRowInsets(EdgeInsets())
+                }
+            }
             Section {
                 LabeledContent("開始") {
                     Text(trip.startedAt, format: .dateTime.year().month().day().hour().minute())

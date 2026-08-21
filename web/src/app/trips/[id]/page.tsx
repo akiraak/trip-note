@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Header } from "../../header";
+import { TripMap } from "./trip-map";
 import { formatDateTime, formatPointTime } from "@/lib/format";
 import { formatDistance, totalDistance } from "@/lib/geo";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
@@ -81,6 +82,16 @@ export default async function TripDetailPage(
             </span>
           )}
         </h1>
+        {points.length > 0 && (
+          <div className="mb-6">
+            <TripMap
+              points={points.map((p) => ({
+                latitude: p.latitude,
+                longitude: p.longitude,
+              }))}
+            />
+          </div>
+        )}
         <dl className="mb-8 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-zinc-500 dark:text-zinc-400">開始</dt>

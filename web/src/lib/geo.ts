@@ -31,6 +31,29 @@ export function totalDistance(
   return total;
 }
 
+/// 軌跡全体を含むバウンディングボックス([west, south], [east, north])
+export function boundingBox(
+  coordinates: { latitude: number; longitude: number }[],
+): [[number, number], [number, number]] | null {
+  if (coordinates.length === 0) {
+    return null;
+  }
+  let west = coordinates[0].longitude;
+  let east = coordinates[0].longitude;
+  let south = coordinates[0].latitude;
+  let north = coordinates[0].latitude;
+  for (const { latitude, longitude } of coordinates) {
+    west = Math.min(west, longitude);
+    east = Math.max(east, longitude);
+    south = Math.min(south, latitude);
+    north = Math.max(north, latitude);
+  }
+  return [
+    [west, south],
+    [east, north],
+  ];
+}
+
 export function formatDistance(meters: number): string {
   if (meters < 1000) {
     return `${Math.round(meters)} m`;
