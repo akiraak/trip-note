@@ -4,6 +4,5 @@
   - [x] Phase 2: 同期と記録の閲覧（iOS・Web。同期先は Supabase → 自宅サーバ g3plus に移行済み） [spec](docs/specs/server-api.md)
   - [x] Phase 3: 地図表示（iOS: MapKit / Web: MapLibre GL JS） [spec](docs/specs/phase3-map-display.md)
   - [ ] Phase 4: 写真撮影と動画撮影
-- [ ] 実機で本番同期を動作確認する（iPhone をロック解除して `./run-ios-device.sh` → 記録 → 停止 → https://trip.chobi.me/ で確認）
 - [ ] Web の地図タイルを本番向けに差し替える（現状は OSM 公式ラスタタイル。大量アクセスには利用ポリシー上不適のため MapTiler / Protomaps 等を検討）
 - [ ] Android 版（Kotlin）を作る（基本機能完成後の後続タスク）
