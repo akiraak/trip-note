@@ -53,6 +53,14 @@ npm run lint           # ESLint
 npm run build          # 本番ビルド（型チェック込み）
 ```
 
+## デプロイ（g3plus）
+
+**デプロイ作業を始める前に、必ず `../g3plus-ops/CLAUDE.md` を読むこと。**
+サーバ接続情報（SSH）・デプロイ共通規約（正本と転送方式・compose 規約・ポート採番・Cloudflare 手順・新規サービスのチェックリスト）はそちらが正本で、本リポジトリには書かない。
+
+- trip-note 個別の運用手順: `../g3plus-ops/docs/workflows/trip-note.md`（初回デプロイ / 更新は サーバ上で `git pull` → rebuild）
+- アプリ側のデプロイ契約: `docs/specs/deploy-g3plus.md`（Node バージョン・起動コマンド・必須 env・永続化先。変更したら g3plus-ops 側を追従させる）
+
 <!-- vibeboard:begin -->
 
 ## 開発管理画面 (vibeboard)
