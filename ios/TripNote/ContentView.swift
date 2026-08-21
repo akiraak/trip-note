@@ -4,7 +4,6 @@ import UIKit
 
 struct ContentView: View {
     @Environment(LocationRecorder.self) private var recorder
-    @Environment(SupabaseService.self) private var supabase
     @Environment(SyncEngine.self) private var sync
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \TripEntity.startedAt, order: .reverse) private var trips: [TripEntity]
@@ -15,8 +14,8 @@ struct ContentView: View {
                 Section {
                     recordingSection
                 }
-                Section("アカウントと同期") {
-                    accountSection
+                Section("同期") {
+                    syncSection
                 }
                 Section("旅行") {
                     if trips.isEmpty {
@@ -93,24 +92,12 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var accountSection: some View {
-        if !supabase.isConfigured {
-            Text("Supabase が未設定です。Resources/Supabase.plist を作成すると同期できます。")
+    private var syncSection: some View {
+        if !sync.isConfigured {
+            Text("サーバが未設定です。Resources/ServerConfig.plist を作成すると同期できます。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        } else if !supabase.isSignedIn {
-            NavigationLink("ログイン / 新規登録") {
-                AuthView()
-            }
-            if let error = supabase.lastAuthError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
         } else {
-            if let email = supabase.userEmail {
-                LabeledContent("アカウント", value: email)
-            }
             HStack {
                 if sync.isSyncing {
                     ProgressView()
@@ -139,9 +126,6 @@ struct ContentView: View {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
-            }
-            Button("ログアウト", role: .destructive) {
-                Task { await supabase.signOut() }
             }
         }
     }

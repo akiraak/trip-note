@@ -8,12 +8,9 @@ import Testing
 // DTO 変換は unmanaged なエンティティ(コンテナ未挿入)だけで検証する。
 @MainActor
 struct SyncRecordTests {
-    /// supabase-swift と同様に ISO8601 で日付をエンコードする(検証用)
+    /// 実際の同期で使うエンコーダ(SyncClient.encoder)でエンコードする
     private func encodeToJSON(_ value: some Encodable) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(value)
+        let data = try SyncClient.encoder.encode(value)
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -25,7 +22,7 @@ struct SyncRecordTests {
     @Test func TripRecordはsnake_caseで記録中はended_atをnullにする() throws {
         let trip = TripEntity(title: "テスト旅行", startedAt: Date(timeIntervalSince1970: 0))
         let json = try encodeToJSON(TripRecord(trip))
-        #expect(json.contains("\"started_at\":\"1970-01-01T00:00:00Z\""))
+        #expect(json.contains("\"started_at\":\"1970-01-01T00:00:00.000Z\""))
         #expect(json.contains("\"ended_at\":null"))
         #expect(json.contains("\"title\":\"テスト旅行\""))
     }
@@ -37,7 +34,7 @@ struct SyncRecordTests {
             endedAt: Date(timeIntervalSince1970: 3600)
         )
         let json = try encodeToJSON(TripRecord(trip))
-        #expect(json.contains("\"ended_at\":\"1970-01-01T01:00:00Z\""))
+        #expect(json.contains("\"ended_at\":\"1970-01-01T01:00:00.000Z\""))
     }
 
     @Test func LocationPointRecordはtrip_idと明示的なnullを含む() throws {
@@ -55,7 +52,7 @@ struct SyncRecordTests {
         #expect(json.contains("\"altitude\":null"))
         #expect(json.contains("\"accuracy\":null"))
         #expect(json.contains("\"trip_id\":"))
-        #expect(json.contains("\"recorded_at\":\"1970-01-01T00:00:00Z\""))
+        #expect(json.contains("\"recorded_at\":\"1970-01-01T00:00:00.000Z\""))
     }
 
     @Test func tripと関連が切れた点はレコードにならない() throws {

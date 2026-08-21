@@ -1,20 +1,14 @@
 - [ ] 基本機能を詰める [plan](docs/plans/basic-features.md)
   - [x] Phase 0: 技術選定・スキャフォールド（ネイティブ構成: iOS Swift + Next.js + Supabase）
   - [x] Phase 1: 位置情報の記録（iOS・画面OFF/バックグラウンド対応）
-  - [ ] Phase 2: Supabase 同期と記録の閲覧（iOS・Web） [spec](docs/specs/phase2-supabase-sync.md)
-    - [x] Supabase スキーマ（migrations SQL + RLS）
-    - [x] iOS: Supabase 接続設定・認証（メール+パスワード）
-    - [x] iOS: 同期エンジン（アップロードキュー、needsSync フラグ）
-    - [x] iOS: trip 詳細（位置情報のタイムライン表示）
-    - [x] Web: 認証（@supabase/ssr + proxy.ts）と trip 一覧・詳細
-    - [x] 検証: xcodebuild test（16/16）/ npm run lint / npm run build
-    - [ ] 手動: Supabase プロジェクト作成〜実機・ブラウザで同期と閲覧を確認（手順は supabase/README.md）
-  - [ ] Phase 3: 地図表示 [spec](docs/specs/phase3-map-display.md)
-    - [x] iOS: MapKit で trip 詳細に軌跡(ポリライン)を表示
-    - [x] Web: MapLibre GL JS で trip 詳細に軌跡を表示(OSM ラスタタイル)
-    - [x] 検証: xcodebuild test（16/16）/ npm run lint / npm run build
-    - [ ] 手動: 実データで地図表示を確認（Supabase セットアップ後、Phase 2 の手動確認と合わせて実施）
+  - [x] Phase 2: 同期と記録の閲覧（iOS・Web。同期先は Supabase → 自宅サーバ g3plus に移行済み） [spec](docs/specs/server-api.md)
+  - [x] Phase 3: 地図表示（iOS: MapKit / Web: MapLibre GL JS） [spec](docs/specs/phase3-map-display.md)
   - [ ] Phase 4: 写真撮影と動画撮影
-- [ ] Supabase プロジェクトを作成し `web/.env.local` と `ios/TripNote/Resources/Supabase.plist` を設定する（要 Supabase アカウント。手順: supabase/README.md）
+- [ ] バックエンドを Supabase から自宅サーバ (g3plus) に入れ替える [plan](docs/plans/g3plus-backend.md)
+  - [x] Phase A: Web バックエンド（SQLite + /api/sync + ページ差し替え + Supabase 撤去）
+  - [x] Phase B: iOS（SyncClient + ServerConfig + Supabase 撤去)
+  - [x] Phase C: ローカル E2E 検証（シミュレータで記録 → 停止時自動同期 → Web の一覧・詳細・地図表示。スクリーンショット docs/screenshots/g3plus-web-map.jpg）
+  - [x] Phase D: デプロイ準備（g3plus-ops/trip-note/ + docs/workflows/trip-note.md + docs/specs/deploy-g3plus.md）
+  - [ ] 手動: g3plus へデプロイ + Cloudflare 設定（Tunnel hostname / Access。手順: g3plus-ops/docs/workflows/trip-note.md）。完了後に本番疎通確認と iOS の ServerConfig.plist を本番向けに設定
 - [ ] Web の地図タイルを本番向けに差し替える（現状は OSM 公式ラスタタイル。大量アクセスには利用ポリシー上不適のため MapTiler / Protomaps 等を検討）
 - [ ] Android 版（Kotlin）を作る（基本機能完成後の後続タスク）

@@ -1,5 +1,10 @@
 # Phase 2: Supabase 同期と記録の閲覧(iOS・Web) 詳細仕様
 
+> **⚠️ SUPERSEDED (2026-08-21)**: バックエンドは Supabase から自宅サーバ(g3plus)に
+> 全面移行した([plan](../plans/g3plus-backend.md))。現行仕様は
+> [server-api.md](server-api.md) / [deploy-g3plus.md](deploy-g3plus.md) を参照。
+> 本書は Phase 2 当時の記録として残す。
+
 親プラン: [basic-features](../plans/basic-features.md)
 
 ## 目的

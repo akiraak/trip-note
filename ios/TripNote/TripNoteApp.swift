@@ -5,7 +5,6 @@ import SwiftUI
 struct TripNoteApp: App {
     private let container: ModelContainer
     @State private var recorder: LocationRecorder
-    @State private var supabase: SupabaseService
     @State private var sync: SyncEngine
 
     init() {
@@ -14,12 +13,7 @@ struct TripNoteApp: App {
             self.container = container
             let recorder = LocationRecorder(modelContext: container.mainContext)
             _recorder = State(initialValue: recorder)
-            let supabase = SupabaseService()
-            _supabase = State(initialValue: supabase)
-            _sync = State(initialValue: SyncEngine(
-                modelContext: container.mainContext,
-                supabase: supabase
-            ))
+            _sync = State(initialValue: SyncEngine(modelContext: container.mainContext))
             // significant location change によるバックグラウンド再起動時も
             // UI 表示を待たずに記録を再開する
             recorder.resumeIfNeeded()
@@ -32,7 +26,6 @@ struct TripNoteApp: App {
         WindowGroup {
             ContentView()
                 .environment(recorder)
-                .environment(supabase)
                 .environment(sync)
         }
         .modelContainer(container)

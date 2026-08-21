@@ -4,11 +4,16 @@ import {
   MapLibreMap,
   Marker,
   NavigationControl,
+  setWorkerUrl,
   type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { boundingBox } from "@/lib/geo";
+
+// バンドラ(Turbopack)経由だと maplibre が自身のワーカーを解決できないため、
+// public/ に置いたワーカー(npm run copy-maplibre-worker が配置)を明示する
+setWorkerUrl("/maplibre-gl-worker.mjs");
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -46,6 +51,8 @@ export function TripMap({ points }: { points: LatLng[] }) {
       attributionControl: { compact: true },
     });
     map.addControl(new NavigationControl({ showCompass: false }));
+
+    map.on("error", (e) => console.error("[TripMap]", e.error ?? e));
 
     map.on("load", () => {
       map.addSource("route", {

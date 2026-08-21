@@ -14,6 +14,8 @@ trip-note は旅行のサポートをするアプリで、モバイルと Web �
 
 > **2026-08-21 方針転換**: 当初 Expo (React Native) でスキャフォールドまで実施したが、「Expo は使わずネイティブで作る」方針に変更。iOS (Swift/SwiftUI) 先行・Web は Next.js・バックエンドは Supabase 継続で確定し、Expo 構成は撤去した。Android (Kotlin) は基本機能完成後の後続タスクとする。
 
+> **2026-08-21 方針転換(2)**: バックエンドを Supabase から**自宅サーバ (g3plus)** に全面移行([plan](g3plus-backend.md))。Web の Next.js が API(`/api/sync`)と閲覧 UI を兼ね、DB は SQLite。認証はアプリ内から撤去し、iOS API は共有シークレット Bearer・Web は Cloudflare Access(エッジ)で保護する。Phase 2 の Supabase 実装は [phase2-supabase-sync.md](../specs/phase2-supabase-sync.md)(superseded)に記録。現行仕様は [server-api.md](../specs/server-api.md) / [deploy-g3plus.md](../specs/deploy-g3plus.md)。
+
 ## 対応方針
 
 ### 技術スタック(確定)
@@ -89,7 +91,9 @@ Swift / TypeScript 双方に同じモデルを定義する。スキーマは `su
 - [x] iOS: MapKit で trip 詳細に軌跡を表示 — `Views/TripMapView.swift`(SwiftUI `Map` + `MapPolyline`、開始/最新マーカー、カメラは `.automatic`)
 - [x] Web: MapLibre GL JS で同等の表示 — `web/src/app/trips/[id]/trip-map.tsx`(GeoJSON LineString + fitBounds)。タイルは当面 OSM 公式ラスタタイル(本番向け差し替えは TODO に記載)
 - [x] 検証: `xcodebuild test` 16/16 passed、`npm run lint` + `npm run build` 成功(2026-08-21)
-- [ ] 残タスク(要ユーザー操作): 実データでの見た目確認(Phase 2 の手動確認と合わせて実施)
+- [x] iOS: 実データ(シミュレート GPS)での地図表示を UI テストで確認(2026-08-21)
+  - `TripNoteUITests` スキームの `RecordingMapUITests` で記録開始 → 移動 → 停止 → 詳細の地図表示までを通しで実行(手順は spec 参照)。スクリーンショット: `docs/screenshots/phase3-ios-map-simulator.png`
+- [ ] 残タスク(要ユーザー操作): Web の実データでの見た目確認(Supabase セットアップ後、Phase 2 の手動確認と合わせて実施)
 
 個々の位置情報のドット表示は数千点になり得るため行わず、ポリライン + 開始/最新マーカーのみとした。点の詳細は既存のタイムラインで確認する。
 

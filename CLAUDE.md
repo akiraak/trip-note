@@ -10,16 +10,19 @@ trip-note は旅行のサポートをするアプリで、モバイルと Web �
 
 ネイティブ構成。モバイルは iOS (Swift/SwiftUI) 先行で、Android (Kotlin) は後続タスク。
 
-- `ios/`: iOS アプリ (Swift/SwiftUI, iOS 17+)。Xcode プロジェクトは XcodeGen (`ios/project.yml`) で生成するため `.xcodeproj` はコミットしない。Supabase は supabase-swift (SPM)。地図は MapKit を採用予定
-- `web/`: Next.js (TypeScript + Tailwind + App Router)。Supabase は supabase-js。地図は MapLibre GL JS を採用予定
-- バックエンドは Supabase (Postgres + Auth + Storage)。データモデル（trips / location_points / media）は `supabase/migrations/` の SQL を正とし、Swift / TypeScript 双方に型を定義する（セットアップ手順は `supabase/README.md`）
-- Supabase の接続設定: Web は `web/.env.local`、iOS は `ios/TripNote/Resources/Supabase.plist`（どちらも gitignore 済み。雛形は `web/.env.example` / `Supabase.example.plist`）
+- `ios/`: iOS アプリ (Swift/SwiftUI, iOS 17+)。Xcode プロジェクトは XcodeGen (`ios/project.yml`) で生成するため `.xcodeproj` はコミットしない。ローカル記録は SwiftData、地図は MapKit
+- `web/`: Next.js (TypeScript + Tailwind + App Router)。**API サーバと閲覧 UI を兼ねる**。DB は SQLite (better-sqlite3)、地図は MapLibre GL JS
+- バックエンドは自宅サーバ **g3plus** で Docker 運用（デプロイ設定の正本は `../g3plus-ops/trip-note/`、運用手順は `../g3plus-ops/docs/workflows/trip-note.md`、契約は `docs/specs/deploy-g3plus.md`）
+- データモデル（trips / location_points / media）は `web/src/lib/db.ts` の `MIGRATIONS` を正とし、Swift / TypeScript 双方に型を定義する。API 仕様は `docs/specs/server-api.md`
+- 認証: 単一ユーザー前提でアプリ内認証なし。iOS → `/api/sync` は `API_SHARED_SECRET` の Bearer、Web 閲覧 UI は本番のみ前段の Cloudflare Access で保護
+- 接続設定: Web は `web/.env.local`（`API_SHARED_SECRET`）、iOS は `ios/TripNote/Resources/ServerConfig.plist`（どちらも gitignore 済み。雛形は `web/.env.example` / `ServerConfig.example.plist`。plist 追加後は `xcodegen generate` を再実行）
 - Swift 側のドメインモデルは `ios/TripNote/Models/`、ロジックは `ios/TripNote/Domain/`
 
 ### 実装上の注意
 
-- Next.js 16 のため middleware ではなく `web/src/proxy.ts` を使う。書き方が学習データと異なる可能性があるので `web/node_modules/next/dist/docs/` を参照する
+- Next.js 16 は書き方が学習データと異なる可能性があるので `web/node_modules/next/dist/docs/` を参照する
 - iOS のユニットテストはホストアプリが同じ @Model クラスで ModelContainer を作成済みのため、テスト側で 2 つ目のコンテナを作って insert すると SwiftData がクラッシュする。テストは unmanaged なエンティティ（コンテナ未挿入）で書く
+- maplibre-gl はバンドラ（Turbopack）経由だと自身の Web Worker を解決できず、GeoJSON レイヤが無エラーで描画されない。`public/` に配置したワーカー（`npm run copy-maplibre-worker`、predev/prebuild で自動実行）を `setWorkerUrl` で指定している
 
 ## コマンド
 
@@ -38,6 +41,7 @@ xcodebuild -project TripNote.xcodeproj -scheme TripNote -destination 'platform=i
 実機で動かす場合はリポジトリルートの `./run-ios-device.sh` を使う（ビルド → devicectl でインストール → 起動まで行う。iPhone は USB 接続 + ロック解除 + デベロッパモード有効が前提）。署名チームは `DEVELOPMENT_TEAM` 環境変数で差し替え可能（既定: N38G4DGA67）。
 
 - 単一テストの実行: 上記 test コマンドに `-only-testing:TripNoteTests/GeoTests` を付ける（クラス/メソッド単位で絞り込み可）
+- UI テストは `TripNoteUITests` スキームで別実行（simctl の位置シミュレーションが前提。手順: docs/specs/phase3-map-display.md）。通常の test コマンドには含まれない
 
 ### Web (`web/`)
 

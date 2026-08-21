@@ -1,7 +1,10 @@
+// 表示タイムゾーンは g3plus の既定(America/Los_Angeles)に合わせる
+const TIME_ZONE = "America/Los_Angeles";
+
 const dateTimeFormat = new Intl.DateTimeFormat("ja-JP", {
   dateStyle: "medium",
   timeStyle: "short",
-  timeZone: "Asia/Tokyo",
+  timeZone: TIME_ZONE,
 });
 
 const timeFormat = new Intl.DateTimeFormat("ja-JP", {
@@ -10,7 +13,7 @@ const timeFormat = new Intl.DateTimeFormat("ja-JP", {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
-  timeZone: "Asia/Tokyo",
+  timeZone: TIME_ZONE,
 });
 
 export function formatDateTime(iso: string): string {

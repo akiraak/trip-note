@@ -1,72 +1,31 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { Header } from "../../header";
 import { TripMap } from "./trip-map";
+import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime } from "@/lib/format";
 import { formatDistance, totalDistance } from "@/lib/geo";
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import type { LocationPoint, Trip } from "@/lib/types";
 
-// PostgREST は 1 リクエストあたり最大 1000 行(既定)のため range で全件取得する
-const PAGE_SIZE = 1000;
-
-async function fetchAllPoints(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  tripId: string,
-): Promise<LocationPoint[]> {
-  const points: LocationPoint[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from("location_points")
-      .select("*")
-      .eq("trip_id", tripId)
-      .order("recorded_at", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) {
-      throw new Error(`位置情報の取得に失敗しました: ${error.message}`);
-    }
-    const batch = (data ?? []) as LocationPoint[];
-    points.push(...batch);
-    if (batch.length < PAGE_SIZE) {
-      return points;
-    }
-  }
-}
-
-export default async function TripDetailPage(
-  props: PageProps<"/trips/[id]">,
-) {
-  if (!isSupabaseConfigured()) {
-    redirect("/");
-  }
-
+export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
   const { id } = await props.params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data, error } = await supabase
-    .from("trips")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) {
-    throw new Error(`旅行の取得に失敗しました: ${error.message}`);
-  }
-  if (!data) {
+  const db = getDb();
+  const trip = db.prepare("select * from trips where id = ?").get(id) as
+    | Trip
+    | undefined;
+  if (!trip) {
     notFound();
   }
-  const trip = data as Trip;
-  const points = await fetchAllPoints(supabase, id);
+  const points = db
+    .prepare(
+      "select * from location_points where trip_id = ? order by recorded_at",
+    )
+    .all(id) as LocationPoint[];
   const distance = totalDistance(points);
 
   return (
     <>
-      <Header email={user.email ?? null} />
+      <Header />
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
         <Link
           href="/"

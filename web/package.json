@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "copy-maplibre-worker": "cp node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs node_modules/maplibre-gl/dist/maplibre-gl-shared.mjs public/",
+    "predev": "npm run copy-maplibre-worker",
+    "prebuild": "npm run copy-maplibre-worker",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.12.4",
-    "@supabase/supabase-js": "^2.112.3",
+    "better-sqlite3": "^13.0.3",
     "maplibre-gl": "^6.5.0",
     "next": "16.3.2",
     "react": "19.2.8",
@@ -18,6 +20,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

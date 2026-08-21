@@ -4,7 +4,7 @@ vibeboard/node_modules/
 # iOS (XcodeGen 生成物・ビルド成果物)
 ios/TripNote.xcodeproj/
 ios/TripNote/Info.plist
-ios/TripNote/Resources/Supabase.plist
+ios/TripNote/Resources/ServerConfig.plist
 ios/build-device/
 ios/DerivedData/
 xcuserdata/
@@ -15,6 +15,11 @@ xcuserdata/
 node_modules/
 web/.next/
 web/out/
+# SQLite データ(ローカル開発用)
+web/data/
+# npm run copy-maplibre-worker が node_modules から配置(コミットしない)
+web/public/maplibre-gl-worker.mjs
+web/public/maplibre-gl-shared.mjs
 
 # env
 .env
