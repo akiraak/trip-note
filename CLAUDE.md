@@ -12,8 +12,14 @@ trip-note は旅行のサポートをするアプリで、モバイルと Web �
 
 - `ios/`: iOS アプリ (Swift/SwiftUI, iOS 17+)。Xcode プロジェクトは XcodeGen (`ios/project.yml`) で生成するため `.xcodeproj` はコミットしない。Supabase は supabase-swift (SPM)。地図は MapKit を採用予定
 - `web/`: Next.js (TypeScript + Tailwind + App Router)。Supabase は supabase-js。地図は MapLibre GL JS を採用予定
-- バックエンドは Supabase (Postgres + Auth + Storage)。データモデル（trips / location_points / media）は Supabase スキーマを正とし、Swift / TypeScript 双方に型を定義する
+- バックエンドは Supabase (Postgres + Auth + Storage)。データモデル（trips / location_points / media）は `supabase/migrations/` の SQL を正とし、Swift / TypeScript 双方に型を定義する（セットアップ手順は `supabase/README.md`）
+- Supabase の接続設定: Web は `web/.env.local`、iOS は `ios/TripNote/Resources/Supabase.plist`（どちらも gitignore 済み。雛形は `web/.env.example` / `Supabase.example.plist`）
 - Swift 側のドメインモデルは `ios/TripNote/Models/`、ロジックは `ios/TripNote/Domain/`
+
+### 実装上の注意
+
+- Next.js 16 のため middleware ではなく `web/src/proxy.ts` を使う。書き方が学習データと異なる可能性があるので `web/node_modules/next/dist/docs/` を参照する
+- iOS のユニットテストはホストアプリが同じ @Model クラスで ModelContainer を作成済みのため、テスト側で 2 つ目のコンテナを作って insert すると SwiftData がクラッシュする。テストは unmanaged なエンティティ（コンテナ未挿入）で書く
 
 ## コマンド
 

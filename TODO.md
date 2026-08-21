@@ -1,8 +1,15 @@
 - [ ] 基本機能を詰める [plan](docs/plans/basic-features.md)
   - [x] Phase 0: 技術選定・スキャフォールド（ネイティブ構成: iOS Swift + Next.js + Supabase）
   - [x] Phase 1: 位置情報の記録（iOS・画面OFF/バックグラウンド対応）
-  - [ ] Phase 2: Supabase 同期と記録の閲覧（iOS・Web）
+  - [ ] Phase 2: Supabase 同期と記録の閲覧（iOS・Web） [spec](docs/specs/phase2-supabase-sync.md)
+    - [x] Supabase スキーマ（migrations SQL + RLS）
+    - [x] iOS: Supabase 接続設定・認証（メール+パスワード）
+    - [x] iOS: 同期エンジン（アップロードキュー、needsSync フラグ）
+    - [x] iOS: trip 詳細（位置情報のタイムライン表示）
+    - [x] Web: 認証（@supabase/ssr + proxy.ts）と trip 一覧・詳細
+    - [x] 検証: xcodebuild test（16/16）/ npm run lint / npm run build
+    - [ ] 手動: Supabase プロジェクト作成〜実機・ブラウザで同期と閲覧を確認（手順は supabase/README.md）
   - [ ] Phase 3: 地図表示
   - [ ] Phase 4: 写真撮影と動画撮影
-- [ ] Supabase プロジェクトを作成し `web/.env.local` を設定する（要 Supabase アカウント、Phase 1 の同期実装までに必要）
+- [ ] Supabase プロジェクトを作成し `web/.env.local` と `ios/TripNote/Resources/Supabase.plist` を設定する（要 Supabase アカウント。手順: supabase/README.md）
 - [ ] Android 版（Kotlin）を作る（基本機能完成後の後続タスク）

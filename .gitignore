@@ -4,6 +4,7 @@ vibeboard/node_modules/
 # iOS (XcodeGen 生成物・ビルド成果物)
 ios/TripNote.xcodeproj/
 ios/TripNote/Info.plist
+ios/TripNote/Resources/Supabase.plist
 ios/build-device/
 ios/DerivedData/
 xcuserdata/

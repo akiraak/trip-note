@@ -4,6 +4,9 @@ import UIKit
 
 struct ContentView: View {
     @Environment(LocationRecorder.self) private var recorder
+    @Environment(SupabaseService.self) private var supabase
+    @Environment(SyncEngine.self) private var sync
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \TripEntity.startedAt, order: .reverse) private var trips: [TripEntity]
 
     var body: some View {
@@ -12,17 +15,36 @@ struct ContentView: View {
                 Section {
                     recordingSection
                 }
+                Section("アカウントと同期") {
+                    accountSection
+                }
                 Section("旅行") {
                     if trips.isEmpty {
                         Text("まだ記録がありません")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(trips) { trip in
-                        TripRow(trip: trip)
+                        NavigationLink(value: trip) {
+                            TripRow(trip: trip)
+                        }
                     }
                 }
             }
             .navigationTitle("trip-note")
+            .navigationDestination(for: TripEntity.self) { trip in
+                TripDetailView(trip: trip)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // 記録中はローカル優先(自動同期しない)。復帰時に未同期分をまとめて送る
+            if newPhase == .active, !recorder.isRecording {
+                Task { await sync.syncNow() }
+            }
+        }
+        .task {
+            if !recorder.isRecording {
+                await sync.syncNow()
+            }
         }
     }
 
@@ -45,6 +67,7 @@ struct ContentView: View {
             }
             Button("記録を停止", role: .destructive) {
                 recorder.stopRecording()
+                Task { await sync.syncNow() }
             }
         } else {
             Button {
@@ -66,6 +89,60 @@ struct ContentView: View {
                 destination: URL(string: UIApplication.openSettingsURLString)!
             )
             .font(.caption)
+        }
+    }
+
+    @ViewBuilder
+    private var accountSection: some View {
+        if !supabase.isConfigured {
+            Text("Supabase が未設定です。Resources/Supabase.plist を作成すると同期できます。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if !supabase.isSignedIn {
+            NavigationLink("ログイン / 新規登録") {
+                AuthView()
+            }
+            if let error = supabase.lastAuthError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } else {
+            if let email = supabase.userEmail {
+                LabeledContent("アカウント", value: email)
+            }
+            HStack {
+                if sync.isSyncing {
+                    ProgressView()
+                    Text("同期中…")
+                        .foregroundStyle(.secondary)
+                } else {
+                    let pending = sync.pendingPointCount
+                    if pending > 0 {
+                        Text("未同期: \(pending) 地点")
+                            .foregroundStyle(.secondary)
+                    } else if let syncedAt = sync.lastSyncedAt {
+                        Text("同期済み (\(syncedAt.formatted(.dateTime.hour().minute())))")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("未同期のデータはありません")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .font(.subheadline)
+            Button("今すぐ同期") {
+                Task { await sync.syncNow() }
+            }
+            .disabled(sync.isSyncing)
+            if let error = sync.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            Button("ログアウト", role: .destructive) {
+                Task { await supabase.signOut() }
+            }
         }
     }
 

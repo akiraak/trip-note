@@ -68,11 +68,19 @@ Swift / TypeScript 双方に同じモデルを定義する。スキーマは `su
 
 #### Phase 2: Supabase 同期と記録の閲覧(iOS・Web)
 
-- `supabase/` にスキーマ(マイグレーション SQL)を作成
-- iOS: ローカル記録の Supabase への同期(アップロードキュー、記録中はローカル優先)
-- trip 一覧・詳細(位置情報のタイムライン表示)
-- iOS: SwiftUI の閲覧画面
-- Web: Next.js + supabase-js で同等の閲覧画面(認証込み)
+詳細仕様: [docs/specs/phase2-supabase-sync.md](../specs/phase2-supabase-sync.md)
+
+- [x] `supabase/` にスキーマ(マイグレーション SQL + RLS)を作成。セットアップ手順は `supabase/README.md`
+- [x] iOS: ローカル記録の Supabase への同期 — `Services/SyncEngine.swift`
+  - `needsSync` フラグをアップロードキューとして扱い、trip → 位置情報(500 件ずつ)の順に upsert で冪等に送る
+  - 記録中はローカル優先: 自動同期(フォアグラウンド復帰時)は記録中はスキップ。記録停止時と手動同期はいつでも可
+- [x] iOS: 認証(メール+パスワード) — `Services/SupabaseService.swift` + `Views/AuthView.swift`。接続情報は `Resources/Supabase.plist`(gitignore 済み、雛形は `Supabase.example.plist`)
+- [x] iOS: 閲覧画面 — trip 一覧から `Views/TripDetailView.swift`(統計 + 位置情報のタイムライン)へ遷移
+- [x] Web: Next.js + supabase-js + @supabase/ssr で認証込みの閲覧画面(`/login`, `/`, `/trips/[id]`)。Next.js 16 のため middleware ではなく `src/proxy.ts` を使用
+- [x] 検証: `xcodebuild test` 16/16 passed、`npm run lint` + `npm run build` 成功(2026-08-21)
+- [ ] 残タスク(要ユーザー操作): Supabase プロジェクトを作成し、`supabase/README.md` の手順でスキーマ適用と接続設定を行った上で、実機・ブラウザで同期と閲覧を確認する
+
+既知の注意点: テストのホストアプリが同じ @Model クラスで ModelContainer を作成しているため、テスト側で 2 つ目のコンテナを作って insert すると SwiftData がクラッシュする。ユニットテストは unmanaged なエンティティで書く(`TripNoteTests/SyncRecordTests.swift` のコメント参照)。
 
 #### Phase 3: 地図表示
 

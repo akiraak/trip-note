@@ -7,6 +7,8 @@ final class TripEntity {
     var title: String
     var startedAt: Date
     var endedAt: Date?
+    /// Supabase へ未同期の変更があるか(作成・記録停止で true に戻す)
+    var needsSync: Bool = true
 
     @Relationship(deleteRule: .cascade, inverse: \LocationPointEntity.trip)
     var points: [LocationPointEntity] = []
@@ -38,6 +40,8 @@ final class LocationPointEntity {
     var horizontalAccuracy: Double?
     var recordedAt: Date
     var trip: TripEntity?
+    /// Supabase へ未同期か(位置情報は不変なのでアップロード成功で false になったら変わらない)
+    var needsSync: Bool = true
 
     init(
         id: UUID = UUID(),

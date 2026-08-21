@@ -52,6 +52,7 @@ final class LocationRecorder: NSObject {
     func stopRecording() {
         guard isRecording, let trip = activeTrip else { return }
         trip.endedAt = Date()
+        trip.needsSync = true
         saveContext()
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
