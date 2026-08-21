@@ -1,0 +1,25 @@
+vibeboard/dist/
+vibeboard/node_modules/
+
+# iOS (XcodeGen 生成物・ビルド成果物)
+ios/TripNote.xcodeproj/
+ios/TripNote/Info.plist
+ios/build-device/
+ios/DerivedData/
+xcuserdata/
+.build/
+.swiftpm/
+
+# Web (Next.js)
+node_modules/
+web/.next/
+web/out/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# misc
+.DS_Store
+*.log

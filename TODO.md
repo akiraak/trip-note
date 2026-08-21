@@ -1,0 +1,8 @@
+- [ ] 基本機能を詰める [plan](docs/plans/basic-features.md)
+  - [x] Phase 0: 技術選定・スキャフォールド（ネイティブ構成: iOS Swift + Next.js + Supabase）
+  - [x] Phase 1: 位置情報の記録（iOS・画面OFF/バックグラウンド対応）
+  - [ ] Phase 2: Supabase 同期と記録の閲覧（iOS・Web）
+  - [ ] Phase 3: 地図表示
+  - [ ] Phase 4: 写真撮影と動画撮影
+- [ ] Supabase プロジェクトを作成し `web/.env.local` を設定する（要 Supabase アカウント、Phase 1 の同期実装までに必要）
+- [ ] Android 版（Kotlin）を作る（基本機能完成後の後続タスク）
