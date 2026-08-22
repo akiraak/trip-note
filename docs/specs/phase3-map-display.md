@@ -18,9 +18,11 @@ trip 詳細画面で移動経路を地図上に可視化する。iOS は MapKit�
 ## Web (MapLibre GL JS)
 
 - `maplibre-gl` を導入し、`/trips/[id]` のヘッダ下に地図を表示する(`src/app/trips/[id]/trip-map.tsx`、Client Component)
-- タイルは当面 OpenStreetMap の公式ラスタタイル(`tile.openstreetmap.org`)を使う
-  - API キー不要で開発に十分。ただし OSM のタイル利用ポリシー上、本番の大量アクセスには不適のため、
-    本番運用時はタイルソースの差し替えを検討する(MapTiler / Protomaps 等)。後続タスクとして TODO に積む
+- タイルは OpenFreeMap のベクタタイル(Liberty スタイル、`tiles.openfreemap.org`)を使う
+  - 登録・API キー不要で本番利用可。帰属表記はスタイル側に含まれる。
+    選定経緯は docs/plans/archive/web-map-tiles-production.md
+  - Phase 3 当初は OSM 公式ラスタタイルを暫定利用していたが、利用ポリシー上
+    本番アクセスに不適のため差し替えた
 - GeoJSON LineString + line レイヤで軌跡を描画し、開始(緑)/最新(赤)のマーカーを置く
 - `fitBounds` で軌跡全体にフィットさせる(バウンディングボックスは `src/lib/geo.ts` に実装)
 - 位置情報が 0 件の場合は地図を表示しない

@@ -2,6 +2,10 @@
 
 ## 2026-08-21
 
+- Web の地図タイルを本番向けに差し替える [plan](docs/plans/archive/web-map-tiles-production.md)
+  - OSM 公式ラスタタイル → OpenFreeMap ベクタタイル（Liberty スタイル。登録・API キー不要で本番利用可、帰属表記はスタイル側に含まれる）
+  - 検証: lint / build、ローカルでタイル描画・軌跡・マーカー・帰属表記を目視確認
+
 - 基本機能を詰める [plan](docs/plans/archive/basic-features.md)
   - Phase 0: 技術選定・スキャフォールド（ネイティブ構成: iOS Swift/SwiftUI + Next.js。バックエンドは Supabase で開始し途中で自宅サーバ g3plus に全面移行）
   - Phase 1: 位置情報の記録（画面 OFF・バックグラウンド対応、SwiftData ローカル保存）

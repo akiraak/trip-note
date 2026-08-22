@@ -5,7 +5,6 @@ import {
   Marker,
   NavigationControl,
   setWorkerUrl,
-  type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
@@ -24,21 +23,9 @@ type MediaMarker = {
   longitude: number;
 };
 
-// OSM 公式ラスタタイル。API キー不要だが大量アクセスには不適のため、
-// 本番運用時はタイルソースを差し替える(docs/specs/phase3-map-display.md)
-const OSM_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    osm: {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution: "© OpenStreetMap contributors",
-    },
-  },
-  layers: [{ id: "osm", type: "raster", source: "osm" }],
-};
+// OpenFreeMap のベクタタイル。登録・API キー不要で本番利用可、帰属表記はスタイル側に
+// 含まれる。選定経緯は docs/plans/archive/web-map-tiles-production.md
+const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 export function TripMap({
   points,
@@ -58,7 +45,7 @@ export function TripMap({
 
     const map = new MapLibreMap({
       container,
-      style: OSM_STYLE,
+      style: MAP_STYLE_URL,
       bounds,
       fitBoundsOptions: { padding: 48, maxZoom: 16 },
       attributionControl: { compact: true },
