@@ -179,6 +179,8 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 
 ```json
 {
+  "destinationLatitude": 36.25,
+  "destinationLongitude": 137.65,
   "candidates": [
     { "dayCount": 3, "title": "2泊3日でゆったり",
       "nights": [ { "area": "松本市街", "name": "松本駅周辺のホテル", "note": "…|null",
@@ -191,6 +193,8 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
   `latitude` / `longitude` は地域の概算座標(不正な値は null)。
   候補プレビュー地図に使い、**採用時は宿泊チェックポイントへ概算座標として保存**して
   地図・ルート表示に使う(検索で具体化したら上書きされる)。
+  `destinationLatitude` / `destinationLongitude` は目的地の概算座標(候補共通)で、
+  採用時に**最終日の destination チェックポイント**(名前 = 旅行の目的地)を作るのに使う。
   `dayCount` が 1〜30 の範囲外の候補はサーバ側で落とす
 
 ## POST /api/ai/search-assist

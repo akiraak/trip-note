@@ -243,13 +243,16 @@ enum PlanEditor {
 
     /// AI の日数・宿泊地候補を旅行に採用する(挿入・保存は呼び出し側)。
     /// 1 日目(既存の最初の日 ?? departureAt ?? now)から dayCount 分の連続した日を
-    /// 揃え(既存の日付は再利用)、n 泊目の宿泊チェックポイントを n 日目に末尾追記する。
-    /// チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
+    /// 揃え(既存の日付は再利用)、最終日に目的地の到着チェックポイント
+    /// (trip.destination + 概算座標)を、n 泊目の宿泊チェックポイントを n 日目に
+    /// 末尾追記する。チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
     /// あとから検索で具体化したら上書きされる。
     /// 既存行の updatedAt は進めない(LWW で他方の編集を潰さないため)
     static func adopt(
         _ candidate: AITripOutlineCandidate,
         into trip: TripEntity,
+        destinationLatitude: Double? = nil,
+        destinationLongitude: Double? = nil,
         calendar: Calendar = .current,
         now: Date = Date()
     ) -> (days: [TripDayEntity], checkpoints: [CheckpointEntity]) {
@@ -270,6 +273,33 @@ enum PlanEditor {
             }
         }
         var newCheckpoints: [CheckpointEntity] = []
+        // 未挿入の日は逆参照(day.checkpoints)が更新されないため、採番は日付ごとに数える
+        var nextOrder: [String: Int] = [:]
+        func appendOrder(for date: String, in day: TripDayEntity) -> Int {
+            let order = nextOrder[date] ?? nextSortOrder(in: day)
+            nextOrder[date] = order + 1
+            return order
+        }
+        // 最終日に目的地の到着チェックポイント(同日に宿泊があれば「到着 → 宿泊」の順)
+        let destinationName = trip.destination?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !destinationName.isEmpty,
+           let lastDate = dates.last,
+           let lastDay = dayByDate[lastDate] {
+            let hasCoords = destinationLatitude != nil && destinationLongitude != nil
+            newCheckpoints.append(
+                CheckpointEntity(
+                    type: .destination,
+                    name: destinationName,
+                    latitude: hasCoords ? destinationLatitude : nil,
+                    longitude: hasCoords ? destinationLongitude : nil,
+                    sortOrder: appendOrder(for: lastDate, in: lastDay),
+                    updatedAt: now,
+                    trip: trip,
+                    tripDay: lastDay
+                )
+            )
+        }
         // nights[n] = n+1 泊目 = n+1 日目の宿。日数を超える分は捨てる
         for (index, night) in candidate.nights.enumerated() {
             guard index < dates.count, let day = dayByDate[dates[index]] else { break }
@@ -284,7 +314,7 @@ enum PlanEditor {
                     latitude: hasCoords ? night.latitude : nil,
                     longitude: hasCoords ? night.longitude : nil,
                     note: night.note,
-                    sortOrder: nextSortOrder(in: day),
+                    sortOrder: appendOrder(for: dates[index], in: day),
                     updatedAt: now,
                     trip: trip,
                     tripDay: day

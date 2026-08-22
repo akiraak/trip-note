@@ -95,6 +95,9 @@ struct AITripOutlineCandidate: Decodable, Hashable {
 /// POST /api/ai/trip-outline の応答
 struct AITripOutlineSuggestion: Decodable, Hashable {
     let candidates: [AITripOutlineCandidate]
+    /// 目的地の概算座標(候補共通。採用時に最終日の destination チェックポイントへ入れる)
+    let destinationLatitude: Double?
+    let destinationLongitude: Double?
 }
 
 /// POST /api/ai/search-assist のリクエスト

@@ -273,6 +273,27 @@ describe("parseTripOutlineSuggestion", () => {
     expect(suggestion.candidates[0].nights[1].note).toBe("要予約");
   });
 
+  it("目的地の概算座標を通し、不正・欠落は null に寄せる", () => {
+    const withCoords = parseTripOutlineSuggestion({
+      candidates: [candidate],
+      destinationLatitude: 41.8781,
+      destinationLongitude: -87.6298,
+    });
+    expect(withCoords.destinationLatitude).toBe(41.8781);
+    expect(withCoords.destinationLongitude).toBe(-87.6298);
+
+    const invalid = parseTripOutlineSuggestion({
+      candidates: [candidate],
+      destinationLatitude: 91,
+      destinationLongitude: -87.6298,
+    });
+    expect(invalid.destinationLatitude).toBeNull();
+    expect(invalid.destinationLongitude).toBeNull();
+
+    const missing = parseTripOutlineSuggestion({ candidates: [candidate] });
+    expect(missing.destinationLatitude).toBeNull();
+  });
+
   it("泊の概算座標は範囲内なら通し、不正・欠落は null に寄せる", () => {
     const suggestion = parseTripOutlineSuggestion({
       candidates: [

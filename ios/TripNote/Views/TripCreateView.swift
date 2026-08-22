@@ -118,7 +118,10 @@ struct TripCreateView: View {
                     }
                     let points = Self.mapPoints(
                         for: candidate,
-                        departure: resolvedDeparture(of: trip)
+                        departure: resolvedDeparture(of: trip),
+                        destinationName: trip.destination,
+                        destinationLatitude: suggestion.destinationLatitude,
+                        destinationLongitude: suggestion.destinationLongitude
                     )
                     if !points.isEmpty {
                         OutlineCandidateMap(points: points)
@@ -179,10 +182,13 @@ struct TripCreateView: View {
         departureCheckpoint(of: trip)?.name
     }
 
-    /// 候補プレビュー地図の点列(出発地 + 各泊。座標が無い泊は飛ばす)
+    /// 候補プレビュー地図の点列(出発地 + 各泊 + 目的地。座標が無い点は飛ばす)
     static func mapPoints(
         for candidate: AITripOutlineCandidate,
-        departure: PlanEditor.DeparturePlace?
+        departure: PlanEditor.DeparturePlace?,
+        destinationName: String?,
+        destinationLatitude: Double?,
+        destinationLongitude: Double?
     ) -> [OutlineMapPoint] {
         var points: [OutlineMapPoint] = []
         if let departure,
@@ -192,7 +198,7 @@ struct TripCreateView: View {
                 OutlineMapPoint(
                     id: 0,
                     label: "出発",
-                    isDeparture: true,
+                    kind: .departure,
                     coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
                 )
             )
@@ -203,8 +209,21 @@ struct TripCreateView: View {
                 OutlineMapPoint(
                     id: index + 1,
                     label: "\(index + 1)泊目 \(night.area)",
-                    isDeparture: false,
+                    kind: .night,
                     coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                )
+            )
+        }
+        if let destinationLatitude, let destinationLongitude {
+            points.append(
+                OutlineMapPoint(
+                    id: candidate.nights.count + 1,
+                    label: destinationName ?? "目的地",
+                    kind: .destination,
+                    coordinate: CLLocationCoordinate2D(
+                        latitude: destinationLatitude,
+                        longitude: destinationLongitude
+                    )
                 )
             )
         }
@@ -328,7 +347,12 @@ struct TripCreateView: View {
     }
 
     private func adopt(_ candidate: AITripOutlineCandidate, into trip: TripEntity) {
-        let (days, checkpoints) = PlanEditor.adopt(candidate, into: trip)
+        let (days, checkpoints) = PlanEditor.adopt(
+            candidate,
+            into: trip,
+            destinationLatitude: suggestion?.destinationLatitude,
+            destinationLongitude: suggestion?.destinationLongitude
+        )
         for day in days {
             modelContext.insert(day)
         }
@@ -341,15 +365,29 @@ struct TripCreateView: View {
     }
 }
 
-/// 候補プレビュー地図の 1 点(出発地 or 宿泊地。AI の概算座標なのでおおよその位置)
+/// 候補プレビュー地図の 1 点(出発地・宿泊地・目的地。AI の概算座標なのでおおよその位置)
 struct OutlineMapPoint: Identifiable {
+    enum Kind {
+        case departure
+        case night
+        case destination
+
+        var checkpointType: CheckpointType {
+            switch self {
+            case .departure: .departure
+            case .night: .lodging
+            case .destination: .destination
+            }
+        }
+    }
+
     let id: Int
     let label: String
-    let isDeparture: Bool
+    let kind: Kind
     let coordinate: CLLocationCoordinate2D
 }
 
-/// AI 候補 1 件のミニ地図。出発地と各泊をマーカー + ポリラインで表示する(操作不可)
+/// AI 候補 1 件のミニ地図。出発地・各泊・目的地をマーカー + ポリラインで表示する(操作不可)
 private struct OutlineCandidateMap: View {
     let points: [OutlineMapPoint]
 
@@ -365,16 +403,10 @@ private struct OutlineCandidateMap: View {
             ForEach(points) { point in
                 Marker(
                     point.label,
-                    systemImage: point.isDeparture
-                        ? CheckpointType.departure.systemImage
-                        : CheckpointType.lodging.systemImage,
+                    systemImage: point.kind.checkpointType.systemImage,
                     coordinate: point.coordinate
                 )
-                .tint(
-                    point.isDeparture
-                        ? CheckpointType.departure.tint
-                        : CheckpointType.lodging.tint
-                )
+                .tint(point.kind.checkpointType.tint)
             }
         }
         .mapStyle(.standard)

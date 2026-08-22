@@ -2,6 +2,11 @@
 
 ## 2026-08-22
 
+- AI 候補の採用時に最終日へ目的地チェックポイントを作る(最終日の地図が出ない件) [plan](docs/plans/archive/outline-destination-checkpoint.md)
+  - trip-outline の応答に目的地の概算座標(destinationLatitude/Longitude)を追加
+  - 採用時に最終日へ type=destination のチェックポイント(名前 = 目的地、概算座標付き)を作成。同日に宿泊がある場合は「到着 → 宿泊」の順
+  - 候補プレビュー地図にも目的地ピンを追加。検証: web vitest 63 件 + lint + build、iOS ユニットテスト 88 件
+
 - プラン地図に概算座標を反映(採用時に保存 + ルート描画) [plan](docs/plans/archive/plan-map-approx-coords.md)
   - 方針変更: AI の概算座標をチェックポイントに保存し、検索で具体化したら上書き(従来は保存しない方針で 2 日目以降の地図・ルートが描けなかった)
   - /api/ai/plan のチェックポイントにも概算座標を追加し、Web/iOS 両方の採用で保存。候補(nights)の座標も採用時に保存

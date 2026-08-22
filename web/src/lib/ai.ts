@@ -163,7 +163,12 @@ export type TripOutlineCandidate = {
   nights: SuggestedNight[];
 };
 
-export type TripOutlineSuggestion = { candidates: TripOutlineCandidate[] };
+export type TripOutlineSuggestion = {
+  candidates: TripOutlineCandidate[];
+  /** 目的地の概算座標(候補共通。最終日の destination チェックポイントに使う) */
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+};
 
 // ---- 検索補助 (/api/ai/search-assist) ----
 
@@ -348,6 +353,14 @@ export const PLAN_SCHEMA: Record<string, unknown> = {
 export const TRIP_OUTLINE_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
+    destinationLatitude: {
+      type: "number",
+      description: "目的地の概算緯度(市レベルの精度でよい)",
+    },
+    destinationLongitude: {
+      type: "number",
+      description: "目的地の概算経度",
+    },
     candidates: {
       type: "array",
       description: "日数違いの旅行の大枠候補(2〜4 件)",
@@ -397,7 +410,7 @@ export const TRIP_OUTLINE_SCHEMA: Record<string, unknown> = {
       },
     },
   },
-  required: ["candidates"],
+  required: ["destinationLatitude", "destinationLongitude", "candidates"],
   additionalProperties: false,
 };
 
@@ -533,7 +546,14 @@ export function parseTripOutlineSuggestion(value: unknown): TripOutlineSuggestio
   if (candidates.length === 0) {
     throw new Error("AI から候補が得られませんでした");
   }
-  return { candidates };
+  // 目的地の概算座標(片方だけなら両方捨てる)
+  let destinationLatitude = displayCoordinate(value.destinationLatitude, 90);
+  let destinationLongitude = displayCoordinate(value.destinationLongitude, 180);
+  if (destinationLatitude === null || destinationLongitude === null) {
+    destinationLatitude = null;
+    destinationLongitude = null;
+  }
+  return { candidates, destinationLatitude, destinationLongitude };
 }
 
 export function parseSearchAssistSuggestion(
@@ -604,7 +624,7 @@ export function buildTripOutlinePrompt(input: TripOutlineInput): {
     "- candidates は 2〜4 件。日数やペースの違い(最短で移動重視 / 途中の観光も楽しむ など)を出す",
     "- dayCount は旅行全体の日数(日帰りは 1)。nights は泊数分(dayCount - 1)で、n 番目が n 泊目",
     "- 各泊の area は宿泊する大まかな地域(経路上の都市・観光地)、name は「◯◯温泉の宿」「◯◯駅周辺のホテル」のような地図検索でヒットしやすい表現にする(実在が不確かな固有名は使わない)",
-    "- 各泊の latitude / longitude はその地域の概算座標(候補のプレビュー地図用。市レベルの精度でよい)",
+    "- 各泊の latitude / longitude はその地域の概算座標(市レベルの精度でよい)。destinationLatitude / destinationLongitude には目的地の概算座標を入れる",
     "- title は「4泊5日で移動重視」のような候補の短い説明",
   ].join("\n");
   const coordinateLine =

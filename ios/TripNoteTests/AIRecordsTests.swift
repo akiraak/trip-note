@@ -56,6 +56,8 @@ struct AIRecordsTests {
     @Test func 日数宿泊地候補の応答をデコードする() throws {
         let json = """
         {
+          "destinationLatitude": 41.8781,
+          "destinationLongitude": -87.6298,
           "candidates": [
             {
               "dayCount": 3,
@@ -82,6 +84,9 @@ struct AIRecordsTests {
         #expect(suggestion.candidates[0].nights[0].longitude == 137.97)
         #expect(suggestion.candidates[0].nights[1].latitude == nil)
         #expect(suggestion.candidates[1].nights.isEmpty)
+        // 目的地の概算座標(候補共通)
+        #expect(suggestion.destinationLatitude == 41.8781)
+        #expect(suggestion.destinationLongitude == -87.6298)
     }
 
     @Test func 日数宿泊地候補のリクエストはサーバの期待するキーで送る() throws {

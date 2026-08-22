@@ -434,6 +434,51 @@ struct PlanEditorTests {
         #expect(made.checkpoints.first?.tripDay === made.days.first)
     }
 
+    @Test func adoptOutlineは最終日に目的地チェックポイントを作る() {
+        let trip = TripEntity(title: "t")
+        trip.departureAt = date("2026-09-01T08:30:00+09:00")
+        trip.destination = "シカゴ"
+        let candidate = AITripOutlineCandidate(
+            dayCount: 3,
+            title: "2泊3日",
+            nights: [
+                AISuggestedNight(area: "a", name: "宿1", note: nil, latitude: nil, longitude: nil),
+                AISuggestedNight(area: "b", name: "宿2", note: nil, latitude: nil, longitude: nil),
+            ]
+        )
+        let made = PlanEditor.adopt(
+            candidate,
+            into: trip,
+            destinationLatitude: 41.8781,
+            destinationLongitude: -87.6298,
+            calendar: calendar
+        )
+        let destination = made.checkpoints.first { $0.type == .destination }
+        #expect(destination?.name == "シカゴ")
+        #expect(destination?.latitude == 41.8781)
+        #expect(destination?.longitude == -87.6298)
+        #expect(destination?.tripDay?.date == "2026-09-03")  // 最終日
+    }
+
+    @Test func adoptOutlineは最終日の到着を宿泊より前に並べる() {
+        // 目的地に泊まる候補(nights == dayCount)では「到着 → 宿泊」の順になる
+        let trip = TripEntity(title: "t")
+        trip.departureAt = date("2026-09-01T08:30:00+09:00")
+        trip.destination = "シカゴ"
+        let candidate = AITripOutlineCandidate(
+            dayCount: 2,
+            title: "シカゴ泊",
+            nights: [
+                AISuggestedNight(area: "途中", name: "宿1", note: nil, latitude: nil, longitude: nil),
+                AISuggestedNight(area: "シカゴ", name: "シカゴの宿", note: nil, latitude: nil, longitude: nil),
+            ]
+        )
+        let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar)
+        let lastDayCheckpoints = made.checkpoints.filter { $0.tripDay?.date == "2026-09-02" }
+        #expect(lastDayCheckpoints.map(\.typeRawValue) == ["destination", "lodging"])
+        #expect(lastDayCheckpoints.map(\.sortOrder) == [0, 1])
+    }
+
     @Test func adoptOutlineは日数を超える泊と空の名前を捨てる() {
         let trip = TripEntity(title: "t")
         trip.departureAt = date("2026-09-01T08:30:00+09:00")
