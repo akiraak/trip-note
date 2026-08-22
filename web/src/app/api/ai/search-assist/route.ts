@@ -27,6 +27,8 @@ export async function POST(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "AI の呼び出しに失敗しました";
-    return NextResponse.json({ error: message }, { status: 502 });
+    // 502/504 は Cloudflare がボディを自前のエラーページに差し替えて
+    // クライアントへメッセージが届かないため 500 で返す
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
