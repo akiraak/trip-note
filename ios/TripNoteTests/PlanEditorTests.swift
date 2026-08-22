@@ -278,8 +278,8 @@ struct PlanEditorTests {
                     title: "松本周辺を観光して泊",
                     area: "松本市",
                     checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "departure", name: "東京駅", note: nil),
-                        AISuggestedCheckpoint(typeRawValue: "sightseeing", name: "松本城", note: "国宝"),
+                        AISuggestedCheckpoint(typeRawValue: "departure", name: "東京駅", note: nil, latitude: nil, longitude: nil),
+                        AISuggestedCheckpoint(typeRawValue: "sightseeing", name: "松本城", note: "国宝", latitude: nil, longitude: nil),
                     ]
                 ),
                 AISuggestedDay(
@@ -287,7 +287,7 @@ struct PlanEditorTests {
                     title: "帰路",
                     area: "松本市",
                     checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "destination", name: "自宅", note: nil)
+                        AISuggestedCheckpoint(typeRawValue: "destination", name: "自宅", note: nil, latitude: nil, longitude: nil)
                     ]
                 ),
             ]),
@@ -320,7 +320,7 @@ struct PlanEditorTests {
                     title: "新タイトル",
                     area: "松本市",
                     checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "喫茶店", note: nil)
+                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "喫茶店", note: nil, latitude: nil, longitude: nil)
                     ]
                 )
             ]),
@@ -335,6 +335,34 @@ struct PlanEditorTests {
         #expect(made.checkpoints.first?.tripDay === existing)
     }
 
+    @Test func adoptは概算座標を保存し片方だけなら捨てる() {
+        let trip = TripEntity(title: "t")
+        let made = PlanEditor.adopt(
+            suggestion([
+                AISuggestedDay(
+                    date: "2026-09-01",
+                    title: "初日",
+                    area: "松本市",
+                    checkpoints: [
+                        AISuggestedCheckpoint(
+                            typeRawValue: "sightseeing", name: "松本城", note: nil,
+                            latitude: 36.2381, longitude: 137.969
+                        ),
+                        AISuggestedCheckpoint(
+                            typeRawValue: "lodging", name: "宿", note: nil,
+                            latitude: 36.26, longitude: nil
+                        ),
+                    ]
+                )
+            ]),
+            into: trip
+        )
+        #expect(made.checkpoints[0].latitude == 36.2381)
+        #expect(made.checkpoints[0].longitude == 137.969)
+        #expect(made.checkpoints[1].latitude == nil)
+        #expect(made.checkpoints[1].longitude == nil)
+    }
+
     @Test func adoptは空の名前を読み飛ばす() {
         let trip = TripEntity(title: "t")
         let made = PlanEditor.adopt(
@@ -344,8 +372,8 @@ struct PlanEditorTests {
                     title: "初日",
                     area: "松本市",
                     checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "  ", note: nil),
-                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "喫茶店", note: nil),
+                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "  ", note: nil, latitude: nil, longitude: nil),
+                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "喫茶店", note: nil, latitude: nil, longitude: nil),
                     ]
                 )
             ]),
@@ -369,8 +397,11 @@ struct PlanEditorTests {
             dayCount: 3,
             title: "2泊3日でゆったり",
             nights: [
-                AISuggestedNight(area: "松本市街", name: "松本駅周辺のホテル", note: nil, latitude: nil, longitude: nil),
-                AISuggestedNight(area: "上高地", name: "上高地の宿", note: "要予約", latitude: nil, longitude: nil),
+                AISuggestedNight(
+                    area: "松本市街", name: "松本駅周辺のホテル", note: nil,
+                    latitude: 36.2381, longitude: 137.969
+                ),
+                AISuggestedNight(area: "上高地", name: "上高地の宿", note: "要予約", latitude: 36.25, longitude: nil),
             ]
         )
         let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar, now: now)
@@ -379,7 +410,11 @@ struct PlanEditorTests {
         #expect(existing.updatedAt == old)  // 既存日は触らない
         #expect(made.checkpoints.map(\.name) == ["松本駅周辺のホテル", "上高地の宿"])
         #expect(made.checkpoints.allSatisfy { $0.type == .lodging })
-        #expect(made.checkpoints.allSatisfy { $0.latitude == nil && $0.longitude == nil })
+        // 概算座標は保存する。片方だけなら両方捨てる
+        #expect(made.checkpoints[0].latitude == 36.2381)
+        #expect(made.checkpoints[0].longitude == 137.969)
+        #expect(made.checkpoints[1].latitude == nil)
+        #expect(made.checkpoints[1].longitude == nil)
         #expect(made.checkpoints.allSatisfy { $0.updatedAt == now && $0.needsSync })
         #expect(made.checkpoints[0].tripDay === existing)  // 1 泊目は 1 日目
         #expect(made.checkpoints[1].tripDay === made.days.first)  // 2 泊目は 2 日目

@@ -59,6 +59,7 @@ export function AiPlanSuggest({
         suggestion.days.map((day) => ({
           date: day.date,
           title: day.title,
+          // 概算座標も含めて採用する(検索で具体化したら上書きされる)
           checkpoints: day.checkpoints,
         })),
       );

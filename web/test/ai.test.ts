@@ -205,6 +205,25 @@ describe("parsePlanSuggestion", () => {
     expect(suggestion.days[0].checkpoints[1].note).toBe("国宝");
   });
 
+  it("チェックポイントの概算座標を通し、不正・片方だけは null に寄せる", () => {
+    const suggestion = parsePlanSuggestion({
+      days: [
+        {
+          ...day,
+          checkpoints: [
+            { type: "sightseeing", name: "松本城", note: "", latitude: 36.2381, longitude: 137.969 },
+            { type: "lodging", name: "宿", note: "", latitude: 36.26 },
+            { type: "cafe", name: "喫茶店", note: "", latitude: 91, longitude: 137 },
+          ],
+        },
+      ],
+    });
+    const checkpoints = suggestion.days[0].checkpoints;
+    expect([checkpoints[0].latitude, checkpoints[0].longitude]).toEqual([36.2381, 137.969]);
+    expect([checkpoints[1].latitude, checkpoints[1].longitude]).toEqual([null, null]);
+    expect([checkpoints[2].latitude, checkpoints[2].longitude]).toEqual([null, null]);
+  });
+
   it("許可リスト外の種別は other に寄せる", () => {
     const suggestion = parsePlanSuggestion({
       days: [

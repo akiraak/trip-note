@@ -107,6 +107,9 @@ export type SuggestedCheckpoint = {
   type: CheckpointType;
   name: string;
   note: string | null;
+  /** 概算座標(市レベル)。採用時に保存し、検索で具体化したら上書きされる */
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type SuggestedDay = {
@@ -319,8 +322,16 @@ export const PLAN_SCHEMA: Record<string, unknown> = {
                   description: "地図検索でヒットしやすい具体的な施設名・地名",
                 },
                 note: { type: "string", description: "補足。無ければ空文字" },
+                latitude: {
+                  type: "number",
+                  description: "概算緯度(市レベルの精度でよい)",
+                },
+                longitude: {
+                  type: "number",
+                  description: "概算経度",
+                },
               },
-              required: ["type", "name", "note"],
+              required: ["type", "name", "note", "latitude", "longitude"],
               additionalProperties: false,
             },
           },
@@ -450,11 +461,20 @@ export function parsePlanSuggestion(value: unknown): PlanSuggestion {
       if (!isRecord(c) || typeof c.name !== "string" || !c.name.trim()) {
         throw new Error("AI の応答を解釈できませんでした");
       }
+      // 概算座標(表示・採用用)。不正なら null に寄せ、片方だけなら両方捨てる
+      let latitude = displayCoordinate(c.latitude, 90);
+      let longitude = displayCoordinate(c.longitude, 180);
+      if (latitude === null || longitude === null) {
+        latitude = null;
+        longitude = null;
+      }
       return {
         // 許可リスト外の種別が来ても落とさず other に寄せる
         type: isCheckpointType(c.type) ? c.type : "other",
         name: c.name.trim(),
         note: emptyToNull(c.note),
+        latitude,
+        longitude,
       };
     });
     return {
@@ -557,6 +577,7 @@ export function buildPlanPrompt(input: PlanSuggestionInput): {
     "- 1 日目の最初は type を departure にして出発地を、最終日の最後は type を destination にして到着予定地を入れる",
     "- 宿泊する日は最後に lodging(宿の候補または「◯◯周辺の宿」)を入れる",
     "- name は地図検索でヒットしやすい具体的な施設名・地名にする",
+    "- 各チェックポイントの latitude / longitude は概算座標(市レベルの精度でよい)",
     "- 移動手段で現実的に回れる範囲・順序にする",
   ].join("\n");
   const user = [

@@ -41,6 +41,9 @@ struct TripMapView: View {
     let isActive: Bool
     var mediaAnnotations: [TripMediaAnnotation] = []
     var checkpointAnnotations: [TripCheckpointAnnotation] = []
+    /// 今後のプランのルート(チェックポイントを日順・訪問順につないだ座標列)。
+    /// 記録済みの軌跡(実線)と区別するため破線で描く
+    var planRoute: [CLLocationCoordinate2D] = []
     var onSelectMedia: ((MediaEntity) -> Void)?
 
     private let store = MediaStore.makeDefault()
@@ -51,6 +54,13 @@ struct TripMapView: View {
 
     var body: some View {
         Map(initialPosition: .automatic) {
+            if planRoute.count >= 2 {
+                MapPolyline(coordinates: planRoute)
+                    .stroke(
+                        .blue.opacity(0.55),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 6])
+                    )
+            }
             ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                 if segment.count >= 2 {
                     MapPolyline(coordinates: segment)

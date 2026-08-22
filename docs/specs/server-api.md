@@ -138,13 +138,16 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 {
   "days": [
     { "date": "YYYY-MM-DD", "title": "松本周辺を観光して泊", "area": "松本市",
-      "checkpoints": [ { "type": "departure", "name": "東京駅", "note": "…|null" } ] }
+      "checkpoints": [ { "type": "departure", "name": "東京駅", "note": "…|null",
+        "latitude": 35.68, "longitude": 139.76 } ] }
   ]
 }
 ```
 
 - `type` は checkpoints と同じ 7 種(サーバが許可リスト外を other に寄せる)。
-  地点は座標未定(採用後に検索で具体化する)
+  `latitude` / `longitude` は概算座標(市レベル。不正・片方だけは null)。
+  採用時にチェックポイントへ保存して地図・ルート表示に使い、
+  検索で具体化したら上書きされる
 - `401` / `400 {"error":"<バリデーションメッセージ>"}` /
   `500 {"error":"AI (...) の呼び出しに失敗しました: ..."}`(キー未設定・API エラー。
   502/504 だと Cloudflare がボディを差し替えてメッセージが届かないため 500 を使う)
@@ -185,9 +188,9 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 ```
 
 - `nights` は泊数分(通常 `dayCount - 1`)。n 番目 = n+1 泊目。
-  `latitude` / `longitude` は地域の概算座標で**候補プレビュー地図専用**
-  (採用時のチェックポイントには保存しない = 「AI の座標は信用しない」方針は維持。
-  不正な値は null)。宿の位置は採用後に検索で具体化する。
+  `latitude` / `longitude` は地域の概算座標(不正な値は null)。
+  候補プレビュー地図に使い、**採用時は宿泊チェックポイントへ概算座標として保存**して
+  地図・ルート表示に使う(検索で具体化したら上書きされる)。
   `dayCount` が 1〜30 の範囲外の候補はサーバ側で落とす
 
 ## POST /api/ai/search-assist

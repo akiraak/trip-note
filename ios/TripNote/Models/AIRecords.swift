@@ -23,6 +23,9 @@ struct AISuggestedCheckpoint: Decodable, Hashable {
     let typeRawValue: String
     let name: String
     let note: String?
+    /// 概算座標(市レベル)。採用時に保存し、検索で具体化したら上書きする
+    let latitude: Double?
+    let longitude: Double?
 
     var type: CheckpointType { CheckpointType(rawValue: typeRawValue) ?? .other }
 
@@ -30,6 +33,8 @@ struct AISuggestedCheckpoint: Decodable, Hashable {
         case typeRawValue = "type"
         case name
         case note
+        case latitude
+        case longitude
     }
 }
 

@@ -13,7 +13,8 @@ struct AIRecordsTests {
               "title": "松本周辺を観光して泊",
               "area": "松本市",
               "checkpoints": [
-                { "type": "departure", "name": "東京駅", "note": null },
+                { "type": "departure", "name": "東京駅", "note": null,
+                  "latitude": 35.681, "longitude": 139.767 },
                 { "type": "onsen", "name": "浅間温泉", "note": "未知の種別" }
               ]
             }
@@ -29,6 +30,10 @@ struct AIRecordsTests {
         #expect(day.area == "松本市")
         #expect(day.checkpoints.map(\.type) == [.departure, .other])
         #expect(day.checkpoints[1].note == "未知の種別")
+        // 概算座標(無ければ nil)
+        #expect(day.checkpoints[0].latitude == 35.681)
+        #expect(day.checkpoints[0].longitude == 139.767)
+        #expect(day.checkpoints[1].latitude == nil)
     }
 
     @Test func 検索補助の応答をデコードする() throws {

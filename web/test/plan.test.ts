@@ -364,6 +364,39 @@ describe("adoptPlanSuggestion", () => {
     expect(checkpoints[1].note).toBe("国宝");
   });
 
+  it("概算座標があれば保存し、片方だけなら両方 null にする", () => {
+    seedTrip();
+    adoptPlanSuggestion("trip-1", [
+      {
+        date: "2026-09-01",
+        title: null,
+        checkpoints: [
+          {
+            type: "sightseeing" as const,
+            name: "松本城",
+            note: null,
+            latitude: 36.2381,
+            longitude: 137.969,
+          },
+          {
+            type: "lodging" as const,
+            name: "浅間温泉の宿",
+            note: null,
+            latitude: 36.26,
+            longitude: null,
+          },
+        ],
+      },
+    ]);
+    const checkpoints = getDb()
+      .prepare("select * from checkpoints order by sort_order")
+      .all() as Checkpoint[];
+    expect(checkpoints[0].latitude).toBe(36.2381);
+    expect(checkpoints[0].longitude).toBe(137.969);
+    expect(checkpoints[1].latitude).toBeNull();
+    expect(checkpoints[1].longitude).toBeNull();
+  });
+
   it("同じ日付の日が既にあれば title を保ちつつ末尾に追記する", () => {
     seedTrip();
     seedDay({ id: "day-1", date: "2026-09-01" });

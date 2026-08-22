@@ -239,17 +239,24 @@ export function deleteCheckpoint(id: string): Checkpoint {
   return checkpoint;
 }
 
-/** AI 行程提案の採用入力(lib/ai.ts の SuggestedDay に対応。座標は未定) */
+/** AI 行程提案の採用入力(lib/ai.ts の SuggestedDay に対応) */
 export type AdoptDay = {
   /** YYYY-MM-DD */
   date: string;
   title: string | null;
-  checkpoints: { type: CheckpointType; name: string; note: string | null }[];
+  checkpoints: {
+    type: CheckpointType;
+    name: string;
+    note: string | null;
+    /** AI の概算座標(任意)。保存して検索で具体化したら上書きする */
+    latitude?: number | null;
+    longitude?: number | null;
+  }[];
 };
 
 /** AI 提案を採用して trip_days / checkpoints を作成する。
  *  同じ日付の日が既にあればそこへチェックポイントを末尾追記し(title は上書きしない)、
- *  無ければ日を作る。チェックポイントは座標未定(latitude/longitude null)で入れる */
+ *  無ければ日を作る。チェックポイントは AI の概算座標付きで入れる(無ければ null) */
 export function adoptPlanSuggestion(tripId: string, days: AdoptDay[]): Trip {
   const trip = getTrip(tripId);
   if (days.length === 0) throw new Error("採用する日がありません");
@@ -271,7 +278,7 @@ export function adoptPlanSuggestion(tripId: string, days: AdoptDay[]): Trip {
        (id, trip_id, trip_day_id, type, name, latitude, longitude,
         planned_time, note, sort_order, updated_at)
      values
-       (@id, @trip_id, @trip_day_id, @type, @name, null, null,
+       (@id, @trip_id, @trip_day_id, @type, @name, @latitude, @longitude,
         null, @note, @sort_order, @updated_at)`,
   );
   db.transaction(() => {
@@ -293,11 +300,15 @@ export function adoptPlanSuggestion(tripId: string, days: AdoptDay[]): Trip {
       const { max_order } = maxOrder.get(dayId) as { max_order: number | null };
       let order = max_order !== null ? max_order + 1 : 0;
       for (const checkpoint of day.checkpoints) {
+        // 概算座標は片方だけなら両方捨てる(validateInput の対条件に合わせる)
+        const hasCoords =
+          typeof checkpoint.latitude === "number" &&
+          typeof checkpoint.longitude === "number";
         const valid = validateInput({
           type: checkpoint.type,
           name: checkpoint.name,
-          latitude: null,
-          longitude: null,
+          latitude: hasCoords ? (checkpoint.latitude as number) : null,
+          longitude: hasCoords ? (checkpoint.longitude as number) : null,
           planned_time: null,
           note: checkpoint.note,
         });
@@ -307,6 +318,8 @@ export function adoptPlanSuggestion(tripId: string, days: AdoptDay[]): Trip {
           trip_day_id: dayId,
           type: valid.type,
           name: valid.name,
+          latitude: valid.latitude,
+          longitude: valid.longitude,
           note: valid.note,
           sort_order: order,
           updated_at: now,

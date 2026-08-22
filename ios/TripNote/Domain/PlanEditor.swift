@@ -186,7 +186,8 @@ enum PlanEditor {
 
     /// AI 提案を旅行に採用する(挿入・保存は呼び出し側)。
     /// 同じ日付の日が既にあればそこへチェックポイントを末尾追記し(title は上書きしない)、
-    /// 無ければ日を作る。チェックポイントは座標未定(nil)で入れ、あとから検索で具体化する。
+    /// 無ければ日を作る。チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
+    /// あとから検索で具体化したら上書きされる。
     /// 戻り値は新規作成したエンティティ(呼び出し側で insert する)
     static func adopt(
         _ suggestion: AIPlanSuggestion,
@@ -218,10 +219,14 @@ enum PlanEditor {
             for checkpoint in suggested.checkpoints {
                 let name = checkpoint.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !name.isEmpty else { continue }
+                // 概算座標は片方だけなら両方捨てる
+                let hasCoords = checkpoint.latitude != nil && checkpoint.longitude != nil
                 newCheckpoints.append(
                     CheckpointEntity(
                         type: checkpoint.type,
                         name: name,
+                        latitude: hasCoords ? checkpoint.latitude : nil,
+                        longitude: hasCoords ? checkpoint.longitude : nil,
                         note: checkpoint.note,
                         sortOrder: order,
                         updatedAt: now,
@@ -239,7 +244,8 @@ enum PlanEditor {
     /// AI の日数・宿泊地候補を旅行に採用する(挿入・保存は呼び出し側)。
     /// 1 日目(既存の最初の日 ?? departureAt ?? now)から dayCount 分の連続した日を
     /// 揃え(既存の日付は再利用)、n 泊目の宿泊チェックポイントを n 日目に末尾追記する。
-    /// チェックポイントは座標未定(nil)で入れ、あとから検索で具体化する。
+    /// チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
+    /// あとから検索で具体化したら上書きされる。
     /// 既存行の updatedAt は進めない(LWW で他方の編集を潰さないため)
     static func adopt(
         _ candidate: AITripOutlineCandidate,
@@ -269,10 +275,14 @@ enum PlanEditor {
             guard index < dates.count, let day = dayByDate[dates[index]] else { break }
             let name = night.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { continue }
+            // 概算座標は片方だけなら両方捨てる
+            let hasCoords = night.latitude != nil && night.longitude != nil
             newCheckpoints.append(
                 CheckpointEntity(
                     type: .lodging,
                     name: name,
+                    latitude: hasCoords ? night.latitude : nil,
+                    longitude: hasCoords ? night.longitude : nil,
                     note: night.note,
                     sortOrder: nextSortOrder(in: day),
                     updatedAt: now,

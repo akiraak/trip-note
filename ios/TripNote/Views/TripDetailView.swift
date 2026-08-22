@@ -40,6 +40,7 @@ struct TripDetailView: View {
                         isActive: trip.isRecordingActive,
                         mediaAnnotations: mediaAnnotations,
                         checkpointAnnotations: checkpointPins,
+                        planRoute: checkpointPins.map(\.coordinate),
                         onSelectMedia: { selectedMedia = $0 }
                     )
                     .frame(height: 300)
@@ -50,7 +51,11 @@ struct TripDetailView: View {
                 let days = trip.sortedDays
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink(value: day) {
-                        TripDayRow(index: index, day: day)
+                        TripDayRow(
+                            index: index,
+                            day: day,
+                            routeStart: Self.routeAnchor(before: index, in: days)
+                        )
                     }
                 }
                 Button(action: addDay) {
@@ -292,6 +297,19 @@ struct TripDetailView: View {
         }
     }
 
+    /// index 日目のミニ地図の起点 = それより前の日の最後の座標ありチェックポイント(前泊地など)
+    static func routeAnchor(
+        before index: Int,
+        in days: [TripDayEntity]
+    ) -> CLLocationCoordinate2D? {
+        for day in days[..<index].reversed() {
+            if let last = day.sortedCheckpoints.compactMap(TripCheckpointAnnotation.make).last {
+                return last.coordinate
+            }
+        }
+        return nil
+    }
+
     private var mediaAnnotations: [TripMediaAnnotation] {
         trip.sortedMedia.compactMap { media in
             guard let point = media.locationPoint else { return nil }
@@ -357,6 +375,8 @@ struct TripDetailView: View {
 private struct TripDayRow: View {
     let index: Int
     let day: TripDayEntity
+    /// 前日までの最後の座標(前泊地など)。ミニ地図のルートの起点になる
+    var routeStart: CLLocationCoordinate2D?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -384,10 +404,10 @@ private struct TripDayRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            // この日のミニ地図(座標ありチェックポイントを訪問順に)
+            // この日のミニ地図(座標ありチェックポイントを訪問順に。前泊地からのルート付き)
             let annotations = checkpoints.compactMap(TripCheckpointAnnotation.make)
             if !annotations.isEmpty {
-                TripDayMiniMap(annotations: annotations)
+                TripDayMiniMap(annotations: annotations, routeStart: routeStart)
                     .frame(height: 120)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(.top, 4)
@@ -403,18 +423,36 @@ private struct TripDayRow: View {
 }
 
 /// 日別行のミニ地図。その日のチェックポイントを訪問順のピン + ポリラインで表示する。
+/// routeStart(前泊地など)があればそこを起点にルートを引く。
 /// 操作不可(行タップで日詳細へ遷移するのを妨げない)
 private struct TripDayMiniMap: View {
     let annotations: [TripCheckpointAnnotation]
+    var routeStart: CLLocationCoordinate2D?
+
+    private var routeCoordinates: [CLLocationCoordinate2D] {
+        let coordinates = annotations.map(\.coordinate)
+        guard let routeStart else { return coordinates }
+        return [routeStart] + coordinates
+    }
 
     var body: some View {
         Map(initialPosition: .automatic, interactionModes: []) {
-            if annotations.count >= 2 {
-                MapPolyline(coordinates: annotations.map(\.coordinate))
+            let route = routeCoordinates
+            if route.count >= 2 {
+                MapPolyline(coordinates: route)
                     .stroke(
                         .blue,
                         style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
                     )
+            }
+            if let routeStart {
+                // 前日からの出発点(小さなグレーの点で控えめに)
+                Annotation("", coordinate: routeStart) {
+                    Circle()
+                        .fill(.gray)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                }
             }
             ForEach(annotations) { annotation in
                 Marker(
