@@ -11,8 +11,11 @@ struct ContentView: View {
         sort: [SortDescriptor(\TripEntity.startedAt, order: .reverse)]
     ) private var trips: [TripEntity]
     @State private var showsTripCreate = false
-    /// 作成シートが閉じたら旅行の中へ遷移するための path
-    @State private var path: [TripEntity] = []
+    /// 作成シートが閉じたら旅行の中へ遷移するための path。
+    /// 旅行(TripEntity)の先に日詳細(TripDayEntity)も積むため、
+    /// 型付き配列ではなく NavigationPath にする(型付きだと他の型の
+    /// NavigationLink が黙って無視され、タップしても遷移しない)
+    @State private var path = NavigationPath()
     @State private var createdTrip: TripEntity?
 
     var body: some View {
