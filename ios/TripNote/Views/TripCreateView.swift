@@ -1,7 +1,10 @@
 import SwiftData
 import SwiftUI
 
-/// プラン段階の旅行を作成するフォーム。開始日と日数から trip_days も同時に作る
+/// プラン段階の旅行を作成するフォーム。出発日時の日付で 1 日目だけ作り
+/// (日数は作成時には決めない)、目的地が入力されていれば作成後に
+/// AI の日数・宿泊地候補ステップへ進む。候補を採用すると日別プランと
+/// 宿泊チェックポイント(座標未定)が作られる
 struct TripCreateView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -9,27 +12,97 @@ struct TripCreateView: View {
 
     @State private var title = ""
     @State private var transport: Transport?
-    @State private var startDate = Calendar.current.startOfDay(for: Date())
-    @State private var dayCount = 2
+    @State private var departureAt = Date()
+    @State private var destination = ""
+
+    /// 作成済みの旅行。non-nil になったら候補ステップ
+    @State private var createdTrip: TripEntity?
+    @State private var suggestion: AITripOutlineSuggestion?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             Form {
-                TextField("タイトル(例: 松本旅行)", text: $title)
-                TransportPicker(transport: $transport)
-                DatePicker("開始日", selection: $startDate, displayedComponents: .date)
-                Stepper("日数: \(dayCount) 日", value: $dayCount, in: 1...30)
+                if let createdTrip {
+                    outlineSections(for: createdTrip)
+                } else {
+                    inputForm
+                }
             }
-            .navigationTitle("旅行を作成")
+            .navigationTitle(createdTrip == nil ? "旅行を作成" : "日数と宿泊地の候補")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") { dismiss() }
+                if createdTrip == nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("作成", action: create)
+                            .disabled(trimmedTitle.isEmpty)
+                    }
+                } else {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("スキップ") { dismiss() }
+                    }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("作成", action: create)
-                        .disabled(trimmedTitle.isEmpty)
+            }
+            .interactiveDismissDisabled(createdTrip != nil)
+        }
+    }
+
+    @ViewBuilder
+    private var inputForm: some View {
+        Section {
+            TextField("タイトル(例: 松本旅行)", text: $title)
+            TransportPicker(transport: $transport)
+            DatePicker("出発日時", selection: $departureAt)
+            TextField("目的地(例: 上高地)", text: $destination)
+        } footer: {
+            Text("日数は決めなくて OK。目的地を入れておくと、作成後に AI が日数と宿泊地の候補を提案します。")
+        }
+    }
+
+    @ViewBuilder
+    private func outlineSections(for trip: TripEntity) -> some View {
+        if let suggestion {
+            Section {
+                ForEach(suggestion.candidates, id: \.self) { candidate in
+                    Button {
+                        adopt(candidate, into: trip)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(candidate.title)
+                                .font(.headline)
+                            Text(Self.summary(of: candidate))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .tint(.primary)
                 }
+            } header: {
+                Text("候補を選ぶとプランに追加されます")
+            } footer: {
+                Text("採用後は通常の編集で調整できます。宿の位置は未定のため、検索で具体化してください。")
+            }
+        } else {
+            Section {
+                if isLoading {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("候補を作成中…")
+                    }
+                } else if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .font(.subheadline)
+                    Button("再試行") {
+                        Task { await suggestOutline(trip) }
+                    }
+                }
+            } footer: {
+                Text("旅行は作成済みです。候補の作成には 1 分ほどかかります。スキップしても「日を追加」や AI 行程提案で後から日程を組めます。")
             }
         }
     }
@@ -38,16 +111,75 @@ struct TripCreateView: View {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var trimmedDestination: String {
+        destination.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 例: 「2泊3日・泊: 松本 → 上高地」「1日間(日帰り)」
+    static func summary(of candidate: AITripOutlineCandidate) -> String {
+        let daysPart = candidate.nights.isEmpty
+            ? "\(candidate.dayCount)日間(日帰り)"
+            : "\(candidate.nights.count)泊\(candidate.dayCount)日"
+        let areas = candidate.nights.map(\.area).filter { !$0.isEmpty }
+        guard !areas.isEmpty else { return daysPart }
+        return "\(daysPart)・泊: \(areas.joined(separator: " → "))"
+    }
+
     private func create() {
+        let dest = trimmedDestination.isEmpty ? nil : trimmedDestination
         let made = PlanEditor.makeTrip(
             title: trimmedTitle,
             transport: transport?.rawValue,
-            startDate: startDate,
-            dayCount: dayCount
+            departureAt: departureAt,
+            destination: dest
         )
         modelContext.insert(made.trip)
         for day in made.days {
             modelContext.insert(day)
+        }
+        try? modelContext.save()
+        Task { await sync.syncNow() }
+        if dest == nil {
+            dismiss()
+        } else {
+            createdTrip = made.trip
+            Task { await suggestOutline(made.trip) }
+        }
+    }
+
+    private func suggestOutline(_ trip: TripEntity) async {
+        guard let destination = trip.destination, let departureAt = trip.departureAt else {
+            dismiss()
+            return
+        }
+        guard let client = SyncClient.fromBundle() else {
+            errorMessage = "サーバが未設定です(ServerConfig.plist を確認してください)"
+            return
+        }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        let body = AITripOutlineRequest(
+            destination: destination,
+            departureDate: PlanEditor.dateString(departureAt),
+            departureTime: PlanEditor.timeString(departureAt),
+            transport: trip.transport,
+            request: nil
+        )
+        do {
+            suggestion = try await client.suggestTripOutline(body)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func adopt(_ candidate: AITripOutlineCandidate, into trip: TripEntity) {
+        let (days, checkpoints) = PlanEditor.adopt(candidate, into: trip)
+        for day in days {
+            modelContext.insert(day)
+        }
+        for checkpoint in checkpoints {
+            modelContext.insert(checkpoint)
         }
         try? modelContext.save()
         dismiss()
@@ -55,7 +187,8 @@ struct TripCreateView: View {
     }
 }
 
-/// 旅行のタイトル・移動手段を編集するフォーム(開始/終了は記録ライフサイクル側で扱う)
+/// 旅行のタイトル・移動手段・出発日時・目的地を編集するフォーム
+/// (開始/終了は記録ライフサイクル側で扱う)
 struct TripEditView: View {
     let trip: TripEntity
 
@@ -65,11 +198,17 @@ struct TripEditView: View {
 
     @State private var title: String
     @State private var transport: Transport?
+    @State private var hasDeparture: Bool
+    @State private var departureAt: Date
+    @State private var destination: String
 
     init(trip: TripEntity) {
         self.trip = trip
         _title = State(initialValue: trip.title)
         _transport = State(initialValue: trip.transport.flatMap(Transport.init(rawValue:)))
+        _hasDeparture = State(initialValue: trip.departureAt != nil)
+        _departureAt = State(initialValue: trip.departureAt ?? Date())
+        _destination = State(initialValue: trip.destination ?? "")
     }
 
     var body: some View {
@@ -77,6 +216,11 @@ struct TripEditView: View {
             Form {
                 TextField("タイトル", text: $title)
                 TransportPicker(transport: $transport)
+                Toggle("出発日時を設定", isOn: $hasDeparture.animation())
+                if hasDeparture {
+                    DatePicker("出発日時", selection: $departureAt)
+                }
+                TextField("目的地", text: $destination)
             }
             .navigationTitle("旅行を編集")
             .navigationBarTitleDisplayMode(.inline)
@@ -96,9 +240,15 @@ struct TripEditView: View {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var trimmedDestination: String {
+        destination.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func save() {
         trip.title = trimmedTitle
         trip.transport = transport?.rawValue
+        trip.departureAt = hasDeparture ? departureAt : nil
+        trip.destination = trimmedDestination.isEmpty ? nil : trimmedDestination
         trip.updatedAt = Date()
         trip.needsSync = true
         try? modelContext.save()

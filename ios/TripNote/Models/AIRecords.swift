@@ -47,6 +47,43 @@ struct AIPlanSuggestion: Decodable, Hashable {
     let days: [AISuggestedDay]
 }
 
+/// POST /api/ai/trip-outline のリクエスト。
+/// 出発日時はタイムゾーン変換を避けるため端末ローカルの日付と時刻に分けて送る
+struct AITripOutlineRequest: Encodable {
+    let destination: String
+    /// YYYY-MM-DD(ローカル日付)
+    let departureDate: String
+    /// HH:mm(ローカル時刻)
+    let departureTime: String
+    /// Transport.rawValue(未設定なら nil)
+    let transport: String?
+    /// 自由記述の要望
+    let request: String?
+}
+
+/// 1 泊分の宿泊地候補
+struct AISuggestedNight: Decodable, Hashable {
+    /// 大まかな地域(例: 松本市街)
+    let area: String
+    /// 宿の候補または「◯◯周辺の宿」のような検索しやすい表現
+    let name: String
+    let note: String?
+}
+
+/// 日数と宿泊地の候補 1 件(例: 2泊3日 + 各泊の宿泊地)
+struct AITripOutlineCandidate: Decodable, Hashable {
+    let dayCount: Int
+    /// 例: 「2泊3日でゆったり」
+    let title: String
+    /// 泊数分(通常 dayCount - 1)。n 番目 = n+1 泊目
+    let nights: [AISuggestedNight]
+}
+
+/// POST /api/ai/trip-outline の応答
+struct AITripOutlineSuggestion: Decodable, Hashable {
+    let candidates: [AITripOutlineCandidate]
+}
+
 /// POST /api/ai/search-assist のリクエスト
 struct AISearchAssistRequest: Encodable {
     /// 大まかな地域(例: 松本市周辺)

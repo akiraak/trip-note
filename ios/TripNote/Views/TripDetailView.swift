@@ -61,6 +61,14 @@ struct TripDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                if let departureAt = trip.departureAt {
+                    LabeledContent("出発予定") {
+                        Text(departureAt, format: .dateTime.year().month().day().hour().minute())
+                    }
+                }
+                if let destination = trip.destination {
+                    LabeledContent("目的地", value: destination)
+                }
                 if let transport = trip.transport {
                     LabeledContent(
                         "移動手段",

@@ -14,6 +14,8 @@ enum PlanPull {
         trip.startedAt = record.startedAt
         trip.endedAt = record.endedAt
         trip.transport = record.transport
+        trip.departureAt = record.departureAt
+        trip.destination = record.destination
         trip.updatedAt = record.updatedAt
         trip.deletedAt = record.deletedAt
         trip.needsSync = false
@@ -65,6 +67,8 @@ enum PlanPull {
             updatedAt: record.updatedAt
         )
         trip.transport = record.transport
+        trip.departureAt = record.departureAt
+        trip.destination = record.destination
         trip.deletedAt = record.deletedAt
         trip.needsSync = false
         return trip

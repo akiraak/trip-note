@@ -120,6 +120,40 @@ export type SuggestedDay = {
 
 export type PlanSuggestion = { days: SuggestedDay[] };
 
+// ---- 日数・宿泊地候補 (/api/ai/trip-outline) ----
+// 旅行作成直後に、目的地と出発日時から旅行の大枠(日数と各泊の宿泊地)の候補を出す。
+// 出発日時はタイムゾーン変換を避けるためクライアントのローカル日付と時刻で受ける
+
+export type TripOutlineInput = {
+  destination: string;
+  /** YYYY-MM-DD(クライアントのローカル日付) */
+  departureDate: string;
+  /** HH:mm(クライアントのローカル時刻) */
+  departureTime: string;
+  transport: string | null;
+  /** 自由記述の要望 */
+  request: string | null;
+};
+
+export type SuggestedNight = {
+  /** 宿泊する大まかな地域(例: 松本市街) */
+  area: string;
+  /** 宿の候補または「◯◯周辺の宿」のような検索しやすい表現 */
+  name: string;
+  note: string | null;
+};
+
+export type TripOutlineCandidate = {
+  /** 旅行全体の日数(日帰りは 1) */
+  dayCount: number;
+  /** 例: 「2泊3日でゆったり」 */
+  title: string;
+  /** 泊数分(通常 dayCount - 1)。n 番目 = n+1 泊目 */
+  nights: SuggestedNight[];
+};
+
+export type TripOutlineSuggestion = { candidates: TripOutlineCandidate[] };
+
 // ---- 検索補助 (/api/ai/search-assist) ----
 
 export type SearchAssistInput = {
@@ -188,6 +222,34 @@ export function parsePlanInput(value: unknown): PlanSuggestionInput {
   };
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function parseTripOutlineInput(value: unknown): TripOutlineInput {
+  if (!isRecord(value)) throw new Error("不正な入力です");
+  const destination =
+    typeof value.destination === "string" ? value.destination.trim() : "";
+  if (!destination) throw new Error("目的地を入力してください");
+  if (
+    typeof value.departureDate !== "string" ||
+    !DATE_RE.test(value.departureDate)
+  ) {
+    throw new Error("出発日は YYYY-MM-DD で指定してください");
+  }
+  if (
+    typeof value.departureTime !== "string" ||
+    !TIME_RE.test(value.departureTime)
+  ) {
+    throw new Error("出発時刻は HH:mm で指定してください");
+  }
+  return {
+    destination,
+    departureDate: value.departureDate,
+    departureTime: value.departureTime,
+    transport: optionalText(value.transport),
+    request: optionalText(value.request),
+  };
+}
+
 export function parseSearchAssistInput(value: unknown): SearchAssistInput {
   if (!isRecord(value)) throw new Error("不正な入力です");
   const area = typeof value.area === "string" ? value.area.trim() : "";
@@ -250,6 +312,54 @@ export const PLAN_SCHEMA: Record<string, unknown> = {
     },
   },
   required: ["days"],
+  additionalProperties: false,
+};
+
+export const TRIP_OUTLINE_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    candidates: {
+      type: "array",
+      description: "日数違いの旅行の大枠候補(2〜4 件)",
+      items: {
+        type: "object",
+        properties: {
+          dayCount: {
+            type: "integer",
+            description: "旅行全体の日数(日帰りは 1)",
+          },
+          title: {
+            type: "string",
+            description: "候補の短い説明(例: 2泊3日でゆったり)",
+          },
+          nights: {
+            type: "array",
+            description: "泊数分(dayCount - 1)。n 番目が n 泊目",
+            items: {
+              type: "object",
+              properties: {
+                area: {
+                  type: "string",
+                  description: "宿泊する大まかな地域(例: 松本市街)",
+                },
+                name: {
+                  type: "string",
+                  description:
+                    "宿の候補または「◯◯温泉の宿」のような地図検索でヒットしやすい表現",
+                },
+                note: { type: "string", description: "補足。無ければ空文字" },
+              },
+              required: ["area", "name", "note"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["dayCount", "title", "nights"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["candidates"],
   additionalProperties: false,
 };
 
@@ -330,6 +440,43 @@ export function parsePlanSuggestion(value: unknown): PlanSuggestion {
   return { days };
 }
 
+/** AI の応答(JSON)を検証して TripOutlineSuggestion にする。構造が不正なら throw */
+export function parseTripOutlineSuggestion(value: unknown): TripOutlineSuggestion {
+  if (!isRecord(value) || !Array.isArray(value.candidates)) {
+    throw new Error("AI の応答を解釈できませんでした");
+  }
+  const candidates = value.candidates
+    .map((candidate): TripOutlineCandidate => {
+      if (
+        !isRecord(candidate) ||
+        typeof candidate.dayCount !== "number" ||
+        !Number.isInteger(candidate.dayCount) ||
+        typeof candidate.title !== "string" ||
+        !candidate.title.trim() ||
+        !Array.isArray(candidate.nights)
+      ) {
+        throw new Error("AI の応答を解釈できませんでした");
+      }
+      const nights = candidate.nights.map((night): SuggestedNight => {
+        if (!isRecord(night) || typeof night.name !== "string" || !night.name.trim()) {
+          throw new Error("AI の応答を解釈できませんでした");
+        }
+        return {
+          area: typeof night.area === "string" ? night.area.trim() : "",
+          name: night.name.trim(),
+          note: emptyToNull(night.note),
+        };
+      });
+      return { dayCount: candidate.dayCount, title: candidate.title.trim(), nights };
+    })
+    // 現実的でない日数の候補は落とす(全滅なら下でエラー)
+    .filter((c) => c.dayCount >= 1 && c.dayCount <= MAX_DAY_COUNT);
+  if (candidates.length === 0) {
+    throw new Error("AI から候補が得られませんでした");
+  }
+  return { candidates };
+}
+
 export function parseSearchAssistSuggestion(
   value: unknown,
 ): SearchAssistSuggestion {
@@ -378,6 +525,27 @@ export function buildPlanPrompt(input: PlanSuggestionInput): {
     `到着予定地: ${input.destination}`,
     `開始日: ${input.startDate}`,
     `日数: ${input.dayCount}日`,
+    `移動手段: ${input.transport ?? "未指定"}`,
+    `要望: ${input.request ?? "特になし"}`,
+  ].join("\n");
+  return { system, user };
+}
+
+export function buildTripOutlinePrompt(input: TripOutlineInput): {
+  system: string;
+  user: string;
+} {
+  const system = [
+    "あなたは旅行プランナーです。目的地と出発日時から、旅行の大枠(日数と各泊の宿泊地)の候補を JSON で作成してください。",
+    "- candidates は日数違いで 2〜4 件(例: 日帰り / 1泊2日 / 2泊3日)。無理のない日数の候補だけを出す",
+    "- dayCount は旅行全体の日数(日帰りは 1)。nights は泊数分(dayCount - 1)で、n 番目が n 泊目",
+    "- 各泊の area は宿泊する大まかな地域、name は「◯◯温泉の宿」「◯◯駅周辺のホテル」のような地図検索でヒットしやすい表現にする(実在が不確かな固有名は使わない)",
+    "- title は「2泊3日でゆったり」のような候補の短い説明",
+    "- 出発時刻と移動手段から、初日に現実的に移動できる範囲を見積もる",
+  ].join("\n");
+  const user = [
+    `目的地: ${input.destination}`,
+    `出発日時: ${input.departureDate} ${input.departureTime}`,
     `移動手段: ${input.transport ?? "未指定"}`,
     `要望: ${input.request ?? "特になし"}`,
   ].join("\n");
@@ -461,6 +629,17 @@ export async function suggestPlan(
 ): Promise<PlanSuggestion> {
   const raw = await completeJson(buildPlanPrompt(input), "plan", PLAN_SCHEMA);
   return parsePlanSuggestion(raw);
+}
+
+export async function suggestTripOutline(
+  input: TripOutlineInput,
+): Promise<TripOutlineSuggestion> {
+  const raw = await completeJson(
+    buildTripOutlinePrompt(input),
+    "trip_outline",
+    TRIP_OUTLINE_SCHEMA,
+  );
+  return parseTripOutlineSuggestion(raw);
 }
 
 export async function searchAssist(

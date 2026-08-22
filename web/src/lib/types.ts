@@ -5,6 +5,10 @@ export type Trip = {
   started_at: string | null;
   ended_at: string | null;
   transport: string | null;
+  /** 出発予定日時(ISO8601)。実績の started_at とは別。プラン 1 日目の基準 */
+  departure_at: string | null;
+  /** 目的地(自由記述)。AI の日数・宿泊地候補出しの入力に使う */
+  destination: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;

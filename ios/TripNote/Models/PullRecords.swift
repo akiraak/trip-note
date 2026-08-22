@@ -16,6 +16,8 @@ struct TripPullRecord: Decodable, Sendable {
     let startedAt: Date?
     let endedAt: Date?
     let transport: String?
+    let departureAt: Date?
+    let destination: String?
     let updatedAt: Date
     let deletedAt: Date?
 
@@ -25,6 +27,8 @@ struct TripPullRecord: Decodable, Sendable {
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case transport
+        case departureAt = "departure_at"
+        case destination
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
     }

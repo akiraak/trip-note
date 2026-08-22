@@ -30,6 +30,8 @@ struct TripRecord: Encodable, Sendable {
     let startedAt: Date?
     let endedAt: Date?
     let transport: String?
+    let departureAt: Date?
+    let destination: String?
     let updatedAt: Date
     let deletedAt: Date?
 
@@ -39,6 +41,8 @@ struct TripRecord: Encodable, Sendable {
         startedAt = trip.startedAt
         endedAt = trip.endedAt
         transport = trip.transport
+        departureAt = trip.departureAt
+        destination = trip.destination
         updatedAt = trip.updatedAt
         deletedAt = trip.deletedAt
     }
@@ -49,6 +53,8 @@ struct TripRecord: Encodable, Sendable {
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case transport
+        case departureAt = "departure_at"
+        case destination
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
     }
@@ -60,6 +66,8 @@ struct TripRecord: Encodable, Sendable {
         try container.encode(startedAt, forKey: .startedAt)
         try container.encode(endedAt, forKey: .endedAt)
         try container.encode(transport, forKey: .transport)
+        try container.encode(departureAt, forKey: .departureAt)
+        try container.encode(destination, forKey: .destination)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(deletedAt, forKey: .deletedAt)
     }

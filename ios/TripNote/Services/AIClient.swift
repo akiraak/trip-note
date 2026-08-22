@@ -16,6 +16,10 @@ extension SyncClient {
         try await postAI(path: "api/ai/plan", body: body)
     }
 
+    func suggestTripOutline(_ body: AITripOutlineRequest) async throws -> AITripOutlineSuggestion {
+        try await postAI(path: "api/ai/trip-outline", body: body)
+    }
+
     func searchAssist(_ body: AISearchAssistRequest) async throws -> AISearchAssistSuggestion {
         try await postAI(path: "api/ai/search-assist", body: body)
     }

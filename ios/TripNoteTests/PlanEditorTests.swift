@@ -44,22 +44,30 @@ struct PlanEditorTests {
 
     // MARK: - 旅行の作成・日の追加
 
-    @Test func makeTripは日別プランを紐付けたプラン中の旅行を作る() {
+    @Test func timeStringはHHmm形式を返す() {
+        let time = PlanEditor.timeString(date("2026-09-01T08:05:00+09:00"), calendar: calendar)
+        #expect(time == "08:05")
+    }
+
+    @Test func makeTripは1日目だけを紐付けたプラン中の旅行を作る() {
         let now = date("2026-08-21T10:00:00+09:00")
+        let departureAt = date("2026-09-01T08:30:00+09:00")
         let made = PlanEditor.makeTrip(
             title: "松本旅行",
             transport: "car",
-            startDate: date("2026-09-01T00:00:00+09:00"),
-            dayCount: 2,
+            departureAt: departureAt,
+            destination: "上高地",
             calendar: calendar,
             now: now
         )
         #expect(made.trip.title == "松本旅行")
         #expect(made.trip.transport == "car")
         #expect(made.trip.startedAt == nil)  // プラン段階(未出発)
+        #expect(made.trip.departureAt == departureAt)
+        #expect(made.trip.destination == "上高地")
         #expect(made.trip.updatedAt == now)
         #expect(made.trip.needsSync)
-        #expect(made.days.map(\.date) == ["2026-09-01", "2026-09-02"])
+        #expect(made.days.map(\.date) == ["2026-09-01"])  // 日数は決めず出発日の 1 日のみ
         #expect(made.days.allSatisfy { $0.trip === made.trip })
         #expect(made.days.allSatisfy { $0.needsSync })
     }
@@ -76,6 +84,13 @@ struct PlanEditorTests {
 
     @Test func addedDayは日が無ければ開始日で1日目を作る() {
         let trip = TripEntity(title: "t", startedAt: date("2026-09-05T09:00:00+09:00"))
+        let added = PlanEditor.addedDay(to: trip, calendar: calendar)
+        #expect(added?.date == "2026-09-05")
+    }
+
+    @Test func addedDayは未出発で日が無ければ出発予定日で作る() {
+        let trip = TripEntity(title: "t")
+        trip.departureAt = date("2026-09-05T09:00:00+09:00")
         let added = PlanEditor.addedDay(to: trip, calendar: calendar)
         #expect(added?.date == "2026-09-05")
     }
@@ -225,6 +240,66 @@ struct PlanEditorTests {
         )
         #expect(made.checkpoints.map(\.name) == ["喫茶店"])
         #expect(made.checkpoints.first?.sortOrder == 0)
+    }
+
+    // MARK: - AI 日数・宿泊地候補の採用
+
+    @Test func adoptOutlineは日を揃えて各泊にlodgingを追記する() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let trip = TripEntity(title: "t")
+        trip.departureAt = date("2026-09-01T08:30:00+09:00")
+        let existing = TripDayEntity(date: "2026-09-01", updatedAt: old)
+        trip.days = [existing]
+
+        let candidate = AITripOutlineCandidate(
+            dayCount: 3,
+            title: "2泊3日でゆったり",
+            nights: [
+                AISuggestedNight(area: "松本市街", name: "松本駅周辺のホテル", note: nil),
+                AISuggestedNight(area: "上高地", name: "上高地の宿", note: "要予約"),
+            ]
+        )
+        let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar, now: now)
+
+        #expect(made.days.map(\.date) == ["2026-09-02", "2026-09-03"])  // 1 日目は既存を再利用
+        #expect(existing.updatedAt == old)  // 既存日は触らない
+        #expect(made.checkpoints.map(\.name) == ["松本駅周辺のホテル", "上高地の宿"])
+        #expect(made.checkpoints.allSatisfy { $0.type == .lodging })
+        #expect(made.checkpoints.allSatisfy { $0.latitude == nil && $0.longitude == nil })
+        #expect(made.checkpoints.allSatisfy { $0.updatedAt == now && $0.needsSync })
+        #expect(made.checkpoints[0].tripDay === existing)  // 1 泊目は 1 日目
+        #expect(made.checkpoints[1].tripDay === made.days.first)  // 2 泊目は 2 日目
+        #expect(made.checkpoints[1].note == "要予約")
+    }
+
+    @Test func adoptOutlineは日が無ければ出発予定日から日を作る() {
+        let trip = TripEntity(title: "t")
+        trip.departureAt = date("2026-09-01T08:30:00+09:00")
+        let candidate = AITripOutlineCandidate(
+            dayCount: 2,
+            title: "1泊2日",
+            nights: [AISuggestedNight(area: "松本", name: "松本の宿", note: nil)]
+        )
+        let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar)
+        #expect(made.days.map(\.date) == ["2026-09-01", "2026-09-02"])
+        #expect(made.checkpoints.first?.tripDay === made.days.first)
+    }
+
+    @Test func adoptOutlineは日数を超える泊と空の名前を捨てる() {
+        let trip = TripEntity(title: "t")
+        trip.departureAt = date("2026-09-01T08:30:00+09:00")
+        let candidate = AITripOutlineCandidate(
+            dayCount: 1,
+            title: "日帰り",
+            nights: [
+                AISuggestedNight(area: "a", name: "  ", note: nil),  // 空の名前
+                AISuggestedNight(area: "b", name: "余分な宿", note: nil),  // 日数超え
+            ]
+        )
+        let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar)
+        #expect(made.days.map(\.date) == ["2026-09-01"])
+        #expect(made.checkpoints.isEmpty)
     }
 
     @Test func applyOrderは位置が変わった行だけ更新する() {

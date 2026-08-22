@@ -16,6 +16,8 @@ type SyncTrip = {
   started_at: string | null;
   ended_at: string | null;
   transport?: string | null;
+  departure_at?: string | null;
+  destination?: string | null;
   deleted_at?: string | null;
   // 旧クライアント(Phase 3 以前)は送らないため省略可。省略時はサーバが打刻する
   updated_at?: string;
@@ -74,6 +76,8 @@ function isTrip(value: unknown): value is SyncTrip {
     isNullableString(t.started_at) &&
     isNullableString(t.ended_at) &&
     isNullableString(t.transport) &&
+    isNullableString(t.departure_at) &&
+    isNullableString(t.destination) &&
     isNullableString(t.deleted_at) &&
     isNullableString(t.updated_at)
   );
@@ -166,13 +170,19 @@ export async function POST(request: Request) {
   // LWW: excluded(受信行)の updated_at が新しいときだけ上書きする。
   // 同時刻は既存を保持(自分の push が pull で返ってきたときの無駄な更新を防ぐ)
   const upsertTrip = db.prepare(`
-    insert into trips (id, title, started_at, ended_at, transport, deleted_at, updated_at)
-    values (@id, @title, @started_at, @ended_at, @transport, @deleted_at, @updated_at)
+    insert into trips
+      (id, title, started_at, ended_at, transport, departure_at, destination,
+       deleted_at, updated_at)
+    values
+      (@id, @title, @started_at, @ended_at, @transport, @departure_at, @destination,
+       @deleted_at, @updated_at)
     on conflict (id) do update set
       title = excluded.title,
       started_at = excluded.started_at,
       ended_at = excluded.ended_at,
       transport = excluded.transport,
+      departure_at = excluded.departure_at,
+      destination = excluded.destination,
       deleted_at = excluded.deleted_at,
       updated_at = excluded.updated_at
     where excluded.updated_at > trips.updated_at
@@ -233,6 +243,8 @@ export async function POST(request: Request) {
         started_at: trip.started_at ?? null,
         ended_at: trip.ended_at ?? null,
         transport: trip.transport ?? null,
+        departure_at: trip.departure_at ?? null,
+        destination: trip.destination ?? null,
         deleted_at: trip.deleted_at ?? null,
         // 旧クライアントは updated_at を送らないため、従来通りサーバが打刻する
         updated_at:

@@ -11,6 +11,10 @@ final class TripEntity {
     var endedAt: Date?
     /// 移動手段(car / train / walk / bicycle / mixed など)。AI 行程提案の入力に使う
     var transport: String?
+    /// 出発予定日時。実績の startedAt とは別で、プラン 1 日目の日付の基準になる
+    var departureAt: Date?
+    /// 目的地(自由記述)。AI の日数・宿泊地候補出しの入力に使う
+    var destination: String?
     /// tombstone。削除は物理削除せず deleted_at を同期で伝搬する
     var deletedAt: Date?
     /// 編集時刻。双方向同期の LWW の基準になるため、同期対象フィールドの変更時は必ず更新する

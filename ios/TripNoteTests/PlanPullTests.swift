@@ -21,6 +21,7 @@ struct PlanPullTests {
           "trips": [
             { "id": "\(tripId.uuidString)", "title": "松本旅行",
               "started_at": null, "ended_at": null, "transport": "car",
+              "departure_at": "2026-09-01T08:30:00.000Z", "destination": "上高地",
               "updated_at": "2026-08-21T09:00:00.000Z", "deleted_at": null }
           ],
           "days": [
@@ -41,6 +42,8 @@ struct PlanPullTests {
         #expect(response.serverTime == "2026-08-21T10:00:00.123Z")
         #expect(response.trips.first?.id == tripId)
         #expect(response.trips.first?.transport == "car")
+        #expect(response.trips.first?.departureAt != nil)
+        #expect(response.trips.first?.destination == "上高地")
         #expect(response.days.first?.tripId == tripId)
         #expect(response.days.first?.date == "2026-09-01")
         #expect(response.checkpoints.first?.tripDayId == dayId)
@@ -72,6 +75,7 @@ struct PlanPullTests {
         return try decode(TripPullRecord.self, """
         { "id": "\(id.uuidString)", "title": "\(title)",
           "started_at": null, "ended_at": null, "transport": "train",
+          "departure_at": "2026-09-01T08:30:00.000Z", "destination": "上高地",
           "updated_at": "\(SyncDateFormat.string(from: updatedAt))",
           "deleted_at": \(deleted) }
         """)
@@ -84,6 +88,8 @@ struct PlanPullTests {
         #expect(PlanPull.apply(record, to: trip))
         #expect(trip.title == "サーバ側の編集")
         #expect(trip.transport == "train")
+        #expect(trip.departureAt != nil)
+        #expect(trip.destination == "上高地")
         #expect(trip.updatedAt == Date(timeIntervalSince1970: 60))
         #expect(!trip.needsSync)
     }

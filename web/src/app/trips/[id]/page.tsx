@@ -84,11 +84,11 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       note: c.note,
     })),
   }));
-  // AI 行程提案フォームの初期値: 開始日 = 既存プランの初日 ?? 出発日 ?? 今日
+  // AI 行程提案フォームの初期値: 開始日 = 既存プランの初日 ?? 出発予定 ?? 開始 ?? 今日
+  const aiStart = trip.departure_at ?? trip.started_at;
   const aiDefaults = {
     startDate:
-      days[0]?.date ??
-      dateStringOf(trip.started_at ? new Date(trip.started_at) : new Date()),
+      days[0]?.date ?? dateStringOf(aiStart ? new Date(aiStart) : new Date()),
     dayCount: Math.max(days.length, 2),
   };
   const checkpointMarkers = checkpoints
@@ -154,6 +154,18 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
                   : "—"}
             </dd>
           </div>
+          {trip.departure_at && (
+            <div>
+              <dt className="text-zinc-500 dark:text-zinc-400">出発予定</dt>
+              <dd>{formatDateTime(trip.departure_at)}</dd>
+            </div>
+          )}
+          {trip.destination && (
+            <div>
+              <dt className="text-zinc-500 dark:text-zinc-400">目的地</dt>
+              <dd>{trip.destination}</dd>
+            </div>
+          )}
           <div>
             <dt className="text-zinc-500 dark:text-zinc-400">移動手段</dt>
             <dd>{transportLabel(trip.transport) ?? "—"}</dd>

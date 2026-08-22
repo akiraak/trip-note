@@ -2,6 +2,14 @@
 
 ## 2026-08-21
 
+- 旅行作成フローの変更(出発日時・目的地 + AI 日数・宿泊地候補) [plan](docs/plans/archive/trip-create-departure-destination.md)
+  - Phase 1: trips に departure_at / destination を追加(web migration 5・sync/pull・iOS Entity/Record/PlanPull)
+  - Phase 2: iOS 旅行作成フォームの変更(開始日 → 出発日時、日数入力を廃止して 1 日目のみ作成、目的地を追加。編集/詳細画面も追従)
+  - Phase 3: AI 日数・宿泊地候補 API(lib/ai.ts + /api/ai/trip-outline)
+  - Phase 4: iOS 候補出し UI(作成フロー 2 ステップ化・候補選択で trip_days + lodging CP を採用)
+  - Phase 5: Web 旅行詳細に出発予定・目的地を表示、server-api.md 追従
+  - 検証: web vitest 55 件 + lint + build、iOS ユニットテスト 76 件 + シミュレータビルド。実 AI 呼び出し(trip-outline)の手動確認と本番反映(push → サーバ pull → rebuild)は未実施
+
 - 「1つの旅行」の定義とプラン機能 [plan](docs/plans/archive/trip-definition-and-planning.md)
   - Phase 1: 旅行の再定義(記録停止≠旅行終了・GPS ギャップの区間分け描画・trips migration)
   - Phase 2: プランのデータモデル(trip_days / checkpoints、iOS エンティティ・型)

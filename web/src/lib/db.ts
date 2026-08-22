@@ -103,6 +103,12 @@ const MIGRATIONS: string[] = [
     updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   );
   `,
+  // 旅行作成フローの変更: 出発予定日時(departure_at。実績の started_at とは別)と
+  // 目的地(destination。AI の日数・宿泊地候補出しの入力)を trips に追加
+  `
+  alter table trips add column departure_at text;
+  alter table trips add column destination text;
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

@@ -7,11 +7,14 @@ import {
   AI_MODELS,
   DEFAULT_AI_MODEL_ID,
   buildPlanPrompt,
+  buildTripOutlinePrompt,
   getAiModel,
   parsePlanInput,
   parsePlanSuggestion,
   parseSearchAssistInput,
   parseSearchAssistSuggestion,
+  parseTripOutlineInput,
+  parseTripOutlineSuggestion,
   setAiModel,
 } from "@/lib/ai";
 import { getDb } from "@/lib/db";
@@ -112,6 +115,48 @@ describe("parsePlanInput", () => {
   });
 });
 
+describe("parseTripOutlineInput", () => {
+  const valid = {
+    destination: "上高地",
+    departureDate: "2026-09-01",
+    departureTime: "08:30",
+    transport: "car",
+    request: "温泉に入りたい",
+  };
+
+  it("正常な入力を受け付ける", () => {
+    expect(parseTripOutlineInput(valid)).toEqual(valid);
+  });
+
+  it("transport / request は省略できる", () => {
+    const input = parseTripOutlineInput({
+      destination: "上高地",
+      departureDate: "2026-09-01",
+      departureTime: "08:30",
+    });
+    expect(input.transport).toBeNull();
+    expect(input.request).toBeNull();
+  });
+
+  it("目的地が空なら拒否する", () => {
+    expect(() => parseTripOutlineInput({ ...valid, destination: " " })).toThrow(
+      /目的地/,
+    );
+  });
+
+  it("出発日・出発時刻の形式を検証する", () => {
+    expect(() =>
+      parseTripOutlineInput({ ...valid, departureDate: "9/1" }),
+    ).toThrow(/YYYY-MM-DD/);
+    expect(() =>
+      parseTripOutlineInput({ ...valid, departureTime: "8時半" }),
+    ).toThrow(/HH:mm/);
+    expect(() =>
+      parseTripOutlineInput({ ...valid, departureTime: "25:00" }),
+    ).toThrow(/HH:mm/);
+  });
+});
+
 describe("parseSearchAssistInput", () => {
   it("正常な入力を受け付ける", () => {
     expect(
@@ -171,6 +216,50 @@ describe("parsePlanSuggestion", () => {
   });
 });
 
+describe("parseTripOutlineSuggestion", () => {
+  const candidate = {
+    dayCount: 3,
+    title: "2泊3日でゆったり",
+    nights: [
+      { area: "松本市街", name: "松本駅周辺のホテル", note: "" },
+      { area: "上高地", name: "上高地帝国ホテル周辺の宿", note: "要予約" },
+    ],
+  };
+
+  it("正常な応答をパースし、空文字 note は null に寄せる", () => {
+    const suggestion = parseTripOutlineSuggestion({ candidates: [candidate] });
+    expect(suggestion.candidates).toHaveLength(1);
+    expect(suggestion.candidates[0].nights[0].note).toBeNull();
+    expect(suggestion.candidates[0].nights[1].note).toBe("要予約");
+  });
+
+  it("日数が範囲外の候補は落とし、全滅なら throw する", () => {
+    const suggestion = parseTripOutlineSuggestion({
+      candidates: [candidate, { ...candidate, dayCount: 0 }],
+    });
+    expect(suggestion.candidates).toHaveLength(1);
+    expect(() =>
+      parseTripOutlineSuggestion({
+        candidates: [{ ...candidate, dayCount: 31 }],
+      }),
+    ).toThrow(/候補/);
+  });
+
+  it("構造が不正なら throw する", () => {
+    expect(() => parseTripOutlineSuggestion(null)).toThrow(/解釈/);
+    expect(() =>
+      parseTripOutlineSuggestion({
+        candidates: [{ ...candidate, dayCount: 2.5 }],
+      }),
+    ).toThrow(/解釈/);
+    expect(() =>
+      parseTripOutlineSuggestion({
+        candidates: [{ ...candidate, nights: [{ area: "松本", name: "" }] }],
+      }),
+    ).toThrow(/解釈/);
+  });
+});
+
 describe("parseSearchAssistSuggestion", () => {
   it("正常な応答をパースする", () => {
     const suggestion = parseSearchAssistSuggestion({
@@ -208,6 +297,23 @@ describe("buildPlanPrompt", () => {
     expect(user).toContain("自宅");
     expect(user).toContain("2026-09-01");
     expect(user).toContain("3日");
+    expect(user).toContain("car");
+    expect(user).toContain("温泉に入りたい");
+  });
+});
+
+describe("buildTripOutlinePrompt", () => {
+  it("入力の全項目をプロンプトに含める", () => {
+    const { system, user } = buildTripOutlinePrompt({
+      destination: "上高地",
+      departureDate: "2026-09-01",
+      departureTime: "08:30",
+      transport: "car",
+      request: "温泉に入りたい",
+    });
+    expect(system).toContain("candidates");
+    expect(user).toContain("上高地");
+    expect(user).toContain("2026-09-01 08:30");
     expect(user).toContain("car");
     expect(user).toContain("温泉に入りたい");
   });

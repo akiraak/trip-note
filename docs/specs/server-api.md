@@ -34,7 +34,9 @@ iOS アプリからのアップロード(push)。upsert で冪等(id はクラ�
 {
   "trips": [
     { "id": "uuid", "title": "…", "started_at": "ISO8601|null", "ended_at": "ISO8601|null",
-      "transport": "car|null", "updated_at": "ISO8601", "deleted_at": "ISO8601|null" }
+      "transport": "car|null", "departure_at": "ISO8601|null(出発予定日時)",
+      "destination": "上高地|null(目的地)",
+      "updated_at": "ISO8601", "deleted_at": "ISO8601|null" }
   ],
   "days": [
     { "id": "uuid", "trip_id": "uuid", "date": "YYYY-MM-DD", "title": "…|null",
@@ -54,7 +56,9 @@ iOS アプリからのアップロード(push)。upsert で冪等(id はクラ�
 ```
 
 - trips は「旅行」単位(記録の開始/停止では分割しない)。`started_at` はプラン段階(未出発)では
-  null、`deleted_at` は tombstone(物理削除しない)。閲覧 UI は `deleted_at is null` のみ表示
+  null、`deleted_at` は tombstone(物理削除しない)。閲覧 UI は `deleted_at is null` のみ表示。
+  `departure_at` は出発予定日時(実績の `started_at` とは別。プラン 1 日目の基準)、
+  `destination` は目的地の自由記述(AI の日数・宿泊地候補の入力)。どちらも省略可 = null
 - trips / days / checkpoints: `ON CONFLICT(id) DO UPDATE ...
   WHERE excluded.updated_at > <table>.updated_at`(行単位の LWW。同時刻は既存を保持)。
   `updated_at` はクライアントの編集時刻。trips のみ省略可(旧クライアント互換。
@@ -90,7 +94,8 @@ location_points / media は対象外(一方向アップロードのみ)。
 {
   "serverTime": "ISO8601",
   "trips": [ { "id": "…", "title": "…", "started_at": null, "ended_at": null,
-    "transport": null, "updated_at": "…", "deleted_at": null } ],
+    "transport": null, "departure_at": null, "destination": null,
+    "updated_at": "…", "deleted_at": null } ],
   "days": [ { "id": "…", "trip_id": "…", "date": "YYYY-MM-DD", "title": null,
     "note": null, "updated_at": "…", "deleted_at": null } ],
   "checkpoints": [ { "id": "…", "trip_id": "…", "trip_day_id": "…", "type": "…",
@@ -144,6 +149,40 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
   `500 {"error":"AI (...) の呼び出しに失敗しました: ..."}`(キー未設定・API エラー。
   502/504 だと Cloudflare がボディを差し替えてメッセージが届かないため 500 を使う)
 - 生成に数十秒〜数分かかる(iOS 側はタイムアウトを 300 秒にしている)
+
+## POST /api/ai/trip-outline
+
+日数・宿泊地候補(iOS の旅行作成直後に使う)。目的地と出発日時から、日数違いの
+大枠候補(各泊の宿泊地付き)を返す。モデル・認証・エラーは /api/ai/plan と同じ。
+出発日時はタイムゾーン変換を避けるためクライアントのローカル日付と時刻で送る。
+
+リクエスト:
+
+```json
+{
+  "destination": "上高地",
+  "departureDate": "YYYY-MM-DD",
+  "departureTime": "HH:mm",
+  "transport": "car|null(省略可)",
+  "request": "要望の自由記述|null(省略可)"
+}
+```
+
+レスポンス(提案のみ。DB には書かない。採用時はクライアントが 1 日目の日付から
+`dayCount` 分の trip_days を揃え、n 泊目の lodging チェックポイントを n 日目に追加する):
+
+```json
+{
+  "candidates": [
+    { "dayCount": 3, "title": "2泊3日でゆったり",
+      "nights": [ { "area": "松本市街", "name": "松本駅周辺のホテル", "note": "…|null" } ] }
+  ]
+}
+```
+
+- `nights` は泊数分(通常 `dayCount - 1`)。n 番目 = n+1 泊目。
+  宿は座標未定(採用後に検索で具体化する)。`dayCount` が 1〜30 の範囲外の候補は
+  サーバ側で落とす
 
 ## POST /api/ai/search-assist
 

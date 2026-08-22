@@ -25,7 +25,8 @@ export async function GET(request: Request) {
   const params = since ? [since] : [];
   const trips = db
     .prepare(
-      `select id, title, started_at, ended_at, transport, updated_at, deleted_at
+      `select id, title, started_at, ended_at, transport, departure_at, destination,
+              updated_at, deleted_at
        from trips ${where}`,
     )
     .all(...params);

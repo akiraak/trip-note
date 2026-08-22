@@ -48,6 +48,48 @@ struct AIRecordsTests {
         #expect(suggestion.places[0].note == nil)
     }
 
+    @Test func 日数宿泊地候補の応答をデコードする() throws {
+        let json = """
+        {
+          "candidates": [
+            {
+              "dayCount": 3,
+              "title": "2泊3日でゆったり",
+              "nights": [
+                { "area": "松本市街", "name": "松本駅周辺のホテル", "note": null },
+                { "area": "上高地", "name": "上高地の宿", "note": "要予約" }
+              ]
+            },
+            { "dayCount": 1, "title": "日帰り", "nights": [] }
+          ]
+        }
+        """
+        let suggestion = try JSONDecoder().decode(
+            AITripOutlineSuggestion.self, from: Data(json.utf8)
+        )
+        #expect(suggestion.candidates.map(\.dayCount) == [3, 1])
+        #expect(suggestion.candidates[0].nights.map(\.name)
+            == ["松本駅周辺のホテル", "上高地の宿"])
+        #expect(suggestion.candidates[0].nights[1].note == "要予約")
+        #expect(suggestion.candidates[1].nights.isEmpty)
+    }
+
+    @Test func 日数宿泊地候補のリクエストはサーバの期待するキーで送る() throws {
+        let body = AITripOutlineRequest(
+            destination: "上高地",
+            departureDate: "2026-09-01",
+            departureTime: "08:30",
+            transport: "car",
+            request: nil
+        )
+        let data = try JSONEncoder().encode(body)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object?["destination"] as? String == "上高地")
+        #expect(object?["departureDate"] as? String == "2026-09-01")
+        #expect(object?["departureTime"] as? String == "08:30")
+        #expect(object?["transport"] as? String == "car")
+    }
+
     @Test func プラン提案のリクエストはサーバの期待するキーで送る() throws {
         let body = AIPlanRequest(
             departure: "東京駅",

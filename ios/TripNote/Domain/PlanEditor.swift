@@ -37,24 +37,41 @@ enum PlanEditor {
         return Self.dateString(next, calendar: calendar)
     }
 
-    /// プラン段階の旅行と日別プランを作る(挿入は呼び出し側)。startedAt は nil のまま
+    /// trip_days の表示や AI 候補出しに使う HH:mm 形式に変換する
+    static func timeString(_ date: Date, calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    /// プラン段階の旅行と 1 日目の trip_day を作る(挿入は呼び出し側)。
+    /// startedAt は nil のまま。日数は作成時には決めず、
+    /// AI 候補の採用や「日を追加」で後から増やす
     static func makeTrip(
         title: String,
         transport: String?,
-        startDate: Date,
-        dayCount: Int,
+        departureAt: Date,
+        destination: String?,
         calendar: Calendar = .current,
         now: Date = Date()
     ) -> (trip: TripEntity, days: [TripDayEntity]) {
         let trip = TripEntity(title: title, updatedAt: now)
         trip.transport = transport
-        let days = dayDates(startingOn: startDate, count: dayCount, calendar: calendar)
-            .map { TripDayEntity(date: $0, updatedAt: now, trip: trip) }
-        return (trip, days)
+        trip.departureAt = departureAt
+        trip.destination = destination
+        let firstDay = TripDayEntity(
+            date: dateString(departureAt, calendar: calendar),
+            updatedAt: now,
+            trip: trip
+        )
+        return (trip, [firstDay])
     }
 
     /// 最終日の翌日の trip_day を作る(挿入は呼び出し側)。
-    /// 日が 1 つも無ければ startedAt(未出発なら now)の日付で 1 日目を作る
+    /// 日が 1 つも無ければ startedAt(未出発なら departureAt ?? now)の日付で 1 日目を作る
     static func addedDay(
         to trip: TripEntity,
         calendar: Calendar = .current,
@@ -65,7 +82,7 @@ enum PlanEditor {
             guard let next = nextDate(after: last.date, calendar: calendar) else { return nil }
             date = next
         } else {
-            date = dateString(trip.startedAt ?? now, calendar: calendar)
+            date = dateString(trip.startedAt ?? trip.departureAt ?? now, calendar: calendar)
         }
         return TripDayEntity(date: date, updatedAt: now, trip: trip)
     }
@@ -151,6 +168,54 @@ enum PlanEditor {
                 order += 1
             }
             nextOrder[suggested.date] = order
+        }
+        return (newDays, newCheckpoints)
+    }
+
+    /// AI の日数・宿泊地候補を旅行に採用する(挿入・保存は呼び出し側)。
+    /// 1 日目(既存の最初の日 ?? departureAt ?? now)から dayCount 分の連続した日を
+    /// 揃え(既存の日付は再利用)、n 泊目の宿泊チェックポイントを n 日目に末尾追記する。
+    /// チェックポイントは座標未定(nil)で入れ、あとから検索で具体化する。
+    /// 既存行の updatedAt は進めない(LWW で他方の編集を潰さないため)
+    static func adopt(
+        _ candidate: AITripOutlineCandidate,
+        into trip: TripEntity,
+        calendar: Calendar = .current,
+        now: Date = Date()
+    ) -> (days: [TripDayEntity], checkpoints: [CheckpointEntity]) {
+        let existingDays = trip.sortedDays
+        let start = existingDays.first.flatMap { parseDate($0.date, calendar: calendar) }
+            ?? trip.departureAt
+            ?? now
+        let dates = dayDates(startingOn: start, count: candidate.dayCount, calendar: calendar)
+        var newDays: [TripDayEntity] = []
+        var dayByDate: [String: TripDayEntity] = [:]
+        for date in dates {
+            if let found = existingDays.first(where: { $0.date == date }) {
+                dayByDate[date] = found
+            } else {
+                let day = TripDayEntity(date: date, updatedAt: now, trip: trip)
+                newDays.append(day)
+                dayByDate[date] = day
+            }
+        }
+        var newCheckpoints: [CheckpointEntity] = []
+        // nights[n] = n+1 泊目 = n+1 日目の宿。日数を超える分は捨てる
+        for (index, night) in candidate.nights.enumerated() {
+            guard index < dates.count, let day = dayByDate[dates[index]] else { break }
+            let name = night.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            newCheckpoints.append(
+                CheckpointEntity(
+                    type: .lodging,
+                    name: name,
+                    note: night.note,
+                    sortOrder: nextSortOrder(in: day),
+                    updatedAt: now,
+                    trip: trip,
+                    tripDay: day
+                )
+            )
         }
         return (newDays, newCheckpoints)
     }

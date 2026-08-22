@@ -31,6 +31,8 @@ struct SyncRecordTests {
         #expect(json.contains("\"title\":\"テスト旅行\""))
         // 一括 upsert で行ごとのキーを揃えるため、nil でも省略せず null を送る
         #expect(json.contains("\"transport\":null"))
+        #expect(json.contains("\"departure_at\":null"))
+        #expect(json.contains("\"destination\":null"))
         #expect(json.contains("\"deleted_at\":null"))
         // 編集時刻(LWW の基準)はクライアントが打刻して送る
         #expect(json.contains("\"updated_at\":\"1970-01-01T00:01:00.000Z\""))
@@ -50,6 +52,15 @@ struct SyncRecordTests {
         let json = try encodeToJSON(TripRecord(trip))
         #expect(json.contains("\"transport\":\"car\""))
         #expect(json.contains("\"deleted_at\":\"1970-01-01T01:00:00.000Z\""))
+    }
+
+    @Test func departureAtとdestinationは値があれば含まれる() throws {
+        let trip = TripEntity(title: "t")
+        trip.departureAt = Date(timeIntervalSince1970: 7200)
+        trip.destination = "上高地"
+        let json = try encodeToJSON(TripRecord(trip))
+        #expect(json.contains("\"departure_at\":\"1970-01-01T02:00:00.000Z\""))
+        #expect(json.contains("\"destination\":\"上高地\""))
     }
 
     @Test func 旅行の状態はstartedAtとendedAtから導出される() {
