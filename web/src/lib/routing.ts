@@ -1,4 +1,10 @@
+import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net";
 import { getDb } from "./db";
+
+// 欧州の OSRM / Nominatim への TCP 接続は RTT が Node 既定の happy-eyeballs
+// 試行タイムアウト(250ms)を超えることがあり、fetch が ETIMEDOUT
+// (AggregateError)で落ちる(g3plus で実測)。プロセス全体で余裕を持たせる
+setDefaultAutoSelectFamilyAttemptTimeout(2500);
 
 // OSRM の道路ルーティングをサーバ経由でプロキシし、レグ(隣接チェックポイント間)
 // 単位で route_legs テーブルにキャッシュする。デモサーバ利用の作法は nominatim.ts と同じ:
