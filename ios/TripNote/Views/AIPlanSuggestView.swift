@@ -25,9 +25,12 @@ struct AIPlanSuggestView: View {
         let days = trip.sortedDays
         let start = days.first.flatMap { PlanEditor.parseDate($0.date) }
             ?? trip.startedAt
+            ?? trip.departureAt
             ?? Date()
         _startDate = State(initialValue: start)
         _dayCount = State(initialValue: max(days.count, 2))
+        // 出発地は 1 日目の departure チェックポイントから初期値を入れる
+        _departure = State(initialValue: TripCreateView.departureName(of: trip) ?? "")
     }
 
     var body: some View {

@@ -120,6 +120,7 @@ describe("parseTripOutlineInput", () => {
     destination: "上高地",
     departureDate: "2026-09-01",
     departureTime: "08:30",
+    departure: "自宅",
     transport: "car",
     request: "温泉に入りたい",
   };
@@ -128,12 +129,13 @@ describe("parseTripOutlineInput", () => {
     expect(parseTripOutlineInput(valid)).toEqual(valid);
   });
 
-  it("transport / request は省略できる", () => {
+  it("departure / transport / request は省略できる", () => {
     const input = parseTripOutlineInput({
       destination: "上高地",
       departureDate: "2026-09-01",
       departureTime: "08:30",
     });
+    expect(input.departure).toBeNull();
     expect(input.transport).toBeNull();
     expect(input.request).toBeNull();
   });
@@ -308,10 +310,12 @@ describe("buildTripOutlinePrompt", () => {
       destination: "上高地",
       departureDate: "2026-09-01",
       departureTime: "08:30",
+      departure: "自宅",
       transport: "car",
       request: "温泉に入りたい",
     });
     expect(system).toContain("candidates");
+    expect(user).toContain("自宅");
     expect(user).toContain("上高地");
     expect(user).toContain("2026-09-01 08:30");
     expect(user).toContain("car");

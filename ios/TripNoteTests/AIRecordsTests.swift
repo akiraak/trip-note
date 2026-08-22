@@ -79,6 +79,7 @@ struct AIRecordsTests {
             destination: "上高地",
             departureDate: "2026-09-01",
             departureTime: "08:30",
+            departure: "自宅",
             transport: "car",
             request: nil
         )
@@ -87,6 +88,7 @@ struct AIRecordsTests {
         #expect(object?["destination"] as? String == "上高地")
         #expect(object?["departureDate"] as? String == "2026-09-01")
         #expect(object?["departureTime"] as? String == "08:30")
+        #expect(object?["departure"] as? String == "自宅")
         #expect(object?["transport"] as? String == "car")
     }
 

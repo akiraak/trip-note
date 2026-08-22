@@ -70,6 +70,49 @@ struct PlanEditorTests {
         #expect(made.days.map(\.date) == ["2026-09-01"])  // 日数は決めず出発日の 1 日のみ
         #expect(made.days.allSatisfy { $0.trip === made.trip })
         #expect(made.days.allSatisfy { $0.needsSync })
+        #expect(made.checkpoints.isEmpty)  // 出発地なしならチェックポイントも作らない
+    }
+
+    @Test func makeTripは出発地を1日目のdepartureチェックポイントにする() {
+        let now = date("2026-08-21T10:00:00+09:00")
+        let departureAt = date("2026-09-01T08:30:00+09:00")
+        let made = PlanEditor.makeTrip(
+            title: "松本旅行",
+            transport: nil,
+            departureAt: departureAt,
+            destination: nil,
+            departurePlace: PlanEditor.DeparturePlace(
+                name: "自宅",
+                latitude: 35.681236,
+                longitude: 139.767125
+            ),
+            calendar: calendar,
+            now: now
+        )
+        #expect(made.checkpoints.count == 1)
+        let checkpoint = made.checkpoints[0]
+        #expect(checkpoint.type == .departure)
+        #expect(checkpoint.name == "自宅")
+        #expect(checkpoint.latitude == 35.681236)
+        #expect(checkpoint.longitude == 139.767125)
+        #expect(checkpoint.plannedTime == departureAt)  // 出発予定時刻
+        #expect(checkpoint.sortOrder == 0)
+        #expect(checkpoint.trip === made.trip)
+        #expect(checkpoint.tripDay === made.days.first)
+        #expect(checkpoint.needsSync)
+    }
+
+    @Test func makeTripの手入力の出発地は座標なしで作る() {
+        let made = PlanEditor.makeTrip(
+            title: "t",
+            transport: nil,
+            departureAt: date("2026-09-01T08:30:00+09:00"),
+            destination: nil,
+            departurePlace: PlanEditor.DeparturePlace(name: "松本駅"),
+            calendar: calendar
+        )
+        #expect(made.checkpoints.first?.latitude == nil)
+        #expect(made.checkpoints.first?.longitude == nil)
     }
 
     @Test func addedDayは最終日の翌日を追加する() {

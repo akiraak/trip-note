@@ -130,6 +130,8 @@ export type TripOutlineInput = {
   departureDate: string;
   /** HH:mm(クライアントのローカル時刻) */
   departureTime: string;
+  /** 出発地(任意。1 日目の departure チェックポイント名) */
+  departure: string | null;
   transport: string | null;
   /** 自由記述の要望 */
   request: string | null;
@@ -245,6 +247,7 @@ export function parseTripOutlineInput(value: unknown): TripOutlineInput {
     destination,
     departureDate: value.departureDate,
     departureTime: value.departureTime,
+    departure: optionalText(value.departure),
     transport: optionalText(value.transport),
     request: optionalText(value.request),
   };
@@ -541,9 +544,10 @@ export function buildTripOutlinePrompt(input: TripOutlineInput): {
     "- dayCount は旅行全体の日数(日帰りは 1)。nights は泊数分(dayCount - 1)で、n 番目が n 泊目",
     "- 各泊の area は宿泊する大まかな地域、name は「◯◯温泉の宿」「◯◯駅周辺のホテル」のような地図検索でヒットしやすい表現にする(実在が不確かな固有名は使わない)",
     "- title は「2泊3日でゆったり」のような候補の短い説明",
-    "- 出発時刻と移動手段から、初日に現実的に移動できる範囲を見積もる",
+    "- 出発地・出発時刻・移動手段から、初日に現実的に移動できる範囲を見積もる",
   ].join("\n");
   const user = [
+    `出発地: ${input.departure ?? "未指定"}`,
     `目的地: ${input.destination}`,
     `出発日時: ${input.departureDate} ${input.departureTime}`,
     `移動手段: ${input.transport ?? "未指定"}`,

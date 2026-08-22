@@ -13,7 +13,15 @@ struct TripCreateView: View {
     @State private var title = ""
     @State private var transport: Transport?
     @State private var departureAt = Date()
+    @State private var departurePlace = ""
     @State private var destination = ""
+
+    /// 現在地取得(記録用の LocationRecorder とは独立)
+    @State private var locationProvider = OneShotLocationProvider()
+    /// 現在地から自動入力した出発地(名前 + 座標)。名前が編集されたら座標は使わない
+    @State private var locatedPlace: PlanEditor.DeparturePlace?
+    @State private var isLocating = false
+    @State private var locationError: String?
 
     /// 作成済みの旅行。non-nil になったら候補ステップ
     @State private var createdTrip: TripEntity?
@@ -57,9 +65,30 @@ struct TripCreateView: View {
             TextField("タイトル(例: 松本旅行)", text: $title)
             TransportPicker(transport: $transport)
             DatePicker("出発日時", selection: $departureAt)
+            HStack(spacing: 8) {
+                TextField("出発地(例: 自宅)", text: $departurePlace)
+                Button {
+                    Task { await fillCurrentLocation() }
+                } label: {
+                    if isLocating {
+                        ProgressView()
+                    } else {
+                        Label("現在地", systemImage: "location.fill")
+                            .font(.subheadline)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(isLocating)
+                .accessibilityLabel("現在地を出発地に設定")
+            }
+            if let locationError {
+                Text(locationError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
             TextField("目的地(例: 上高地)", text: $destination)
         } footer: {
-            Text("日数は決めなくて OK。目的地を入れておくと、作成後に AI が日数と宿泊地の候補を提案します。")
+            Text("日数は決めなくて OK。出発地は 1 日目の出発チェックポイントになります。目的地を入れておくと、作成後に AI が日数と宿泊地の候補を提案します。")
         }
     }
 
@@ -115,6 +144,15 @@ struct TripCreateView: View {
         destination.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var trimmedDeparturePlace: String {
+        departurePlace.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 1 日目の出発チェックポイント名(AI 候補出しの出発地に使う)
+    static func departureName(of trip: TripEntity) -> String? {
+        trip.sortedDays.first?.sortedCheckpoints.first { $0.type == .departure }?.name
+    }
+
     /// 例: 「2泊3日・泊: 松本 → 上高地」「1日間(日帰り)」
     static func summary(of candidate: AITripOutlineCandidate) -> String {
         let daysPart = candidate.nights.isEmpty
@@ -125,17 +163,50 @@ struct TripCreateView: View {
         return "\(daysPart)・泊: \(areas.joined(separator: " → "))"
     }
 
+    /// 現在地取得を試みて出発地欄に地名を入れる(座標も保持して作成時に使う)
+    private func fillCurrentLocation() async {
+        isLocating = true
+        locationError = nil
+        defer { isLocating = false }
+        do {
+            let location = try await locationProvider.requestLocation()
+            let name = await OneShotLocationProvider.placeName(for: location) ?? "現在地"
+            departurePlace = name
+            locatedPlace = PlanEditor.DeparturePlace(
+                name: name,
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude
+            )
+        } catch {
+            locationError = error.localizedDescription
+        }
+    }
+
+    /// 入力された出発地。現在地で自動入力した名前のままなら座標付き、手入力は座標なし
+    private var enteredDeparturePlace: PlanEditor.DeparturePlace? {
+        let name = trimmedDeparturePlace
+        guard !name.isEmpty else { return nil }
+        if let locatedPlace, locatedPlace.name == name {
+            return locatedPlace
+        }
+        return PlanEditor.DeparturePlace(name: name)
+    }
+
     private func create() {
         let dest = trimmedDestination.isEmpty ? nil : trimmedDestination
         let made = PlanEditor.makeTrip(
             title: trimmedTitle,
             transport: transport?.rawValue,
             departureAt: departureAt,
-            destination: dest
+            destination: dest,
+            departurePlace: enteredDeparturePlace
         )
         modelContext.insert(made.trip)
         for day in made.days {
             modelContext.insert(day)
+        }
+        for checkpoint in made.checkpoints {
+            modelContext.insert(checkpoint)
         }
         try? modelContext.save()
         Task { await sync.syncNow() }
@@ -163,6 +234,7 @@ struct TripCreateView: View {
             destination: destination,
             departureDate: PlanEditor.dateString(departureAt),
             departureTime: PlanEditor.timeString(departureAt),
+            departure: Self.departureName(of: trip),
             transport: trip.transport,
             request: nil
         )

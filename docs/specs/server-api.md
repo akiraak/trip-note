@@ -163,6 +163,7 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
   "destination": "上高地",
   "departureDate": "YYYY-MM-DD",
   "departureTime": "HH:mm",
+  "departure": "自宅|null(省略可。出発地 = 1 日目の departure チェックポイント名)",
   "transport": "car|null(省略可)",
   "request": "要望の自由記述|null(省略可)"
 }

@@ -47,17 +47,33 @@ enum PlanEditor {
         return formatter.string(from: date)
     }
 
-    /// プラン段階の旅行と 1 日目の trip_day を作る(挿入は呼び出し側)。
+    /// 出発地(1 日目の departure チェックポイントになる)。
+    /// 現在地から設定した場合は座標付き、手入力は座標なし(地域だけ決定)
+    struct DeparturePlace {
+        let name: String
+        let latitude: Double?
+        let longitude: Double?
+
+        init(name: String, latitude: Double? = nil, longitude: Double? = nil) {
+            self.name = name
+            self.latitude = latitude
+            self.longitude = longitude
+        }
+    }
+
+    /// プラン段階の旅行と 1 日目の trip_day、出発地チェックポイントを作る(挿入は呼び出し側)。
     /// startedAt は nil のまま。日数は作成時には決めず、
-    /// AI 候補の採用や「日を追加」で後から増やす
+    /// AI 候補の採用や「日を追加」で後から増やす。
+    /// 出発地は 1 日目の departure チェックポイント(planned_time = 出発日時)として表現する
     static func makeTrip(
         title: String,
         transport: String?,
         departureAt: Date,
         destination: String?,
+        departurePlace: DeparturePlace? = nil,
         calendar: Calendar = .current,
         now: Date = Date()
-    ) -> (trip: TripEntity, days: [TripDayEntity]) {
+    ) -> (trip: TripEntity, days: [TripDayEntity], checkpoints: [CheckpointEntity]) {
         let trip = TripEntity(title: title, updatedAt: now)
         trip.transport = transport
         trip.departureAt = departureAt
@@ -67,7 +83,23 @@ enum PlanEditor {
             updatedAt: now,
             trip: trip
         )
-        return (trip, [firstDay])
+        var checkpoints: [CheckpointEntity] = []
+        if let departurePlace {
+            checkpoints.append(
+                CheckpointEntity(
+                    type: .departure,
+                    name: departurePlace.name,
+                    latitude: departurePlace.latitude,
+                    longitude: departurePlace.longitude,
+                    plannedTime: departureAt,
+                    sortOrder: 0,
+                    updatedAt: now,
+                    trip: trip,
+                    tripDay: firstDay
+                )
+            )
+        }
+        return (trip, [firstDay], checkpoints)
     }
 
     /// 最終日の翌日の trip_day を作る(挿入は呼び出し側)。

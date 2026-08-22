@@ -2,6 +2,12 @@
 
 ## 2026-08-21
 
+- 旅行作成に出発地を追加(現在地から設定可能) [plan](docs/plans/archive/trip-create-departure-place.md)
+  - 出発地は 1 日目の departure チェックポイントとして保存(planned_time = 出発日時。DB・同期の変更なし)
+  - 「現在地」ボタン: OneShotLocationProvider(一回きりの位置取得 + 逆ジオコーディングで地名化)。自動入力名を編集したら座標は使わない
+  - /api/ai/trip-outline の入力に departure(任意)を追加してプロンプトに反映、AIPlanSuggestView の出発地初期値にも使用
+  - 検証: web vitest 55 件 + lint + build、iOS ユニットテスト 78 件 + シミュレータビルド。現在地取得の実機/シミュレータでの手動確認は未実施
+
 - 旅行作成フローの変更(出発日時・目的地 + AI 日数・宿泊地候補) [plan](docs/plans/archive/trip-create-departure-destination.md)
   - Phase 1: trips に departure_at / destination を追加(web migration 5・sync/pull・iOS Entity/Record/PlanPull)
   - Phase 2: iOS 旅行作成フォームの変更(開始日 → 出発日時、日数入力を廃止して 1 日目のみ作成、目的地を追加。編集/詳細画面も追従)
