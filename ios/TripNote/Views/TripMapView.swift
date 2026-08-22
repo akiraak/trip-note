@@ -15,6 +15,18 @@ struct TripCheckpointAnnotation: Identifiable {
     let coordinate: CLLocationCoordinate2D
 
     var id: UUID { checkpoint.id }
+
+    /// 座標が決まっているチェックポイントだけピンにする
+    static func make(_ checkpoint: CheckpointEntity) -> TripCheckpointAnnotation? {
+        guard
+            let latitude = checkpoint.latitude,
+            let longitude = checkpoint.longitude
+        else { return nil }
+        return TripCheckpointAnnotation(
+            checkpoint: checkpoint,
+            coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        )
+    }
 }
 
 /// trip の軌跡をポリラインで表示する地図。

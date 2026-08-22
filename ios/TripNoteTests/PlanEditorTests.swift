@@ -157,6 +157,50 @@ struct PlanEditorTests {
         #expect(added?.date == "2026-09-02")
     }
 
+    // MARK: - 今日以降の日(トップ地図の絞り込み)
+
+    @Test func upcomingDaysは当日を含む今日以降の日を返す() {
+        let trip = TripEntity(title: "t")
+        trip.days = [
+            TripDayEntity(date: "2026-08-21"),
+            TripDayEntity(date: "2026-08-22"),
+            TripDayEntity(date: "2026-08-23"),
+        ]
+        let days = PlanEditor.upcomingDays(
+            of: trip,
+            from: date("2026-08-22T15:00:00+09:00"),
+            calendar: calendar
+        )
+        #expect(days.map(\.date) == ["2026-08-22", "2026-08-23"])
+    }
+
+    @Test func upcomingDaysはすべて過去日なら全日を返す() {
+        let trip = TripEntity(title: "t")
+        trip.days = [
+            TripDayEntity(date: "2026-08-01"),
+            TripDayEntity(date: "2026-08-02"),
+        ]
+        let days = PlanEditor.upcomingDays(
+            of: trip,
+            from: date("2026-08-22T00:00:00+09:00"),
+            calendar: calendar
+        )
+        #expect(days.map(\.date) == ["2026-08-01", "2026-08-02"])
+    }
+
+    @Test func upcomingDaysは削除済みの日を含めない() {
+        let trip = TripEntity(title: "t")
+        let deleted = TripDayEntity(date: "2026-08-23")
+        deleted.deletedAt = Date()
+        trip.days = [TripDayEntity(date: "2026-08-22"), deleted]
+        let days = PlanEditor.upcomingDays(
+            of: trip,
+            from: date("2026-08-22T00:00:00+09:00"),
+            calendar: calendar
+        )
+        #expect(days.map(\.date) == ["2026-08-22"])
+    }
+
     // MARK: - 削除(tombstone)
 
     @Test func 旅行の削除は日とチェックポイントも道連れにする() {

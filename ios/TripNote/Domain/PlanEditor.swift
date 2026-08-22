@@ -119,6 +119,20 @@ enum PlanEditor {
         return TripDayEntity(date: date, updatedAt: now, trip: trip)
     }
 
+    /// 今日以降(当日を含む)のプラン日。すべて過去日なら全日を返す
+    /// (終了した旅行・過去の旅行でトップ地図が空にならないためのフォールバック)
+    static func upcomingDays(
+        of trip: TripEntity,
+        from now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [TripDayEntity] {
+        let days = trip.sortedDays
+        let today = dateString(now, calendar: calendar)
+        // date は YYYY-MM-DD なので文字列比較で日付順になる
+        let upcoming = days.filter { $0.date >= today }
+        return upcoming.isEmpty ? days : upcoming
+    }
+
     /// 旅行を削除する(tombstone)。ぶら下がる日・チェックポイントも道連れにする。
     /// location_points / media は不変(tombstone を持たない)ため触らない
     /// (親 trip の tombstone で非表示になる)

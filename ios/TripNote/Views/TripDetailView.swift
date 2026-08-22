@@ -1,4 +1,5 @@
 import CoreLocation
+import MapKit
 import PhotosUI
 import SwiftData
 import SwiftUI
@@ -283,18 +284,11 @@ struct TripDetailView: View {
         Task { await sync.syncNow() }
     }
 
-    /// 座標が決まっているチェックポイント(tombstone 除く)の地図ピン
+    /// トップ地図のピン: 今日以降の日(当日含む)のチェックポイント(座標あり)。
+    /// すべて過去日なら全日にフォールバックする(軌跡・メディアは絞らない)
     private var checkpointAnnotations: [TripCheckpointAnnotation] {
-        trip.checkpoints.compactMap { checkpoint in
-            guard
-                checkpoint.deletedAt == nil,
-                let latitude = checkpoint.latitude,
-                let longitude = checkpoint.longitude
-            else { return nil }
-            return TripCheckpointAnnotation(
-                checkpoint: checkpoint,
-                coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-            )
+        PlanEditor.upcomingDays(of: trip).flatMap { day in
+            day.sortedCheckpoints.compactMap(TripCheckpointAnnotation.make)
         }
     }
 
@@ -390,6 +384,14 @@ private struct TripDayRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            // この日のミニ地図(座標ありチェックポイントを訪問順に)
+            let annotations = checkpoints.compactMap(TripCheckpointAnnotation.make)
+            if !annotations.isEmpty {
+                TripDayMiniMap(annotations: annotations)
+                    .frame(height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.top, 4)
+            }
         }
         .padding(.vertical, 2)
     }
@@ -397,6 +399,34 @@ private struct TripDayRow: View {
     private var dateText: String {
         guard let date = PlanEditor.parseDate(day.date) else { return day.date }
         return date.formatted(.dateTime.month().day().weekday())
+    }
+}
+
+/// 日別行のミニ地図。その日のチェックポイントを訪問順のピン + ポリラインで表示する。
+/// 操作不可(行タップで日詳細へ遷移するのを妨げない)
+private struct TripDayMiniMap: View {
+    let annotations: [TripCheckpointAnnotation]
+
+    var body: some View {
+        Map(initialPosition: .automatic, interactionModes: []) {
+            if annotations.count >= 2 {
+                MapPolyline(coordinates: annotations.map(\.coordinate))
+                    .stroke(
+                        .blue,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+            }
+            ForEach(annotations) { annotation in
+                Marker(
+                    annotation.checkpoint.name,
+                    systemImage: annotation.checkpoint.type.systemImage,
+                    coordinate: annotation.coordinate
+                )
+                .tint(annotation.checkpoint.type.tint)
+            }
+        }
+        .mapStyle(.standard)
+        .allowsHitTesting(false)
     }
 }
 

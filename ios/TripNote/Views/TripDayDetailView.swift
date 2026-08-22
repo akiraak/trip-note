@@ -150,16 +150,7 @@ struct TripDayDetailView: View {
     }
 
     private var checkpointAnnotations: [TripCheckpointAnnotation] {
-        day.sortedCheckpoints.compactMap { checkpoint in
-            guard
-                let latitude = checkpoint.latitude,
-                let longitude = checkpoint.longitude
-            else { return nil }
-            return TripCheckpointAnnotation(
-                checkpoint: checkpoint,
-                coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-            )
-        }
+        day.sortedCheckpoints.compactMap(TripCheckpointAnnotation.make)
     }
 
     private var dayTitle: String {
