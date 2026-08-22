@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     .all(...params);
   const days = db
     .prepare(
-      `select id, trip_id, date, title, note, updated_at, deleted_at
+      `select id, trip_id, date, title, note, departure_time, updated_at, deleted_at
        from trip_days ${where}`,
     )
     .all(...params);

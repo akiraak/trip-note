@@ -28,6 +28,7 @@ enum PlanPull {
         day.date = record.date
         day.title = record.title
         day.note = record.note
+        day.departureTime = record.departureTime
         day.updatedAt = record.updatedAt
         day.deletedAt = record.deletedAt
         day.needsSync = false
@@ -80,6 +81,7 @@ enum PlanPull {
             date: record.date,
             title: record.title,
             note: record.note,
+            departureTime: record.departureTime,
             updatedAt: record.updatedAt,
             trip: trip
         )

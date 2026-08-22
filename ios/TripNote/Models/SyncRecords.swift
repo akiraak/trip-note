@@ -123,6 +123,7 @@ struct TripDayRecord: Encodable, Sendable {
     let date: String
     let title: String?
     let note: String?
+    let departureTime: String?
     let updatedAt: Date
     let deletedAt: Date?
 
@@ -134,6 +135,7 @@ struct TripDayRecord: Encodable, Sendable {
         date = day.date
         title = day.title
         note = day.note
+        departureTime = day.departureTime
         updatedAt = day.updatedAt
         deletedAt = day.deletedAt
     }
@@ -144,6 +146,7 @@ struct TripDayRecord: Encodable, Sendable {
         case date
         case title
         case note
+        case departureTime = "departure_time"
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
     }
@@ -155,6 +158,7 @@ struct TripDayRecord: Encodable, Sendable {
         try container.encode(date, forKey: .date)
         try container.encode(title, forKey: .title)
         try container.encode(note, forKey: .note)
+        try container.encode(departureTime, forKey: .departureTime)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(deletedAt, forKey: .deletedAt)
     }

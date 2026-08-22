@@ -2,6 +2,17 @@
 
 ## 2026-08-22
 
+- プランの各日をタップしたら日の詳細画面を表示(AI 候補のワンタップ追加・目的地の宿泊化・出発時刻と到着予想) [plan](docs/plans/archive/day-detail-editing.md)
+  - Phase 1: search-assist の候補(places)に概算座標を追加し、iOS の AI 候補行に「追加」ボタンを付けてワンタップでチェックポイント化(座標なし候補は従来どおり検索クエリ反映のみ)
+  - Phase 2: チェックポイント編集の「検索して位置を設定」で名前・種別も常に検索結果で置き換え(目的地 CP をホテル検索 → 宿泊にまとめて差し替えられる。保存までフォーム内なのでキャンセルで戻せる)
+  - Phase 3: `trip_days.departure_time`("HH:MM"、nullable)を新設して双方向同期(push/pull・LWW・旧クライアントは省略可)。到着予想は保存せず `Domain/ArrivalEstimator.swift` が出発時刻とレグ所要時間(`durationS`)から表示時に導出し、`plannedTime` 付き CP で再アンカー。日詳細に出発時刻の表示・編集(Toggle + DatePicker)と各 CP の「到着 HH:mm頃」を追加
+  - 検証: web vitest 89 件(座標パース 2 件 + departure_time 往復 1 件 + updateTripDay 2 件新規)+ lint + build、iOS ユニットテスト 114 件(ArrivalEstimator 7 件 + DTO/LWW 3 件新規)+ シミュレータビルド
+
+- 旅行画面のプランの各日に車での走行距離を表示する [plan](docs/plans/archive/plan-day-distance.md)
+  - iOS のみの変更。`/api/route` が返す `distanceM` / `durationS` を `ResolvedRouteLeg` としてキャッシュ・ビューまで通し(従来は座標列のみで距離を捨てていた)、`TripDayRow` ヘッダに「車アイコン + 約N km」を表示。未解決レグは直線距離(Haversine)でフォールバックし常に「約」表記
+  - レグ解決 state をミニ地図から `TripDayRow` に持ち上げ、1 つの `.task` で地図と距離を共用(リクエスト数は不変)。`durationS` は日詳細の到着予想時刻タスク(day-detail-editing Phase 3)向けの布石
+  - 検証: iOS ユニットテスト 106 件(距離合算 5 件 + 変換 1 件新規)+ シミュレータビルド
+
 - 現在日毎のプランは出発地点と目的地が直線で結ばれているけど、車で走る道の詳細がわかるようにする [plan](docs/plans/archive/plan-road-routes.md)
   - ルートを「隣接チェックポイント間のレグ」の集合として扱い、サーバの `POST /api/route`(OSRM デモサーバのプロキシ + `route_legs` テーブルにレグ単位で無期限キャッシュ、`OSRM_ENDPOINT` で差し替え可)で道路形状を解決
   - iOS はミニ地図・トップ地図(破線)・日詳細(新規にルート表示追加)をレグ単位の道路ポリラインに差し替え。メモリキャッシュ(RouteLegCache)+ `.task(id: レグキー列)` で途中挿入・並び替えに追従、未取得・失敗レグは従来の直線フォールバック

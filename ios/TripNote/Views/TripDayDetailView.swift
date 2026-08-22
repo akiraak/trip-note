@@ -15,6 +15,9 @@ struct TripDayDetailView: View {
     @State private var showsManualAdd = false
     @State private var editingCheckpoint: CheckpointEntity?
     @State private var showsDeleteConfirmation = false
+    /// 到着予想用のレグ解決結果。地図(TripMapView)側と同じレグキーなので
+    /// メモリ/サーバのキャッシュが効き、二重リクエストにならない
+    @State private var resolvedLegs: [String: ResolvedRouteLeg] = [:]
 
     var body: some View {
         List {
@@ -37,6 +40,9 @@ struct TripDayDetailView: View {
                 LabeledContent("日付") {
                     Text(displayDate)
                 }
+                if let departureTime = day.departureTime {
+                    LabeledContent("出発時刻", value: departureTime)
+                }
                 if let title = day.title, !title.isEmpty {
                     LabeledContent("行程", value: title)
                 }
@@ -57,11 +63,15 @@ struct TripDayDetailView: View {
                     Text("チェックポイントがありません")
                         .foregroundStyle(.secondary)
                 }
+                let estimates = arrivalEstimates
                 ForEach(checkpoints) { checkpoint in
                     Button {
                         editingCheckpoint = checkpoint
                     } label: {
-                        CheckpointRow(checkpoint: checkpoint)
+                        CheckpointRow(
+                            checkpoint: checkpoint,
+                            estimatedArrival: estimates[checkpoint.id]
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -102,6 +112,12 @@ struct TripDayDetailView: View {
         .toolbar {
             // チェックポイントの並べ替え用
             EditButton()
+        }
+        // CP の追加・並び替え・座標の具体化でレグキー列が変わったら所要時間を解決し直す
+        // (キャッシュ済みレグは即答。出発時刻・plannedTime の変更は @Model の監視で再計算される)
+        .task(id: dayLegs.map(\.key).joined(separator: "|")) {
+            guard !dayLegs.isEmpty, let client = SyncClient.fromBundle() else { return }
+            resolvedLegs = await client.resolvedLegs(for: dayLegs)
         }
         .sheet(isPresented: $showsDayEdit) {
             TripDayEditView(day: day)
@@ -155,15 +171,36 @@ struct TripDayDetailView: View {
         day.sortedCheckpoints.compactMap(TripCheckpointAnnotation.make)
     }
 
+    /// ルートの起点 = 前日までの最後の座標ありチェックポイント(前泊地など)
+    private var routeStart: CLLocationCoordinate2D? {
+        guard
+            let trip = day.trip,
+            let index = trip.sortedDays.firstIndex(where: { $0.id == day.id })
+        else { return nil }
+        return TripDetailView.routeAnchor(before: index, in: trip.sortedDays)
+    }
+
     /// この日のルート座標列(前泊地起点 + 訪問順のチェックポイント)。日別ミニ地図と同じ扱い
     private var dayRoute: [CLLocationCoordinate2D] {
         let coordinates = checkpointAnnotations.map(\.coordinate)
-        guard
-            let trip = day.trip,
-            let index = trip.sortedDays.firstIndex(where: { $0.id == day.id }),
-            let start = TripDetailView.routeAnchor(before: index, in: trip.sortedDays)
-        else { return coordinates }
-        return [start] + coordinates
+        guard let routeStart else { return coordinates }
+        return [routeStart] + coordinates
+    }
+
+    /// この日のレグ列(TripMapView が planRoute から組むものと同じキーになる)
+    private var dayLegs: [RouteLeg] {
+        RouteLegBuilder.legs(through: dayRoute.map(\.routePoint))
+    }
+
+    /// 各チェックポイントの到着予想時刻(手入力 plannedTime のある CP は含まれない)
+    private var arrivalEstimates: [UUID: Date] {
+        ArrivalEstimator.estimates(
+            dayDate: day.date,
+            departureTime: day.departureTime,
+            routeStart: routeStart?.routePoint,
+            checkpoints: day.sortedCheckpoints,
+            resolvedLegs: resolvedLegs
+        )
     }
 
     private var dayTitle: String {
@@ -189,18 +226,40 @@ struct TripDayEditView: View {
 
     @State private var title: String
     @State private var note: String
+    @State private var hasDepartureTime: Bool
+    @State private var departureTime: Date
 
     init(day: TripDayEntity) {
         self.day = day
         _title = State(initialValue: day.title ?? "")
         _note = State(initialValue: day.note ?? "")
+        _hasDepartureTime = State(initialValue: day.departureTime != nil)
+        _departureTime = State(
+            initialValue: ArrivalEstimator.departureDate(
+                dayDate: day.date, departureTime: day.departureTime
+            ) ?? Self.defaultDepartureTime(for: day)
+        )
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                TextField("行程(例: 松本周辺を観光して泊)", text: $title)
-                TextField("メモ", text: $note, axis: .vertical)
+                Section {
+                    TextField("行程(例: 松本周辺を観光して泊)", text: $title)
+                    TextField("メモ", text: $note, axis: .vertical)
+                }
+                Section {
+                    Toggle("出発時刻を設定", isOn: $hasDepartureTime)
+                    if hasDepartureTime {
+                        DatePicker(
+                            "出発時刻",
+                            selection: $departureTime,
+                            displayedComponents: [.hourAndMinute]
+                        )
+                    }
+                } footer: {
+                    Text("この日の宿泊地(前泊地)を出発する時刻。以降のチェックポイントの到着予想に使います。")
+                }
             }
             .navigationTitle("行程を編集")
             .navigationBarTitleDisplayMode(.inline)
@@ -220,17 +279,26 @@ struct TripDayEditView: View {
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         day.title = trimmedTitle.isEmpty ? nil : trimmedTitle
         day.note = trimmedNote.isEmpty ? nil : trimmedNote
+        day.departureTime = hasDepartureTime ? PlanEditor.timeString(departureTime) : nil
         day.updatedAt = Date()
         day.needsSync = true
         try? modelContext.save()
         dismiss()
         Task { await sync.syncNow() }
     }
+
+    /// 出発時刻の初期値はその日の 8:00
+    private static func defaultDepartureTime(for day: TripDayEntity) -> Date {
+        guard let date = PlanEditor.parseDate(day.date) else { return Date() }
+        return Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: date) ?? date
+    }
 }
 
-/// チェックポイントの一覧行(種別アイコン・名前・予定時刻・メモ)
+/// チェックポイントの一覧行(種別アイコン・名前・予定時刻 or 到着予想・メモ)
 struct CheckpointRow: View {
     let checkpoint: CheckpointEntity
+    /// 到着予想時刻(手入力の plannedTime がある CP は予想を出さず plannedTime を表示する)
+    var estimatedArrival: Date?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -243,6 +311,9 @@ struct CheckpointRow: View {
                     Text(checkpoint.type.label)
                     if let plannedTime = checkpoint.plannedTime {
                         Text(plannedTime, format: .dateTime.hour().minute())
+                    } else if let estimatedArrival {
+                        // OSRM の自由流走行時間ベースで渋滞・休憩を含まない概算なので常に「頃」
+                        Text("到着 \(estimatedArrival, format: .dateTime.hour().minute())頃")
                     }
                     if checkpoint.latitude == nil {
                         Text("座標未設定")

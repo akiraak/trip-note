@@ -162,6 +162,29 @@ describe("updateTripDay", () => {
     expect(row.note).toBeNull();
     expect(row.updated_at > OLD).toBe(true);
   });
+
+  it("departure_time を設定・クリアでき、省略時は保持する", () => {
+    seedTrip();
+    seedDay();
+    updateTripDay("day-1", { title: null, note: null, departure_time: "08:30" });
+    expect(getDayRow("day-1").departure_time).toBe("08:30");
+    // 省略(undefined)は iOS からの同期値を保持する
+    updateTripDay("day-1", { title: "松本周辺", note: null });
+    expect(getDayRow("day-1").departure_time).toBe("08:30");
+    updateTripDay("day-1", { title: null, note: null, departure_time: null });
+    expect(getDayRow("day-1").departure_time).toBeNull();
+  });
+
+  it("HH:MM 以外の departure_time は拒否する", () => {
+    seedTrip();
+    seedDay();
+    expect(() =>
+      updateTripDay("day-1", { title: null, note: null, departure_time: "25:00" }),
+    ).toThrow(/HH:MM/);
+    expect(() =>
+      updateTripDay("day-1", { title: null, note: null, departure_time: "8:30" }),
+    ).toThrow(/HH:MM/);
+  });
 });
 
 describe("deleteTrip", () => {

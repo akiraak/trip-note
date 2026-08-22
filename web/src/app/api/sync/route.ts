@@ -29,6 +29,8 @@ type SyncTripDay = {
   date: string;
   title?: string | null;
   note?: string | null;
+  /** 前泊地を出発する時刻 "HH:MM"。旧クライアントは送らないため省略可 = null */
+  departure_time?: string | null;
   updated_at: string;
   deleted_at?: string | null;
 };
@@ -92,6 +94,7 @@ function isTripDay(value: unknown): value is SyncTripDay {
     typeof d.date === "string" &&
     isNullableString(d.title) &&
     isNullableString(d.note) &&
+    isNullableString(d.departure_time) &&
     typeof d.updated_at === "string" &&
     isNullableString(d.deleted_at)
   );
@@ -188,13 +191,16 @@ export async function POST(request: Request) {
     where excluded.updated_at > trips.updated_at
   `);
   const upsertDay = db.prepare(`
-    insert into trip_days (id, trip_id, date, title, note, updated_at, deleted_at)
-    values (@id, @trip_id, @date, @title, @note, @updated_at, @deleted_at)
+    insert into trip_days
+      (id, trip_id, date, title, note, departure_time, updated_at, deleted_at)
+    values
+      (@id, @trip_id, @date, @title, @note, @departure_time, @updated_at, @deleted_at)
     on conflict (id) do update set
       trip_id = excluded.trip_id,
       date = excluded.date,
       title = excluded.title,
       note = excluded.note,
+      departure_time = excluded.departure_time,
       updated_at = excluded.updated_at,
       deleted_at = excluded.deleted_at
     where excluded.updated_at > trip_days.updated_at
@@ -263,6 +269,7 @@ export async function POST(request: Request) {
         ...day,
         title: day.title ?? null,
         note: day.note ?? null,
+        departure_time: day.departure_time ?? null,
         deleted_at: day.deleted_at ?? null,
       });
     }

@@ -114,7 +114,7 @@ struct CheckpointSearchView: View {
                 )
             }
             if let assistSuggestion {
-                Section("AI の候補(選ぶと検索します)") {
+                Section {
                     ForEach(assistSuggestion.queries, id: \.self) { suggestedQuery in
                         Button {
                             searchSuggested(suggestedQuery)
@@ -123,26 +123,41 @@ struct CheckpointSearchView: View {
                         }
                     }
                     ForEach(assistSuggestion.places, id: \.self) { place in
-                        Button {
-                            searchSuggested(place.name)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: place.type.systemImage)
-                                    .foregroundStyle(place.type.tint)
-                                    .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(place.name)
-                                    Text(
-                                        place.note.map { "\(place.area) — \($0)" }
-                                            ?? place.area
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            Button {
+                                searchSuggested(place.name)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: place.type.systemImage)
+                                        .foregroundStyle(place.type.tint)
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(place.name)
+                                        Text(
+                                            place.note.map { "\(place.area) — \($0)" }
+                                                ?? place.area
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
                                 }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if place.latitude != nil {
+                                Button("追加") {
+                                    addSuggested(place)
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.subheadline)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("AI の候補")
+                } footer: {
+                    Text("タップするとその名前で検索します。「追加」は AI の概算の位置のまま追加します(あとから検索で位置を具体化できます)。")
                 }
             }
         }
@@ -173,6 +188,21 @@ struct CheckpointSearchView: View {
     private func searchSuggested(_ suggestedQuery: String) {
         query = suggestedQuery
         Task { await search() }
+    }
+
+    /// 座標付きの AI 候補をそのまま選択として流す(種別は AI の type を使う)。
+    /// 概算座標のまま追加され、あとから編集画面の検索で具体化できる
+    private func addSuggested(_ place: AISuggestedPlace) {
+        guard let latitude = place.latitude, let longitude = place.longitude else { return }
+        onSelect(
+            PlaceSelection(
+                name: place.name,
+                latitude: latitude,
+                longitude: longitude,
+                suggestedType: place.type
+            )
+        )
+        dismiss()
     }
 
     private func search() async {

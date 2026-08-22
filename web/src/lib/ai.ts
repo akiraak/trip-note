@@ -185,6 +185,9 @@ export type SuggestedPlace = {
   type: CheckpointType;
   area: string;
   note: string | null;
+  /** 概算座標(市レベル)。候補のワンタップ追加に使い、検索で具体化したら上書きされる */
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type SearchAssistSuggestion = {
@@ -432,8 +435,16 @@ export const SEARCH_ASSIST_SCHEMA: Record<string, unknown> = {
           type: { type: "string", enum: CHECKPOINT_TYPE_ENUM },
           area: { type: "string", description: "所在地域" },
           note: { type: "string", description: "おすすめ理由など。無ければ空文字" },
+          latitude: {
+            type: "number",
+            description: "概算緯度(市レベルの精度でよい)",
+          },
+          longitude: {
+            type: "number",
+            description: "概算経度",
+          },
         },
-        required: ["name", "type", "area", "note"],
+        required: ["name", "type", "area", "note", "latitude", "longitude"],
         additionalProperties: false,
       },
     },
@@ -570,11 +581,20 @@ export function parseSearchAssistSuggestion(
     if (!isRecord(p) || typeof p.name !== "string" || !p.name.trim()) {
       throw new Error("AI の応答を解釈できませんでした");
     }
+    // 概算座標(ワンタップ追加用)。不正なら null に寄せ、片方だけなら両方捨てる
+    let latitude = displayCoordinate(p.latitude, 90);
+    let longitude = displayCoordinate(p.longitude, 180);
+    if (latitude === null || longitude === null) {
+      latitude = null;
+      longitude = null;
+    }
     return {
       name: p.name.trim(),
       type: isCheckpointType(p.type) ? p.type : "other",
       area: typeof p.area === "string" ? p.area.trim() : "",
       note: emptyToNull(p.note),
+      latitude,
+      longitude,
     };
   });
   if (queries.length === 0 && places.length === 0) {
@@ -650,6 +670,7 @@ export function buildSearchAssistPrompt(input: SearchAssistInput): {
     "あなたは旅行の地点探しを手伝うアシスタントです。大まかな地域と条件から、地図検索に使える検索クエリ候補と、具体的な地点候補を JSON で返してください。",
     "- queries は地図検索(Nominatim / Apple マップ)にそのまま入れる短いクエリを 3〜6 件(例: 「松本市 カフェ」「松本城」)",
     "- places は条件に合う実在の地点を 3〜8 件。name は正式名称にする",
+    "- 各地点の latitude / longitude は概算座標(市レベルの精度でよい)",
     "- 実在が不確かな地点は入れない",
   ].join("\n");
   const user = [

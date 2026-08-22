@@ -47,6 +47,8 @@ export type TripDay = {
   /** 大まかな行程(例: 松本周辺を観光して泊) */
   title: string | null;
   note: string | null;
+  /** 前泊地を出発する時刻 "HH:MM"(ローカル時刻)。到着予想の起点になる */
+  departure_time: string | null;
   updated_at: string;
   deleted_at: string | null;
   created_at: string;

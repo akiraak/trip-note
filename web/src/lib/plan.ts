@@ -24,6 +24,7 @@ export type CheckpointInput = {
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -122,17 +123,32 @@ export function addTripDay(tripId: string): TripDay {
 
 export function updateTripDay(
   dayId: string,
-  fields: { title: string | null; note: string | null },
+  fields: {
+    title: string | null;
+    note: string | null;
+    /** 前泊地を出発する時刻 "HH:MM"。undefined は現状維持(iOS からの同期値を保持) */
+    departure_time?: string | null;
+  },
 ): TripDay {
   const day = getDay(dayId);
+  let departureTime = day.departure_time;
+  if (fields.departure_time !== undefined) {
+    if (fields.departure_time !== null && !TIME_RE.test(fields.departure_time)) {
+      throw new Error("出発時刻は HH:MM で指定してください");
+    }
+    departureTime = fields.departure_time;
+  }
   getDb()
     .prepare(
-      "update trip_days set title = @title, note = @note, updated_at = @now where id = @id",
+      `update trip_days set
+         title = @title, note = @note, departure_time = @departure_time, updated_at = @now
+       where id = @id`,
     )
     .run({
       id: dayId,
       title: fields.title?.trim() || null,
       note: fields.note?.trim() || null,
+      departure_time: departureTime,
       now: nowIso(),
     });
   return day;

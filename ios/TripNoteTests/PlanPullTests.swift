@@ -131,21 +131,25 @@ struct PlanPullTests {
         let record = try decode(TripDayPullRecord.self, """
         { "id": "\(day.id.uuidString)", "trip_id": "\(UUID().uuidString)",
           "date": "2026-09-02", "title": "上高地へ", "note": "早出",
+          "departure_time": "07:30",
           "updated_at": "1970-01-01T00:01:00.000Z", "deleted_at": null }
         """)
         #expect(PlanPull.apply(record, to: day))
         #expect(day.date == "2026-09-02")
         #expect(day.title == "上高地へ")
         #expect(day.note == "早出")
+        #expect(day.departureTime == "07:30")
         #expect(!day.needsSync)
         // 古いレコードは無視される
         let older = try decode(TripDayPullRecord.self, """
         { "id": "\(day.id.uuidString)", "trip_id": "\(UUID().uuidString)",
           "date": "2026-09-03", "title": null, "note": null,
+          "departure_time": null,
           "updated_at": "1970-01-01T00:00:30.000Z", "deleted_at": null }
         """)
         #expect(!PlanPull.apply(older, to: day))
         #expect(day.date == "2026-09-02")
+        #expect(day.departureTime == "07:30")
     }
 
     @Test func checkpointの反映で別の日への移動も適用される() throws {

@@ -83,10 +83,11 @@ struct CheckpointEditView: View {
                 CheckpointSearchView(
                     region: CheckpointSearchView.regionHint(for: day.trip)
                 ) { place in
-                    if trimmedName.isEmpty {
-                        name = place.name
-                        type = place.suggestedType
-                    }
+                    // 名前・種別も常に検索結果で置き換える(目的地 CP をホテル検索で
+                    // 宿泊にまとめて差し替える動線)。保存するまで確定しないので
+                    // 意図しない置き換えはキャンセルで戻せる
+                    name = place.name
+                    type = place.suggestedType
                     latitude = place.latitude
                     longitude = place.longitude
                 }

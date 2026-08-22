@@ -41,7 +41,9 @@ struct AIRecordsTests {
         {
           "queries": ["松本市 カフェ"],
           "places": [
-            { "type": "cafe", "name": "珈琲まるも", "area": "松本市", "note": null }
+            { "type": "cafe", "name": "珈琲まるも", "area": "松本市", "note": null,
+              "latitude": 36.2328, "longitude": 137.9689 },
+            { "type": "sightseeing", "name": "松本城", "area": "松本市", "note": "旧応答" }
           ]
         }
         """
@@ -49,8 +51,12 @@ struct AIRecordsTests {
             AISearchAssistSuggestion.self, from: Data(json.utf8)
         )
         #expect(suggestion.queries == ["松本市 カフェ"])
-        #expect(suggestion.places.map(\.type) == [.cafe])
+        #expect(suggestion.places.map(\.type) == [.cafe, .sightseeing])
         #expect(suggestion.places[0].note == nil)
+        // ワンタップ追加用の概算座標(旧サーバの応答に無ければ nil)
+        #expect(suggestion.places[0].latitude == 36.2328)
+        #expect(suggestion.places[0].longitude == 137.9689)
+        #expect(suggestion.places[1].latitude == nil)
     }
 
     @Test func 日数宿泊地候補の応答をデコードする() throws {

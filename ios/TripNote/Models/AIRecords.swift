@@ -142,6 +142,10 @@ struct AISuggestedPlace: Decodable, Hashable {
     let name: String
     let area: String
     let note: String?
+    /// 概算座標(市レベル。旧サーバの応答に無ければ nil)。ワンタップ追加に使い、
+    /// 検索で具体化したら上書きされる
+    let latitude: Double?
+    let longitude: Double?
 
     var type: CheckpointType { CheckpointType(rawValue: typeRawValue) ?? .other }
 
@@ -150,6 +154,8 @@ struct AISuggestedPlace: Decodable, Hashable {
         case name
         case area
         case note
+        case latitude
+        case longitude
     }
 }
 

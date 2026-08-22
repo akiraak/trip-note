@@ -139,6 +139,12 @@ const MIGRATIONS: string[] = [
   );
   create index route_legs_created_idx on route_legs (created_at);
   `,
+  // 日単位の出発時刻(その日の宿泊地 = 前泊地を出る時刻)。日付は date が持つので
+  // 時刻のみ "HH:MM" のローカル時刻文字列(date と同じタイムゾーン素朴表現)。
+  // 到着予想時刻は保存せず、クライアントがレグ所要時間から表示時に導出する
+  `
+  alter table trip_days add column departure_time text;
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

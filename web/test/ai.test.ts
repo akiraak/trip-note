@@ -342,10 +342,19 @@ describe("parseTripOutlineSuggestion", () => {
 });
 
 describe("parseSearchAssistSuggestion", () => {
-  it("正常な応答をパースする", () => {
+  it("正常な応答をパースする(概算座標付き)", () => {
     const suggestion = parseSearchAssistSuggestion({
       queries: [" 松本市 カフェ ", ""],
-      places: [{ name: "珈琲まるも", type: "cafe", area: "松本市", note: "" }],
+      places: [
+        {
+          name: "珈琲まるも",
+          type: "cafe",
+          area: "松本市",
+          note: "",
+          latitude: 36.2328,
+          longitude: 137.9689,
+        },
+      ],
     });
     expect(suggestion.queries).toEqual(["松本市 カフェ"]);
     expect(suggestion.places[0]).toEqual({
@@ -353,6 +362,27 @@ describe("parseSearchAssistSuggestion", () => {
       type: "cafe",
       area: "松本市",
       note: null,
+      latitude: 36.2328,
+      longitude: 137.9689,
+    });
+  });
+
+  it("座標が不正・欠落・片方だけなら null に寄せる", () => {
+    const place = { name: "珈琲まるも", type: "cafe", area: "松本市", note: "" };
+    const parse = (over: Record<string, unknown>) =>
+      parseSearchAssistSuggestion({ queries: [], places: [{ ...place, ...over }] })
+        .places[0];
+    // 範囲外
+    expect(parse({ latitude: 91, longitude: 137.9 })).toMatchObject({
+      latitude: null,
+      longitude: null,
+    });
+    // 旧応答(座標無し)
+    expect(parse({})).toMatchObject({ latitude: null, longitude: null });
+    // 片方だけなら両方捨てる
+    expect(parse({ latitude: 36.2 })).toMatchObject({
+      latitude: null,
+      longitude: null,
     });
   });
 

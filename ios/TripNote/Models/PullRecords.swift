@@ -41,6 +41,8 @@ struct TripDayPullRecord: Decodable, Sendable {
     let date: String
     let title: String?
     let note: String?
+    /// 前泊地を出発する時刻 "HH:MM"(旧サーバの応答に無ければ nil)
+    let departureTime: String?
     let updatedAt: Date
     let deletedAt: Date?
 
@@ -50,6 +52,7 @@ struct TripDayPullRecord: Decodable, Sendable {
         case date
         case title
         case note
+        case departureTime = "departure_time"
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
     }

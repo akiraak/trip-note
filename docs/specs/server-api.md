@@ -8,7 +8,8 @@
 
 - trips は「旅行」単位。`started_at == null` はプラン中(未出発)、
   `ended_at == null` は進行中、両方あれば終了(status カラムは持たず導出)
-- trip_days はプランの 1 日(`date` は YYYY-MM-DD)。checkpoints は trip_day に紐付く
+- trip_days はプランの 1 日(`date` は YYYY-MM-DD、`departure_time` は前泊地を出発する
+  時刻 "HH:MM" のローカル時刻で任意)。checkpoints は trip_day に紐付く
   地点(出発地・観光地・宿など。`type` は departure / destination / sightseeing / cafe /
   restaurant / lodging / other)
 - プラン系(trips / trip_days / checkpoints)は iOS と双方向同期する。
@@ -40,7 +41,8 @@ iOS アプリからのアップロード(push)。upsert で冪等(id はクラ�
   ],
   "days": [
     { "id": "uuid", "trip_id": "uuid", "date": "YYYY-MM-DD", "title": "…|null",
-      "note": "…|null", "updated_at": "ISO8601", "deleted_at": "ISO8601|null" }
+      "note": "…|null", "departure_time": "HH:MM|null(省略可)",
+      "updated_at": "ISO8601", "deleted_at": "ISO8601|null" }
   ],
   "checkpoints": [
     { "id": "uuid", "trip_id": "uuid", "trip_day_id": "uuid", "type": "lodging",
@@ -59,6 +61,10 @@ iOS アプリからのアップロード(push)。upsert で冪等(id はクラ�
   null、`deleted_at` は tombstone(物理削除しない)。閲覧 UI は `deleted_at is null` のみ表示。
   `departure_at` は出発予定日時(実績の `started_at` とは別。プラン 1 日目の基準)、
   `destination` は目的地の自由記述(AI の日数・宿泊地候補の入力)。どちらも省略可 = null
+- days の `departure_time` はその日の前泊地を出発する時刻("HH:MM" のローカル時刻。
+  日付は `date` が持つ)。旧クライアントは送らないため省略可 = null。
+  到着予想時刻は保存せず、クライアントがレグ所要時間(`/api/route` の `durationS`)から
+  表示時に導出する
 - trips / days / checkpoints: `ON CONFLICT(id) DO UPDATE ...
   WHERE excluded.updated_at > <table>.updated_at`(行単位の LWW。同時刻は既存を保持)。
   `updated_at` はクライアントの編集時刻。trips のみ省略可(旧クライアント互換。
@@ -97,7 +103,7 @@ location_points / media は対象外(一方向アップロードのみ)。
     "transport": null, "departure_at": null, "destination": null,
     "updated_at": "…", "deleted_at": null } ],
   "days": [ { "id": "…", "trip_id": "…", "date": "YYYY-MM-DD", "title": null,
-    "note": null, "updated_at": "…", "deleted_at": null } ],
+    "note": null, "departure_time": null, "updated_at": "…", "deleted_at": null } ],
   "checkpoints": [ { "id": "…", "trip_id": "…", "trip_day_id": "…", "type": "…",
     "name": "…", "latitude": null, "longitude": null, "planned_time": null,
     "note": null, "sort_order": 0, "updated_at": "…", "deleted_at": null } ]
@@ -262,12 +268,15 @@ AI 検索補助。大まかな地域 + 種別 + 自由記述から、地図検�
 ```json
 {
   "queries": ["松本市 カフェ"],
-  "places": [ { "name": "珈琲まるも", "type": "cafe", "area": "松本市", "note": "…|null" } ]
+  "places": [ { "name": "珈琲まるも", "type": "cafe", "area": "松本市", "note": "…|null",
+    "latitude": 36.2328, "longitude": 137.9689 } ]
 }
 ```
 
 - クライアントは候補を選ぶとそのクエリで通常の地図検索を実行する
-  (座標の確定は地図検索に任せ、AI の座標は信用しない)
+  (座標の確定は地図検索に任せる)。`latitude` / `longitude` は概算座標
+  (市レベル。不正・片方だけは null)で、候補のワンタップ追加に使う。
+  概算のまま追加しても、あとから検索で具体化したら上書きされる
 
 ## POST /api/route
 

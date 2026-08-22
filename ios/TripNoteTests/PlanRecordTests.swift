@@ -31,8 +31,16 @@ struct PlanRecordTests {
         // 一括 upsert で行ごとのキーを揃えるため、nil でも省略せず null を送る
         #expect(json.contains("\"title\":null"))
         #expect(json.contains("\"note\":null"))
+        #expect(json.contains("\"departure_time\":null"))
         #expect(json.contains("\"updated_at\":\"1970-01-01T00:00:00.000Z\""))
         #expect(json.contains("\"deleted_at\":null"))
+    }
+
+    @Test func TripDayRecordは出発時刻を送る() throws {
+        let trip = TripEntity(title: "t")
+        let day = TripDayEntity(date: "2026-09-01", departureTime: "08:30", trip: trip)
+        let json = try encodeToJSON(try #require(TripDayRecord(day)))
+        #expect(json.contains("\"departure_time\":\"08:30\""))
     }
 
     @Test func tripと関連が切れた日はレコードにならない() {

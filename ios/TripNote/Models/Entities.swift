@@ -84,6 +84,9 @@ final class TripDayEntity {
     /// 大まかな行程(例: 松本周辺を観光して泊)
     var title: String?
     var note: String?
+    /// 前泊地を出発する時刻 "HH:MM"(date と同じタイムゾーン素朴表現)。
+    /// 以降のチェックポイントの到着予想の起点(予想は保存せず表示時に導出する)
+    var departureTime: String?
     /// 編集時刻。双方向同期の LWW の基準になるため、変更時は必ず更新する
     var updatedAt: Date
     /// tombstone。削除は物理削除せず deleted_at を同期で伝搬する
@@ -100,6 +103,7 @@ final class TripDayEntity {
         date: String,
         title: String? = nil,
         note: String? = nil,
+        departureTime: String? = nil,
         updatedAt: Date = Date(),
         trip: TripEntity? = nil
     ) {
@@ -107,6 +111,7 @@ final class TripDayEntity {
         self.date = date
         self.title = title
         self.note = note
+        self.departureTime = departureTime
         self.updatedAt = updatedAt
         self.trip = trip
     }

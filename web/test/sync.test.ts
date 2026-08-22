@@ -143,6 +143,22 @@ describe("POST /api/sync", () => {
     expect(pulled.trips[0].destination).toBeNull();
   });
 
+  it("trip_days.departure_time を往復でき、省略時は null になる", async () => {
+    await push({
+      trips: [trip()],
+      days: [day({ departure_time: "08:30" })],
+    });
+    let pulled = await (await pull()).json();
+    expect(pulled.days[0].departure_time).toBe("08:30");
+
+    // 旧クライアント互換: 省略して新しい updated_at で送ると null に戻る
+    await push({
+      days: [day({ updated_at: "2026-08-20T11:00:00.000Z" })],
+    });
+    pulled = await (await pull()).json();
+    expect(pulled.days[0].departure_time).toBeNull();
+  });
+
   it("LWW: 新しい updated_at は勝ち、古い updated_at は無視される", async () => {
     await push({ trips: [trip()] });
     // 新しい編集は反映される
