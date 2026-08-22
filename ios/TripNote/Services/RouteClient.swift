@@ -11,20 +11,20 @@ import Foundation
 actor RouteLegCache {
     static let shared = RouteLegCache()
 
-    private var store: [String: [RoutePoint]] = [:]
+    private var store: [String: ResolvedRouteLeg] = [:]
 
-    func polylines(for keys: [String]) -> [String: [RoutePoint]] {
-        var found: [String: [RoutePoint]] = [:]
+    func legs(for keys: [String]) -> [String: ResolvedRouteLeg] {
+        var found: [String: ResolvedRouteLeg] = [:]
         for key in keys {
-            if let polyline = store[key] {
-                found[key] = polyline
+            if let leg = store[key] {
+                found[key] = leg
             }
         }
         return found
     }
 
-    func insert(_ polylines: [String: [RoutePoint]]) {
-        store.merge(polylines) { _, new in new }
+    func insert(_ legs: [String: ResolvedRouteLeg]) {
+        store.merge(legs) { _, new in new }
     }
 }
 
@@ -32,26 +32,26 @@ extension SyncClient {
     /// 1 リクエストのレグ数上限(サーバ側 MAX_LEGS_PER_REQUEST と同じ)
     private static var maxLegsPerRequest: Int { 50 }
 
-    /// レグ列を道路ポリライン(レグキー → 座標列)へ解決する。
+    /// レグ列を解決結果(レグキー → 道路形状 + 距離・所要時間)へ解決する。
     /// 通信エラー・未解決レグは辞書に含めず、throw もしない(直線フォールバック前提)
-    func roadPolylines(for legs: [RouteLeg]) async -> [String: [RoutePoint]] {
+    func resolvedLegs(for legs: [RouteLeg]) async -> [String: ResolvedRouteLeg] {
         // 同一キー(丸め粒度で同じ区間)はまとめて 1 回だけ問い合わせる
         var unique: [RouteLeg] = []
         var seen = Set<String>()
         for leg in legs where seen.insert(leg.key).inserted {
             unique.append(leg)
         }
-        var resolved = await RouteLegCache.shared.polylines(for: unique.map(\.key))
+        var resolved = await RouteLegCache.shared.legs(for: unique.map(\.key))
         let misses = unique.filter { resolved[$0.key] == nil }
         guard !misses.isEmpty else { return resolved }
-        var fetched: [String: [RoutePoint]] = [:]
+        var fetched: [String: ResolvedRouteLeg] = [:]
         for start in stride(from: 0, to: misses.count, by: Self.maxLegsPerRequest) {
             let chunk = misses[start..<min(start + Self.maxLegsPerRequest, misses.count)]
             let request = RouteRequest(legs: chunk.map { .init(from: $0.from, to: $0.to) })
             guard let response = try? await postRoute(request) else { continue }
             for (leg, polyline) in zip(chunk, response.legs) {
-                guard let points = polyline?.points, points.count >= 2 else { continue }
-                fetched[leg.key] = points
+                guard let resolvedLeg = polyline?.resolved else { continue }
+                fetched[leg.key] = resolvedLeg
             }
         }
         guard !fetched.isEmpty else { return resolved }

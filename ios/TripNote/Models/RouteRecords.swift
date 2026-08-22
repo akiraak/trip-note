@@ -25,6 +25,13 @@ struct RouteLegPolyline: Decodable {
             pair.count >= 2 ? RoutePoint(latitude: pair[1], longitude: pair[0]) : nil
         }
     }
+
+    /// アプリ内表現へ変換する。線として成立しない(座標 2 点未満)なら nil
+    var resolved: ResolvedRouteLeg? {
+        let points = points
+        guard points.count >= 2 else { return nil }
+        return ResolvedRouteLeg(points: points, distanceM: distanceM, durationS: durationS)
+    }
 }
 
 /// 応答。リクエストと同順・同数で、解決できなかったレグは null

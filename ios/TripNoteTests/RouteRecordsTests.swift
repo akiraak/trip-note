@@ -31,6 +31,28 @@ struct RouteRecordsTests {
         #expect(leg.points == [RoutePoint(latitude: 36.1451, longitude: 137.5502)])
     }
 
+    @Test func 解決済みレグへの変換でdistanceMとdurationSを保持する() throws {
+        let json = """
+        {"legs":[
+          {"coordinates":[[137.9719,36.2381],[137.5502,36.1451]],
+           "distanceM":1234.5,"durationS":678.9},
+          {"coordinates":[[137.9719,36.2381]],"distanceM":1,"durationS":1}
+        ]}
+        """
+        let response = try JSONDecoder().decode(RouteResponse.self, from: Data(json.utf8))
+        let polyline = try #require(response.legs[0])
+        let resolved = try #require(polyline.resolved)
+        #expect(resolved.points == [
+            RoutePoint(latitude: 36.2381, longitude: 137.9719),
+            RoutePoint(latitude: 36.1451, longitude: 137.5502),
+        ])
+        #expect(resolved.distanceM == 1234.5)
+        #expect(resolved.durationS == 678.9)
+        // 座標 2 点未満は線として成立しないので変換できない
+        let tooShort = try #require(response.legs[1])
+        #expect(tooShort.resolved == nil)
+    }
+
     @Test func リクエストはfrom_toの緯度経度をエンコードする() throws {
         let request = RouteRequest(legs: [
             .init(

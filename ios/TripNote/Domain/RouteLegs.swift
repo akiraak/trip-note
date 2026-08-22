@@ -32,6 +32,33 @@ struct RouteLeg: Hashable, Sendable {
     }
 }
 
+/// レグの解決結果のアプリ内表現。道路形状の座標列に加えて OSRM 由来の
+/// 距離・所要時間を保持する(距離は日毎合計の表示、所要時間は到着予想時刻用)
+struct ResolvedRouteLeg: Hashable, Sendable {
+    let points: [RoutePoint]
+    let distanceM: Double
+    let durationS: Double
+}
+
+enum RouteLegDistance {
+    /// レグ列の総距離(メートル)。解決済みレグは道路距離、未解決レグは
+    /// 直線距離(Haversine)でフォールバックした概算を返す
+    static func totalMeters(
+        legs: [RouteLeg],
+        resolved: [String: ResolvedRouteLeg]
+    ) -> Double {
+        legs.reduce(0) { sum, leg in
+            if let resolvedLeg = resolved[leg.key] {
+                return sum + resolvedLeg.distanceM
+            }
+            return sum + Geo.haversineDistance(
+                lat1: leg.from.latitude, lng1: leg.from.longitude,
+                lat2: leg.to.latitude, lng2: leg.to.longitude
+            )
+        }
+    }
+}
+
 enum RouteLegBuilder {
     /// 訪問順の座標列(+前泊地などの起点)をレグ列にする。
     /// 座標なしのチェックポイントは呼び出し側で除外済みの前提(現状の直線描画と同じ)。

@@ -72,4 +72,53 @@ struct RouteLegsTests {
             RouteLeg(from: takayama, to: kamikochi),
         ])
     }
+
+    // MARK: - 日毎距離の合算(RouteLegDistance)
+
+    @Test func 全レグ解決済みなら道路距離の合計() {
+        let legs = RouteLegBuilder.legs(through: [tokyo, matsumoto, kamikochi])
+        let resolved = [
+            legs[0].key: ResolvedRouteLeg(
+                points: [tokyo, matsumoto], distanceM: 225_000, durationS: 10_000
+            ),
+            legs[1].key: ResolvedRouteLeg(
+                points: [matsumoto, kamikochi], distanceM: 40_000, durationS: 3_600
+            ),
+        ]
+        #expect(RouteLegDistance.totalMeters(legs: legs, resolved: resolved) == 265_000)
+    }
+
+    @Test func 未解決レグは直線距離でフォールバックする() {
+        let legs = RouteLegBuilder.legs(through: [tokyo, matsumoto, kamikochi])
+        let resolved = [
+            legs[0].key: ResolvedRouteLeg(
+                points: [tokyo, matsumoto], distanceM: 225_000, durationS: 10_000
+            ),
+        ]
+        let straight = Geo.haversineDistance(
+            lat1: matsumoto.latitude, lng1: matsumoto.longitude,
+            lat2: kamikochi.latitude, lng2: kamikochi.longitude
+        )
+        #expect(
+            RouteLegDistance.totalMeters(legs: legs, resolved: resolved) == 225_000 + straight
+        )
+    }
+
+    @Test func 全レグ未解決なら直線距離の合計() {
+        let legs = RouteLegBuilder.legs(through: [tokyo, matsumoto])
+        let straight = Geo.haversineDistance(
+            lat1: tokyo.latitude, lng1: tokyo.longitude,
+            lat2: matsumoto.latitude, lng2: matsumoto.longitude
+        )
+        #expect(RouteLegDistance.totalMeters(legs: legs, resolved: [:]) == straight)
+    }
+
+    @Test func レグなしなら距離0() {
+        #expect(RouteLegDistance.totalMeters(legs: [], resolved: [:]) == 0)
+    }
+
+    @Test func 同一地点レグは距離0扱い() {
+        let degenerate = RouteLeg(from: tokyo, to: tokyo)
+        #expect(RouteLegDistance.totalMeters(legs: [degenerate], resolved: [:]) == 0)
+    }
 }

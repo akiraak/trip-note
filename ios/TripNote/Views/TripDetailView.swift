@@ -378,6 +378,21 @@ private struct TripDayRow: View {
     /// 前日までの最後の座標(前泊地など)。ミニ地図のルートの起点になる
     var routeStart: CLLocationCoordinate2D?
 
+    /// レグの解決結果。1 つの .task でミニ地図の道路形状と距離表示の両方を賄い、
+    /// 行あたりの二重リクエストを避けるためミニ地図ではなくこの行が持つ
+    @State private var resolvedLegs: [String: ResolvedRouteLeg] = [:]
+
+    private var annotations: [TripCheckpointAnnotation] {
+        day.sortedCheckpoints.compactMap(TripCheckpointAnnotation.make)
+    }
+
+    private var legs: [RouteLeg] {
+        RouteLegBuilder.legs(
+            routeStart: routeStart?.routePoint,
+            through: annotations.map(\.coordinate.routePoint)
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
@@ -387,6 +402,15 @@ private struct TripDayRow: View {
                 Text(dateText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                // 車での走行距離。未解決レグ混じり・OSRM 由来のどちらでも概算なので常に「約」
+                if !legs.isEmpty {
+                    Label(
+                        "約\(ContentView.formatDistance(RouteLegDistance.totalMeters(legs: legs, resolved: resolvedLegs)))",
+                        systemImage: "car"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
             }
             if let title = day.title, !title.isEmpty {
                 Text(title)
@@ -407,13 +431,24 @@ private struct TripDayRow: View {
             // この日のミニ地図(座標ありチェックポイントを訪問順に。前泊地からのルート付き)
             let annotations = checkpoints.compactMap(TripCheckpointAnnotation.make)
             if !annotations.isEmpty {
-                TripDayMiniMap(annotations: annotations, routeStart: routeStart)
-                    .frame(height: 120)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.top, 4)
+                TripDayMiniMap(
+                    annotations: annotations,
+                    routeStart: routeStart,
+                    legs: legs,
+                    resolvedLegs: resolvedLegs
+                )
+                .frame(height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.top, 4)
             }
         }
         .padding(.vertical, 2)
+        // チェックポイントの追加・並び替え・座標の具体化でレグキー列が変わったら解決し直す
+        // (キャッシュ済みレグは即答し、変わった区間だけサーバへ問い合わせる)
+        .task(id: legs.map(\.key).joined(separator: "|")) {
+            guard !legs.isEmpty, let client = SyncClient.fromBundle() else { return }
+            resolvedLegs = await client.resolvedLegs(for: legs)
+        }
     }
 
     private var dateText: String {
@@ -424,20 +459,13 @@ private struct TripDayRow: View {
 
 /// 日別行のミニ地図。その日のチェックポイントを訪問順のピン + ポリラインで表示する。
 /// routeStart(前泊地など)があればそこを起点にルートを引く。
-/// ルートはレグ(隣接点間)ごとに道路形状を非同期で解決し、未取得・失敗レグは直線で描く。
+/// レグ列と道路形状の解決結果は TripDayRow から受け取り、未解決レグは直線で描く。
 /// 操作不可(行タップで日詳細へ遷移するのを妨げない)
 private struct TripDayMiniMap: View {
     let annotations: [TripCheckpointAnnotation]
     var routeStart: CLLocationCoordinate2D?
-
-    @State private var roadLegs: [String: [RoutePoint]] = [:]
-
-    private var legs: [RouteLeg] {
-        RouteLegBuilder.legs(
-            routeStart: routeStart?.routePoint,
-            through: annotations.map(\.coordinate.routePoint)
-        )
-    }
+    let legs: [RouteLeg]
+    let resolvedLegs: [String: ResolvedRouteLeg]
 
     var body: some View {
         Map(initialPosition: .automatic, interactionModes: []) {
@@ -468,16 +496,11 @@ private struct TripDayMiniMap: View {
         }
         .mapStyle(.standard)
         .allowsHitTesting(false)
-        // チェックポイントの追加・並び替え・座標の具体化でレグキー列が変わったら解決し直す
-        // (キャッシュ済みレグは即答し、変わった区間だけサーバへ問い合わせる)
-        .task(id: legs.map(\.key).joined(separator: "|")) {
-            guard !legs.isEmpty, let client = SyncClient.fromBundle() else { return }
-            roadLegs = await client.roadPolylines(for: legs)
-        }
     }
 
     private func polyline(for leg: RouteLeg) -> [CLLocationCoordinate2D] {
-        roadLegs[leg.key]?.map(\.clCoordinate) ?? [leg.from.clCoordinate, leg.to.clCoordinate]
+        resolvedLegs[leg.key]?.points.map(\.clCoordinate)
+            ?? [leg.from.clCoordinate, leg.to.clCoordinate]
     }
 }
 

@@ -61,7 +61,7 @@ struct TripMapView: View {
 
     private let store = MediaStore.makeDefault()
 
-    @State private var roadLegs: [String: [RoutePoint]] = [:]
+    @State private var roadLegs: [String: ResolvedRouteLeg] = [:]
 
     private var planLegs: [RouteLeg] {
         RouteLegBuilder.legs(through: planRoute.map(\.routePoint))
@@ -117,12 +117,13 @@ struct TripMapView: View {
         .mapStyle(.standard)
         .task(id: planLegs.map(\.key).joined(separator: "|")) {
             guard !planLegs.isEmpty, let client = SyncClient.fromBundle() else { return }
-            roadLegs = await client.roadPolylines(for: planLegs)
+            roadLegs = await client.resolvedLegs(for: planLegs)
         }
     }
 
     private func polyline(for leg: RouteLeg) -> [CLLocationCoordinate2D] {
-        roadLegs[leg.key]?.map(\.clCoordinate) ?? [leg.from.clCoordinate, leg.to.clCoordinate]
+        roadLegs[leg.key]?.points.map(\.clCoordinate)
+            ?? [leg.from.clCoordinate, leg.to.clCoordinate]
     }
 
     @ViewBuilder
