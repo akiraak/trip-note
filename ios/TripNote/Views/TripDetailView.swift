@@ -424,22 +424,25 @@ private struct TripDayRow: View {
 
 /// 日別行のミニ地図。その日のチェックポイントを訪問順のピン + ポリラインで表示する。
 /// routeStart(前泊地など)があればそこを起点にルートを引く。
+/// ルートはレグ(隣接点間)ごとに道路形状を非同期で解決し、未取得・失敗レグは直線で描く。
 /// 操作不可(行タップで日詳細へ遷移するのを妨げない)
 private struct TripDayMiniMap: View {
     let annotations: [TripCheckpointAnnotation]
     var routeStart: CLLocationCoordinate2D?
 
-    private var routeCoordinates: [CLLocationCoordinate2D] {
-        let coordinates = annotations.map(\.coordinate)
-        guard let routeStart else { return coordinates }
-        return [routeStart] + coordinates
+    @State private var roadLegs: [String: [RoutePoint]] = [:]
+
+    private var legs: [RouteLeg] {
+        RouteLegBuilder.legs(
+            routeStart: routeStart?.routePoint,
+            through: annotations.map(\.coordinate.routePoint)
+        )
     }
 
     var body: some View {
         Map(initialPosition: .automatic, interactionModes: []) {
-            let route = routeCoordinates
-            if route.count >= 2 {
-                MapPolyline(coordinates: route)
+            ForEach(Array(legs.enumerated()), id: \.offset) { _, leg in
+                MapPolyline(coordinates: polyline(for: leg))
                     .stroke(
                         .blue,
                         style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
@@ -465,6 +468,16 @@ private struct TripDayMiniMap: View {
         }
         .mapStyle(.standard)
         .allowsHitTesting(false)
+        // チェックポイントの追加・並び替え・座標の具体化でレグキー列が変わったら解決し直す
+        // (キャッシュ済みレグは即答し、変わった区間だけサーバへ問い合わせる)
+        .task(id: legs.map(\.key).joined(separator: "|")) {
+            guard !legs.isEmpty, let client = SyncClient.fromBundle() else { return }
+            roadLegs = await client.roadPolylines(for: legs)
+        }
+    }
+
+    private func polyline(for leg: RouteLeg) -> [CLLocationCoordinate2D] {
+        roadLegs[leg.key]?.map(\.clCoordinate) ?? [leg.from.clCoordinate, leg.to.clCoordinate]
     }
 }
 

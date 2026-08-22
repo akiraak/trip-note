@@ -1,6 +1,18 @@
 import MapKit
 import SwiftUI
 
+extension RoutePoint {
+    var clCoordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+extension CLLocationCoordinate2D {
+    var routePoint: RoutePoint {
+        RoutePoint(latitude: latitude, longitude: longitude)
+    }
+}
+
 /// 地図上に出すメディアのサムネイルマーカー
 struct TripMediaAnnotation: Identifiable {
     let media: MediaEntity
@@ -42,11 +54,18 @@ struct TripMapView: View {
     var mediaAnnotations: [TripMediaAnnotation] = []
     var checkpointAnnotations: [TripCheckpointAnnotation] = []
     /// 今後のプランのルート(チェックポイントを日順・訪問順につないだ座標列)。
-    /// 記録済みの軌跡(実線)と区別するため破線で描く
+    /// 記録済みの軌跡(実線)と区別するため破線で描く。レグ(隣接点間)ごとに
+    /// 道路形状を非同期で解決し、未取得・失敗レグは従来どおりの直線で描く
     var planRoute: [CLLocationCoordinate2D] = []
     var onSelectMedia: ((MediaEntity) -> Void)?
 
     private let store = MediaStore.makeDefault()
+
+    @State private var roadLegs: [String: [RoutePoint]] = [:]
+
+    private var planLegs: [RouteLeg] {
+        RouteLegBuilder.legs(through: planRoute.map(\.routePoint))
+    }
 
     private var totalCount: Int {
         segments.reduce(0) { $0 + $1.count }
@@ -54,8 +73,8 @@ struct TripMapView: View {
 
     var body: some View {
         Map(initialPosition: .automatic) {
-            if planRoute.count >= 2 {
-                MapPolyline(coordinates: planRoute)
+            ForEach(Array(planLegs.enumerated()), id: \.offset) { _, leg in
+                MapPolyline(coordinates: polyline(for: leg))
                     .stroke(
                         .blue.opacity(0.55),
                         style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 6])
@@ -96,6 +115,14 @@ struct TripMapView: View {
             }
         }
         .mapStyle(.standard)
+        .task(id: planLegs.map(\.key).joined(separator: "|")) {
+            guard !planLegs.isEmpty, let client = SyncClient.fromBundle() else { return }
+            roadLegs = await client.roadPolylines(for: planLegs)
+        }
+    }
+
+    private func polyline(for leg: RouteLeg) -> [CLLocationCoordinate2D] {
+        roadLegs[leg.key]?.map(\.clCoordinate) ?? [leg.from.clCoordinate, leg.to.clCoordinate]
     }
 
     @ViewBuilder

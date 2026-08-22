@@ -269,6 +269,38 @@ AI 検索補助。大まかな地域 + 種別 + 自由記述から、地図検�
 - クライアントは候補を選ぶとそのクエリで通常の地図検索を実行する
   (座標の確定は地図検索に任せ、AI の座標は信用しない)
 
+## POST /api/route
+
+道路ルート解決。プランのルートを「隣接チェックポイント間のレグ(区間)」の集合として
+扱い、レグ単位で実際の道路形状(ポリライン)を返す。実体は OSRM のプロキシ
+(`web/src/lib/routing.ts`)で、`route_legs` テーブル(サーバ専用・同期対象外)に
+レグ単位で無期限キャッシュする。キャッシュキーは座標ペアを小数 4 桁(約 10m 粒度)で
+丸めた `"lat,lon>lat,lon"` なので、チェックポイントの追加・並び替え・座標の具体化では
+変わった区間だけが再取得になる。
+
+- ルーティングエンジンは OSRM デモサーバ(`router.project-osrm.org`、car プロファイル)。
+  env `OSRM_ENDPOINT` で差し替え可(既定値ありの任意 env)。呼び出しは
+  キャッシュミス時のみで、直列 + 最小間隔 1 秒(nominatim と同じ throttle)
+- キャッシュは 5000 行を超えた分を古い順に削除。OSRM 失敗(停止・ルート無し)は
+  キャッシュしない(次回再試行)
+
+リクエスト(1〜50 レグ。座標は緯度 -90〜90 / 経度 -180〜180):
+
+```json
+{ "legs": [ { "from": { "latitude": 36.2381, "longitude": 137.9719 },
+              "to":   { "latitude": 36.1451, "longitude": 137.5502 } } ] }
+```
+
+レスポンス(入力と同順・同数。解決できないレグは null = クライアントは直線フォールバック):
+
+```json
+{ "legs": [ { "coordinates": [[137.9719, 36.2381], [137.55, 36.15]],
+              "distanceM": 41234.5, "durationS": 3456.7 } ] }
+```
+
+- `coordinates` は GeoJSON LineString と同じ **[lon, lat]** のペア列
+- エラー: `400 {"error":"invalid json|invalid payload"}` / `401`
+
 ## POST /api/media
 
 iOS アプリからのメディアアップロード(1 リクエスト 1 ファイル)。詳細は
@@ -299,5 +331,9 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
   DTO は `Models/AIRecords.swift`(camelCase)、提案の採用は `Domain/PlanEditor.adopt`。
   plan / trip-outline はジョブ方式(POST /api/ai/jobs → 3 秒間隔で
   GET /api/ai/jobs/[id]、全体 10 分で打ち切り)。search-assist のみ同期 POST
+- 道路ルート(/api/route)は `Services/RouteClient.swift`(SyncClient の extension)、
+  DTO は `Models/RouteRecords.swift`、レグ組み立ては `Domain/RouteLegs.swift`。
+  アプリ内メモリキャッシュ(`RouteLegCache`、レグキー → 座標列)を挟み、
+  未解決レグは直線で描く
 - 接続設定は `Resources/ServerConfig.plist`(SERVER_URL / API_KEY、gitignore 済み。
   雛形は `ServerConfig.example.plist`。作成後は `xcodegen generate` を再実行)

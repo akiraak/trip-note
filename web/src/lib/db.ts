@@ -124,6 +124,21 @@ const MIGRATIONS: string[] = [
     updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   );
   `,
+  // 道路ルートのレグ(隣接チェックポイント間)キャッシュ(サーバ専用・同期対象外)。
+  // key は座標ペアを小数 4 桁(約 10m)で丸めた "lat,lon>lat,lon"。座標が変われば
+  // キーが変わるので明示的な無効化は不要。geometry は GeoJSON LineString の
+  // 座標列 [[lon,lat],...] の JSON
+  `
+  create table route_legs (
+    key text primary key,
+    geometry text not null,
+    distance_m real not null,
+    duration_s real not null,
+    created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  create index route_legs_created_idx on route_legs (created_at);
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

@@ -18,14 +18,16 @@ struct TripDayDetailView: View {
 
     var body: some View {
         List {
-            // 座標が決まっているチェックポイントの地図(この日の分だけ)
+            // 座標が決まっているチェックポイントの地図(この日の分だけ)。
+            // 日別ミニ地図と同じく前泊地起点のルート(道路形状・直線フォールバック)を描く
             let pins = checkpointAnnotations
             if !pins.isEmpty {
                 Section {
                     TripMapView(
                         segments: [],
                         isActive: false,
-                        checkpointAnnotations: pins
+                        checkpointAnnotations: pins,
+                        planRoute: dayRoute
                     )
                     .frame(height: 220)
                     .listRowInsets(EdgeInsets())
@@ -151,6 +153,17 @@ struct TripDayDetailView: View {
 
     private var checkpointAnnotations: [TripCheckpointAnnotation] {
         day.sortedCheckpoints.compactMap(TripCheckpointAnnotation.make)
+    }
+
+    /// この日のルート座標列(前泊地起点 + 訪問順のチェックポイント)。日別ミニ地図と同じ扱い
+    private var dayRoute: [CLLocationCoordinate2D] {
+        let coordinates = checkpointAnnotations.map(\.coordinate)
+        guard
+            let trip = day.trip,
+            let index = trip.sortedDays.firstIndex(where: { $0.id == day.id }),
+            let start = TripDetailView.routeAnchor(before: index, in: trip.sortedDays)
+        else { return coordinates }
+        return [start] + coordinates
     }
 
     private var dayTitle: String {

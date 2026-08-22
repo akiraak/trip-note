@@ -2,6 +2,11 @@
 
 ## 2026-08-22
 
+- 現在日毎のプランは出発地点と目的地が直線で結ばれているけど、車で走る道の詳細がわかるようにする [plan](docs/plans/archive/plan-road-routes.md)
+  - ルートを「隣接チェックポイント間のレグ」の集合として扱い、サーバの `POST /api/route`(OSRM デモサーバのプロキシ + `route_legs` テーブルにレグ単位で無期限キャッシュ、`OSRM_ENDPOINT` で差し替え可)で道路形状を解決
+  - iOS はミニ地図・トップ地図(破線)・日詳細(新規にルート表示追加)をレグ単位の道路ポリラインに差し替え。メモリキャッシュ(RouteLegCache)+ `.task(id: レグキー列)` で途中挿入・並び替えに追従、未取得・失敗レグは従来の直線フォールバック
+  - 検証: web vitest 85 件(routing 10 件新規)+ lint + build、iOS ユニットテスト 100 件(レグ組み立て 7 件 + DTO 3 件新規)+ シミュレータビルド、dev サーバ + 実 OSRM で /api/route の E2E(松本→上高地→高山、キャッシュヒット・401/400 確認)
+
 - アプリ名を「旅ログ」に変更 [plan](docs/plans/archive/rename-app-tabilog.md)
   - 表示名のみ変更(iOS: CFBundleDisplayName + navigationTitle / Web: metadata.title + ヘッダ)。ターゲット名・bundle id 等の内部識別子は不変
   - 検証: xcodegen 再生成 + iOS シミュレータビルド、web lint + build
