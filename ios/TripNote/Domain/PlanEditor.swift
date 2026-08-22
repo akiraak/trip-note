@@ -119,6 +119,24 @@ enum PlanEditor {
         return TripDayEntity(date: date, updatedAt: now, trip: trip)
     }
 
+    /// 旅行を削除する(tombstone)。ぶら下がる日・チェックポイントも道連れにする。
+    /// location_points / media は不変(tombstone を持たない)ため触らない
+    /// (親 trip の tombstone で非表示になる)
+    static func delete(_ trip: TripEntity, now: Date = Date()) {
+        for day in trip.days where day.deletedAt == nil {
+            delete(day, now: now)
+        }
+        // 日との関連が切れたチェックポイントも取りこぼさない
+        for checkpoint in trip.checkpoints
+        where checkpoint.deletedAt == nil && checkpoint.tripDay == nil {
+            delete(checkpoint, now: now)
+        }
+        trip.isRecordingActive = false
+        trip.deletedAt = now
+        trip.updatedAt = now
+        trip.needsSync = true
+    }
+
     /// 日を削除する(tombstone)。ぶら下がるチェックポイントも道連れにする
     static func delete(_ day: TripDayEntity, now: Date = Date()) {
         for checkpoint in day.checkpoints where checkpoint.deletedAt == nil {

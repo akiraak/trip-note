@@ -34,6 +34,17 @@ function revalidateTrip(tripId: string) {
   revalidatePath(`/trips/${tripId}`);
 }
 
+export async function deleteTripAction(tripId: string): Promise<ActionResult> {
+  try {
+    plan.deleteTrip(tripId);
+    revalidatePath("/");
+    revalidateTrip(tripId);
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 export async function addDayAction(tripId: string): Promise<ActionResult> {
   try {
     const day = plan.addTripDay(tripId);

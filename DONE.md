@@ -2,6 +2,11 @@
 
 ## 2026-08-21
 
+- 旅行の削除 [plan](docs/plans/archive/trip-delete.md)
+  - tombstone 削除(既存の双方向同期に乗る)。未削除の日・チェックポイントも道連れ、points / media は行を残す(親の tombstone で非表示)
+  - iOS: TripDetailView に「旅行を削除」+ 確認ダイアログ(記録中なら停止してから)。Web: 旅行詳細下部に二段階削除 → 一覧へ
+  - 検証: web vitest 59 件 + lint + build、iOS ユニットテスト 82 件
+
 - AI 日数・宿泊地候補の長距離移動対応 [plan](docs/plans/archive/trip-outline-long-distance.md)
   - プロンプトを「出発地から目的地へ向かう行程」前提に書き換え(離れていれば経路上の中継地で宿泊。車は 1 日 400〜600km 目安)
   - 現在地の地名に市区町村名を前置(番地だけで都市が伝わらない問題)、出発地の座標も AI 入力に追加

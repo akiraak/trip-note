@@ -138,6 +138,29 @@ export function updateTripDay(
   return day;
 }
 
+/** 旅行を削除する(tombstone)。ぶら下がる日・チェックポイントも道連れにする。
+ *  location_points / media は不変(tombstone を持たない)ため行は残す
+ *  (親 trip の tombstone で非表示になる) */
+export function deleteTrip(tripId: string): Trip {
+  const trip = getTrip(tripId);
+  const db = getDb();
+  const now = nowIso();
+  db.transaction(() => {
+    db.prepare(
+      `update checkpoints set deleted_at = @now, updated_at = @now
+       where trip_id = @id and deleted_at is null`,
+    ).run({ id: tripId, now });
+    db.prepare(
+      `update trip_days set deleted_at = @now, updated_at = @now
+       where trip_id = @id and deleted_at is null`,
+    ).run({ id: tripId, now });
+    db.prepare(
+      "update trips set deleted_at = @now, updated_at = @now where id = @id",
+    ).run({ id: tripId, now });
+  })();
+  return trip;
+}
+
 /** 日を削除する(tombstone)。ぶら下がるチェックポイントも道連れにする */
 export function deleteTripDay(dayId: string): TripDay {
   const day = getDay(dayId);

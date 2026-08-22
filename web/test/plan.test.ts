@@ -10,6 +10,7 @@ import {
   adoptPlanSuggestion,
   createCheckpoint,
   deleteCheckpoint,
+  deleteTrip,
   deleteTripDay,
   moveCheckpoint,
   nextDate,
@@ -17,7 +18,7 @@ import {
   updateTripDay,
   type CheckpointInput,
 } from "@/lib/plan";
-import type { Checkpoint, TripDay } from "@/lib/types";
+import type { Checkpoint, Trip, TripDay } from "@/lib/types";
 
 // Web プラン編集(lib/plan.ts)の LWW 打刻 / tombstone / sort_order を
 // テスト毎に作る一時 DB ファイルで検証する(sync.test.ts と同じ方式)
@@ -91,6 +92,10 @@ function seedCheckpoint(over: Record<string, unknown> = {}) {
     });
 }
 
+function getTripRow(id: string): Trip {
+  return getDb().prepare("select * from trips where id = ?").get(id) as Trip;
+}
+
 function getDayRow(id: string): TripDay {
   return getDb().prepare("select * from trip_days where id = ?").get(id) as TripDay;
 }
@@ -156,6 +161,31 @@ describe("updateTripDay", () => {
     expect(row.title).toBe("松本周辺");
     expect(row.note).toBeNull();
     expect(row.updated_at > OLD).toBe(true);
+  });
+});
+
+describe("deleteTrip", () => {
+  it("旅行と生きている日・チェックポイントを tombstone にする", () => {
+    seedTrip();
+    seedDay();
+    seedDay({ id: "day-2", date: "2026-09-02", deleted_at: OLD });
+    seedCheckpoint({ id: "cp-1" });
+    seedCheckpoint({ id: "cp-2", sort_order: 1, deleted_at: OLD });
+    deleteTrip("trip-1");
+    const trip = getTripRow("trip-1");
+    expect(trip.deleted_at).not.toBeNull();
+    expect(trip.updated_at > OLD).toBe(true);
+    expect(getDayRow("day-1").deleted_at).not.toBeNull();
+    expect(getCheckpointRow("cp-1").deleted_at).not.toBeNull();
+    // 削除済みの行は触らない(updated_at を進めて LWW を乱さない)
+    expect(getDayRow("day-2").updated_at).toBe(OLD);
+    expect(getCheckpointRow("cp-2").updated_at).toBe(OLD);
+  });
+
+  it("削除済み・存在しない旅行は拒否する", () => {
+    seedTrip({ deleted_at: OLD });
+    expect(() => deleteTrip("trip-1")).toThrow(/見つかりません/);
+    expect(() => deleteTrip("unknown")).toThrow(/見つかりません/);
   });
 });
 

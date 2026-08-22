@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Header } from "../../header";
+import { DeleteTrip } from "./delete-trip";
 import { PlanSection, type PlanDay } from "./plan-section";
 import { TripMap } from "./trip-map";
 import { transportLabel } from "@/lib/checkpoint-style";
@@ -248,6 +249,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             ))}
           </ol>
         )}
+        <DeleteTrip tripId={trip.id} />
       </main>
     </>
   );

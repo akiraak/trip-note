@@ -14,8 +14,10 @@ struct TripDetailView: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedMedia: MediaEntity?
     @State private var showsEndConfirmation = false
+    @State private var showsDeleteConfirmation = false
     @State private var showsTripEdit = false
     @State private var showsAIPlanSuggest = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
@@ -106,6 +108,12 @@ struct TripDetailView: View {
                 }
             }
 
+            Section {
+                Button("旅行を削除", role: .destructive) {
+                    showsDeleteConfirmation = true
+                }
+            }
+
             Section("メディア") {
                 mediaSection
             }
@@ -166,6 +174,26 @@ struct TripDetailView: View {
         } message: {
             Text("記録中の場合は記録も停止します。")
         }
+        .confirmationDialog(
+            "この旅行を削除しますか?",
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("旅行を削除", role: .destructive, action: deleteTrip)
+        } message: {
+            Text("プラン・記録・メディアごと削除され、Web にも同期されます。")
+        }
+    }
+
+    /// 旅行を削除(tombstone)する。この旅行を記録中なら記録を止めてから削除する
+    private func deleteTrip() {
+        if trip.persistentModelID == recorder.activeTrip?.persistentModelID {
+            recorder.stopRecording()
+        }
+        PlanEditor.delete(trip)
+        try? modelContext.save()
+        dismiss()
+        Task { await sync.syncNow() }
     }
 
     private func addDay() {

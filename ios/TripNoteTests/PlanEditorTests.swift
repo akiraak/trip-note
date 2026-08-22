@@ -159,6 +159,32 @@ struct PlanEditorTests {
 
     // MARK: - 削除(tombstone)
 
+    @Test func 旅行の削除は日とチェックポイントも道連れにする() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let trip = TripEntity(title: "t", updatedAt: old)
+        trip.isRecordingActive = true
+        let day = TripDayEntity(date: "2026-09-01", updatedAt: old)
+        let deletedDay = TripDayEntity(date: "2026-09-02", updatedAt: old)
+        deletedDay.deletedAt = old
+        trip.days = [day, deletedDay]
+        let checkpoint = CheckpointEntity(type: .lodging, name: "宿", updatedAt: old)
+        day.checkpoints = [checkpoint]
+        trip.checkpoints = [checkpoint]
+
+        PlanEditor.delete(trip, now: now)
+
+        #expect(trip.deletedAt == now)
+        #expect(trip.updatedAt == now)
+        #expect(trip.needsSync)
+        #expect(!trip.isRecordingActive)
+        #expect(day.deletedAt == now)
+        #expect(checkpoint.deletedAt == now)
+        // 既に削除済みの日は触らない(updatedAt を進めて LWW を乱さない)
+        #expect(deletedDay.deletedAt == old)
+        #expect(deletedDay.updatedAt == old)
+    }
+
     @Test func 日の削除はチェックポイントも道連れにする() {
         let now = date("2026-08-21T10:00:00+09:00")
         let day = TripDayEntity(date: "2026-09-01")
