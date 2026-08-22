@@ -13,6 +13,9 @@ final class TripEntity {
     var transport: String?
     /// tombstone。削除は物理削除せず deleted_at を同期で伝搬する
     var deletedAt: Date?
+    /// 編集時刻。双方向同期の LWW の基準になるため、同期対象フィールドの変更時は必ず更新する
+    /// (isRecordingActive / needsSync などローカル専用フィールドの変更では更新しない)
+    var updatedAt: Date = Date()
     /// この旅行を現在記録中か(ローカル専用・同期しない)。
     /// アプリがシステムに終了された後の記録再開(resumeIfNeeded)の目印になる
     var isRecordingActive: Bool = false
@@ -31,11 +34,18 @@ final class TripEntity {
     @Relationship(deleteRule: .cascade, inverse: \CheckpointEntity.trip)
     var checkpoints: [CheckpointEntity] = []
 
-    init(id: UUID = UUID(), title: String, startedAt: Date? = nil, endedAt: Date? = nil) {
+    init(
+        id: UUID = UUID(),
+        title: String,
+        startedAt: Date? = nil,
+        endedAt: Date? = nil,
+        updatedAt: Date = Date()
+    ) {
         self.id = id
         self.title = title
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.updatedAt = updatedAt
     }
 
     var status: TripStatus {

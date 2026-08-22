@@ -20,6 +20,8 @@ struct SyncClient: Sendable {
 
     private struct SyncPayload: Encodable {
         let trips: [TripRecord]
+        let days: [TripDayRecord]
+        let checkpoints: [CheckpointRecord]
         let points: [LocationPointRecord]
     }
 
@@ -33,12 +35,36 @@ struct SyncClient: Sendable {
         return encoder
     }()
 
-    func send(trips: [TripRecord], points: [LocationPointRecord]) async throws {
+    /// pull 応答の日付は小数秒あり/なしどちらの ISO8601 も受け付ける
+    static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            guard let date = SyncDateFormat.date(from: string) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "ISO8601 として解釈できません: \(string)"
+                )
+            }
+            return date
+        }
+        return decoder
+    }()
+
+    func send(
+        trips: [TripRecord] = [],
+        days: [TripDayRecord] = [],
+        checkpoints: [CheckpointRecord] = [],
+        points: [LocationPointRecord] = []
+    ) async throws {
         var request = URLRequest(url: baseURL.appending(path: "api/sync"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try Self.encoder.encode(SyncPayload(trips: trips, points: points))
+        request.httpBody = try Self.encoder.encode(
+            SyncPayload(trips: trips, days: days, checkpoints: checkpoints, points: points)
+        )
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw SyncClientError.serverError(statusCode: -1)
@@ -46,6 +72,32 @@ struct SyncClient: Sendable {
         guard (200..<300).contains(http.statusCode) else {
             throw SyncClientError.serverError(statusCode: http.statusCode)
         }
+    }
+
+    /// プラン系の更新分を取得する。since は前回応答の serverTime(初回は nil で全件)
+    func pull(since: String?) async throws -> PullResponse {
+        guard
+            var components = URLComponents(
+                url: baseURL.appending(path: "api/sync/pull"),
+                resolvingAgainstBaseURL: false
+            )
+        else { throw SyncClientError.serverError(statusCode: -1) }
+        if let since {
+            components.queryItems = [URLQueryItem(name: "since", value: since)]
+        }
+        guard let url = components.url else {
+            throw SyncClientError.serverError(statusCode: -1)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SyncClientError.serverError(statusCode: -1)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SyncClientError.serverError(statusCode: http.statusCode)
+        }
+        return try Self.decoder.decode(PullResponse.self, from: data)
     }
 
     /// メディアファイルを 1 件アップロードする。メタデータはクエリ、ボディはファイル。

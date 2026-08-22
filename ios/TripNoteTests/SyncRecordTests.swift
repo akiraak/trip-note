@@ -20,7 +20,11 @@ struct SyncRecordTests {
     }
 
     @Test func TripRecordはsnake_caseで進行中はended_atをnullにする() throws {
-        let trip = TripEntity(title: "テスト旅行", startedAt: Date(timeIntervalSince1970: 0))
+        let trip = TripEntity(
+            title: "テスト旅行",
+            startedAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 60)
+        )
         let json = try encodeToJSON(TripRecord(trip))
         #expect(json.contains("\"started_at\":\"1970-01-01T00:00:00.000Z\""))
         #expect(json.contains("\"ended_at\":null"))
@@ -28,6 +32,8 @@ struct SyncRecordTests {
         // 一括 upsert で行ごとのキーを揃えるため、nil でも省略せず null を送る
         #expect(json.contains("\"transport\":null"))
         #expect(json.contains("\"deleted_at\":null"))
+        // 編集時刻(LWW の基準)はクライアントが打刻して送る
+        #expect(json.contains("\"updated_at\":\"1970-01-01T00:01:00.000Z\""))
     }
 
     @Test func プラン段階のTripRecordはstarted_atがnull() throws {

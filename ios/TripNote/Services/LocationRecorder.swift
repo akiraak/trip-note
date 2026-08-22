@@ -69,6 +69,7 @@ final class LocationRecorder: NSObject {
             stopRecording()
         }
         trip.endedAt = Date()
+        trip.updatedAt = Date()
         trip.needsSync = true
         saveContext()
     }
@@ -106,6 +107,7 @@ final class LocationRecorder: NSObject {
         }
         if trip.startedAt == nil {
             trip.startedAt = Date()
+            trip.updatedAt = Date()
         }
         trip.isRecordingActive = true
         trip.needsSync = true

@@ -1,0 +1,82 @@
+import Foundation
+
+/// `GET /api/sync/pull` の応答。プラン系(trips / trip_days / checkpoints)の
+/// 更新分(tombstone 含む)と serverTime を受け取る。
+/// serverTime は次回 pull の since にそのまま渡すため文字列のまま保持する
+struct PullResponse: Decodable, Sendable {
+    let serverTime: String
+    let trips: [TripPullRecord]
+    let days: [TripDayPullRecord]
+    let checkpoints: [CheckpointPullRecord]
+}
+
+struct TripPullRecord: Decodable, Sendable {
+    let id: UUID
+    let title: String
+    let startedAt: Date?
+    let endedAt: Date?
+    let transport: String?
+    let updatedAt: Date
+    let deletedAt: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+        case transport
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+    }
+}
+
+struct TripDayPullRecord: Decodable, Sendable {
+    let id: UUID
+    let tripId: UUID
+    /// YYYY-MM-DD
+    let date: String
+    let title: String?
+    let note: String?
+    let updatedAt: Date
+    let deletedAt: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case tripId = "trip_id"
+        case date
+        case title
+        case note
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+    }
+}
+
+struct CheckpointPullRecord: Decodable, Sendable {
+    let id: UUID
+    let tripId: UUID
+    let tripDayId: UUID
+    let type: String
+    let name: String
+    let latitude: Double?
+    let longitude: Double?
+    let plannedTime: Date?
+    let note: String?
+    let sortOrder: Int
+    let updatedAt: Date
+    let deletedAt: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case tripId = "trip_id"
+        case tripDayId = "trip_day_id"
+        case type
+        case name
+        case latitude
+        case longitude
+        case plannedTime = "planned_time"
+        case note
+        case sortOrder = "sort_order"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+    }
+}

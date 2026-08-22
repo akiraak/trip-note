@@ -2,13 +2,22 @@ import Foundation
 
 /// サーバ API と揃えた ISO8601(小数秒付き)の日付文字列
 enum SyncDateFormat {
-    static func string(from date: Date) -> String {
-        let style = Date.ISO8601FormatStyle()
+    private static var style: Date.ISO8601FormatStyle {
+        Date.ISO8601FormatStyle()
             .year().month().day()
             .dateTimeSeparator(.standard)
             .time(includingFractionalSeconds: true)
             .timeZone(separator: .omitted)
-        return date.formatted(style)
+    }
+
+    static func string(from date: Date) -> String {
+        date.formatted(style)
+    }
+
+    /// pull 応答のパース用。小数秒なしの ISO8601 も受け付ける
+    static func date(from string: String) -> Date? {
+        (try? style.parse(string))
+            ?? (try? Date.ISO8601FormatStyle().parse(string))
     }
 }
 
@@ -21,6 +30,7 @@ struct TripRecord: Encodable, Sendable {
     let startedAt: Date?
     let endedAt: Date?
     let transport: String?
+    let updatedAt: Date
     let deletedAt: Date?
 
     init(_ trip: TripEntity) {
@@ -29,6 +39,7 @@ struct TripRecord: Encodable, Sendable {
         startedAt = trip.startedAt
         endedAt = trip.endedAt
         transport = trip.transport
+        updatedAt = trip.updatedAt
         deletedAt = trip.deletedAt
     }
 
@@ -38,6 +49,7 @@ struct TripRecord: Encodable, Sendable {
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case transport
+        case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
     }
 
@@ -48,6 +60,7 @@ struct TripRecord: Encodable, Sendable {
         try container.encode(startedAt, forKey: .startedAt)
         try container.encode(endedAt, forKey: .endedAt)
         try container.encode(transport, forKey: .transport)
+        try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(deletedAt, forKey: .deletedAt)
     }
 }

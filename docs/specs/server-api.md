@@ -14,8 +14,9 @@
 - プラン系(trips / trip_days / checkpoints)は iOS と双方向同期する。
   `updated_at` はクライアントの編集時刻(LWW の基準)、`deleted_at` は tombstone。
   location_points / media は従来通り不変・一方向アップロード
-- trip_days / checkpoints の同期 API(POST /api/sync 拡張・GET /api/sync/pull)は
-  Phase 3 で追加予定(iOS 側 DTO は `Models/SyncRecords.swift` に定義済み)
+- 競合解決は行単位の LWW: push(POST /api/sync)は `updated_at` が既存より新しい
+  ときだけ上書きし、pull(GET /api/sync/pull)は `updated_at > since` の行を
+  tombstone 含めて返す。同時刻は既存を保持(単一ユーザーなのでこれで十分)
 
 ## 認証
 
@@ -25,7 +26,7 @@
 
 ## POST /api/sync
 
-iOS アプリからのアップロード。upsert で冪等(id はクライアント発行の UUID)。
+iOS アプリからのアップロード(push)。upsert で冪等(id はクライアント発行の UUID)。
 
 リクエスト:
 
@@ -33,7 +34,17 @@ iOS アプリからのアップロード。upsert で冪等(id はクライア�
 {
   "trips": [
     { "id": "uuid", "title": "…", "started_at": "ISO8601|null", "ended_at": "ISO8601|null",
-      "transport": "car|null", "deleted_at": "ISO8601|null" }
+      "transport": "car|null", "updated_at": "ISO8601", "deleted_at": "ISO8601|null" }
+  ],
+  "days": [
+    { "id": "uuid", "trip_id": "uuid", "date": "YYYY-MM-DD", "title": "…|null",
+      "note": "…|null", "updated_at": "ISO8601", "deleted_at": "ISO8601|null" }
+  ],
+  "checkpoints": [
+    { "id": "uuid", "trip_id": "uuid", "trip_day_id": "uuid", "type": "lodging",
+      "name": "…", "latitude": 0, "longitude": 0, "planned_time": "ISO8601|null",
+      "note": "…|null", "sort_order": 0, "updated_at": "ISO8601",
+      "deleted_at": "ISO8601|null" }
   ],
   "points": [
     { "id": "uuid", "trip_id": "uuid", "latitude": 0, "longitude": 0,
@@ -44,16 +55,54 @@ iOS アプリからのアップロード。upsert で冪等(id はクライア�
 
 - trips は「旅行」単位(記録の開始/停止では分割しない)。`started_at` はプラン段階(未出発)では
   null、`deleted_at` は tombstone(物理削除しない)。閲覧 UI は `deleted_at is null` のみ表示
-- trips: `ON CONFLICT(id) DO UPDATE`
-  (title / started_at / ended_at / transport / deleted_at を更新、updated_at 更新)
-- points: 不変のため `INSERT OR IGNORE`。存在しない trip_id を参照する点は FK 違反で全体を
-  失敗させず、スキップして `skippedPoints` で返す
-- どちらのキーも省略可(iOS は trips だけ → points 500 件ずつの順で送る)
+- trips / days / checkpoints: `ON CONFLICT(id) DO UPDATE ...
+  WHERE excluded.updated_at > <table>.updated_at`(行単位の LWW。同時刻は既存を保持)。
+  `updated_at` はクライアントの編集時刻。trips のみ省略可(旧クライアント互換。
+  省略時はサーバが打刻し、従来通り常に上書きされる)
+- checkpoints の `type` は departure / destination / sightseeing / cafe / restaurant /
+  lodging / other 以外は 400
+- points: 不変のため `INSERT OR IGNORE`
+- 親が存在しない行(days の trip_id、checkpoints の trip_id / trip_day_id、points の
+  trip_id が未知)は FK 違反で全体を失敗させず、スキップして skipped 数で返す。
+  同一ペイロード内の親は先に upsert されるため参照できる
+- どのキーも省略可(iOS は trips → days → checkpoints → points 500 件ずつの順で送る)
 
 レスポンス:
 
-- `200 {"ok":true,"trips":N,"points":M,"skippedPoints":K}`
+- `200 {"ok":true,"trips":N,"days":N,"checkpoints":N,"points":M,
+  "skippedDays":K,"skippedCheckpoints":K,"skippedPoints":K}`
 - `401 {"error":"unauthorized"}` / `400 {"error":"invalid json"|"invalid payload"}`
+
+## GET /api/sync/pull
+
+iOS がプラン系(trips / trip_days / checkpoints)の変更を取り込む pull。
+location_points / media は対象外(一方向アップロードのみ)。
+
+- クエリ: `since`(ISO8601、任意)。指定時は `updated_at > since` の行のみ、
+  省略時は全件。tombstone(`deleted_at` あり)も含めて返す
+- レスポンスの `serverTime` はサーバの現在時刻。クライアントは適用完了後に保存し、
+  次回の `since` に使う(行の読み出し前に確定させるため、読み出し中の更新は
+  次回も返り得るが LWW なので重複適用は無害)
+
+レスポンス:
+
+```json
+{
+  "serverTime": "ISO8601",
+  "trips": [ { "id": "…", "title": "…", "started_at": null, "ended_at": null,
+    "transport": null, "updated_at": "…", "deleted_at": null } ],
+  "days": [ { "id": "…", "trip_id": "…", "date": "YYYY-MM-DD", "title": null,
+    "note": null, "updated_at": "…", "deleted_at": null } ],
+  "checkpoints": [ { "id": "…", "trip_id": "…", "trip_day_id": "…", "type": "…",
+    "name": "…", "latitude": null, "longitude": null, "planned_time": null,
+    "note": null, "sort_order": 0, "updated_at": "…", "deleted_at": null } ]
+}
+```
+
+- `401 {"error":"unauthorized"}`
+- iOS は起動時・フォアグラウンド復帰時・編集後の同期で pull → push の順に実行し、
+  行単位の LWW(`updated_at` の新しい方が勝つ、同時刻はローカル保持)で反映する。
+  ローカルに無い tombstone 行は取り込まない
 
 ## POST /api/media
 
@@ -76,7 +125,10 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
 
 ## クライアント(iOS)
 
-- `Services/SyncClient.swift`。日付は ISO8601(小数秒付き)、DTO は `Models/SyncRecords.swift`
-  (snake_case、nil カラムも明示的に null を送る)
+- `Services/SyncClient.swift`。日付は ISO8601(小数秒付き)、push DTO は
+  `Models/SyncRecords.swift`(snake_case、nil カラムも明示的に null を送る)、
+  pull DTO は `Models/PullRecords.swift`(小数秒なしの ISO8601 も受け付ける)
+- pull 反映(LWW)は `Domain/PlanPull.swift`、実行は `Services/SyncEngine.swift`
+  (pull → push の順)。前回 pull の serverTime は UserDefaults(`syncPullSince`)に保存
 - 接続設定は `Resources/ServerConfig.plist`(SERVER_URL / API_KEY、gitignore 済み。
   雛形は `ServerConfig.example.plist`。作成後は `xcodegen generate` を再実行)
