@@ -1,5 +1,12 @@
 # DONE - 完了済みタスク
 
+## 2026-08-22
+
+- アイコンの設定 [plan](docs/plans/archive/app-icon.md)
+  - iOS: Assets.xcassets の AppIcon(1024 single-size)+ project.yml に ASSETCATALOG_COMPILER_APPICON_NAME
+  - Web: favicon.ico(16/32/48 マルチサイズ・RGBA)/ icon.png(512)/ apple-icon.png(180)
+  - 元画像は docs/assets/app-icon-original.png に保存。検証: iOS シミュレータビルド + web build
+
 ## 2026-08-21
 
 - 旅行の削除 [plan](docs/plans/archive/trip-delete.md)
