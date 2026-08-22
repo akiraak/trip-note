@@ -2,6 +2,11 @@
 
 ## 2026-08-22
 
+- 旅行作成時に現在地を出発地へ自動反映 [plan](docs/plans/archive/auto-departure-current-location.md)
+  - フォームを開いたら現在地を自動取得して出発地に入れる(手入力があれば上書きしない)
+  - AI 候補リクエストの出発地は作成時の state を直接渡す(SwiftData 逆参照のタイミング非依存に)
+  - プロンプト防御: 出発地未指定なら出発都市を仮定せず目的地周辺で完結させる
+
 - プラン表示の UI 再構成 [plan](docs/plans/archive/plan-first-ui.md)
   - 「記録を開始」を旅行の中へ(LocationRecorder.startRecording(trip:) 新設。自動選択・自動作成の beginOrResumeTrip は廃止)。撮影ボタンも旅行内へ
   - 旅行作成後はその旅行の中へ遷移(NavigationStack path + onCreated)

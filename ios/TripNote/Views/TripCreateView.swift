@@ -28,6 +28,9 @@ struct TripCreateView: View {
 
     /// 作成済みの旅行。non-nil になったら候補ステップ
     @State private var createdTrip: TripEntity?
+    /// 作成時に確定した出発地。AI 候補リクエストには SwiftData の関連を読み直さず
+    /// これを直接渡す(挿入直後の逆参照のタイミングに依存しないため)
+    @State private var createdDeparture: PlanEditor.DeparturePlace?
     @State private var suggestion: AITripOutlineSuggestion?
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -59,6 +62,13 @@ struct TripCreateView: View {
                 }
             }
             .interactiveDismissDisabled(createdTrip != nil)
+            .task {
+                // フォームを開いたら現在地を出発地に自動入力する
+                // (取得中にユーザーが入力したら上書きしない)
+                if createdTrip == nil, trimmedDeparturePlace.isEmpty {
+                    await fillCurrentLocation(overwritesInput: false)
+                }
+            }
         }
     }
 
@@ -106,7 +116,10 @@ struct TripCreateView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    let points = Self.mapPoints(for: candidate, trip: trip)
+                    let points = Self.mapPoints(
+                        for: candidate,
+                        departure: resolvedDeparture(of: trip)
+                    )
                     if !points.isEmpty {
                         OutlineCandidateMap(points: points)
                             .frame(height: 150)
@@ -169,10 +182,10 @@ struct TripCreateView: View {
     /// 候補プレビュー地図の点列(出発地 + 各泊。座標が無い泊は飛ばす)
     static func mapPoints(
         for candidate: AITripOutlineCandidate,
-        trip: TripEntity
+        departure: PlanEditor.DeparturePlace?
     ) -> [OutlineMapPoint] {
         var points: [OutlineMapPoint] = []
-        if let departure = departureCheckpoint(of: trip),
+        if let departure,
            let latitude = departure.latitude,
            let longitude = departure.longitude {
             points.append(
@@ -208,14 +221,17 @@ struct TripCreateView: View {
         return "\(daysPart)・泊: \(areas.joined(separator: " → "))"
     }
 
-    /// 現在地取得を試みて出発地欄に地名を入れる(座標も保持して作成時に使う)
-    private func fillCurrentLocation() async {
+    /// 現在地取得を試みて出発地欄に地名を入れる(座標も保持して作成時に使う)。
+    /// overwritesInput = false は自動入力用で、取得中に手入力されていたら反映しない
+    private func fillCurrentLocation(overwritesInput: Bool = true) async {
+        guard !isLocating else { return }
         isLocating = true
         locationError = nil
         defer { isLocating = false }
         do {
             let location = try await locationProvider.requestLocation()
             let name = await OneShotLocationProvider.placeName(for: location) ?? "現在地"
+            guard overwritesInput || trimmedDeparturePlace.isEmpty else { return }
             departurePlace = name
             locatedPlace = PlanEditor.DeparturePlace(
                 name: name,
@@ -225,6 +241,20 @@ struct TripCreateView: View {
         } catch {
             locationError = error.localizedDescription
         }
+    }
+
+    /// 作成時に確定した出発地。state を優先し、無ければ(画面の再生成後など)
+    /// 1 日目の departure チェックポイントから読み直す
+    private func resolvedDeparture(of trip: TripEntity) -> PlanEditor.DeparturePlace? {
+        if let createdDeparture {
+            return createdDeparture
+        }
+        guard let checkpoint = Self.departureCheckpoint(of: trip) else { return nil }
+        return PlanEditor.DeparturePlace(
+            name: checkpoint.name,
+            latitude: checkpoint.latitude,
+            longitude: checkpoint.longitude
+        )
     }
 
     /// 入力された出発地。現在地で自動入力した名前のままなら座標付き、手入力は座標なし
@@ -239,13 +269,15 @@ struct TripCreateView: View {
 
     private func create() {
         let dest = trimmedDestination.isEmpty ? nil : trimmedDestination
+        let departure = enteredDeparturePlace
+        createdDeparture = departure
         let made = PlanEditor.makeTrip(
             title: trimmedTitle,
             // 移動手段は車に固定(選択 UI は持たない)
             transport: Transport.car.rawValue,
             departureAt: departureAt,
             destination: dest,
-            departurePlace: enteredDeparturePlace
+            departurePlace: departure
         )
         modelContext.insert(made.trip)
         for day in made.days {
@@ -277,14 +309,14 @@ struct TripCreateView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
-        let departureCheckpoint = Self.departureCheckpoint(of: trip)
+        let departure = resolvedDeparture(of: trip)
         let body = AITripOutlineRequest(
             destination: destination,
             departureDate: PlanEditor.dateString(departureAt),
             departureTime: PlanEditor.timeString(departureAt),
-            departure: departureCheckpoint?.name,
-            departureLatitude: departureCheckpoint?.latitude,
-            departureLongitude: departureCheckpoint?.longitude,
+            departure: departure?.name,
+            departureLatitude: departure?.latitude,
+            departureLongitude: departure?.longitude,
             transport: trip.transport ?? Transport.car.rawValue,
             request: nil
         )
