@@ -11,6 +11,7 @@ import {
   updateDayAction,
   type ActionResult,
 } from "./actions";
+import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
 import { PlaceSearch } from "./place-search";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
@@ -42,12 +43,18 @@ export type PlanDay = {
 export function PlanSection({
   tripId,
   days,
+  transport,
+  aiDefaults,
 }: {
   tripId: string;
   days: PlanDay[];
+  transport: string | null;
+  /** AI 提案フォームの初期値(page.tsx で計算) */
+  aiDefaults: { startDate: string; dayCount: number };
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   // Server Action を実行し、成功したらフォームを閉じるなどの後処理を行う
   const run = (action: () => Promise<ActionResult>, onSuccess?: () => void) => {
@@ -83,7 +90,16 @@ export function PlanSection({
           run={run}
         />
       ))}
-      <div>
+      {aiOpen && (
+        <AiPlanSuggest
+          tripId={tripId}
+          transport={transport}
+          defaultStartDate={aiDefaults.startDate}
+          defaultDayCount={aiDefaults.dayCount}
+          onDone={() => setAiOpen(false)}
+        />
+      )}
+      <div className="flex gap-2">
         <button
           type="button"
           disabled={pending}
@@ -92,6 +108,15 @@ export function PlanSection({
         >
           + 日を追加
         </button>
+        {!aiOpen && (
+          <button
+            type="button"
+            onClick={() => setAiOpen(true)}
+            className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            ✨ AI で行程を提案
+          </button>
+        )}
       </div>
     </div>
   );

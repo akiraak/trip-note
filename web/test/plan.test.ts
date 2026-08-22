@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db";
 import { guessCheckpointType } from "@/lib/nominatim";
 import {
   addTripDay,
+  adoptPlanSuggestion,
   createCheckpoint,
   deleteCheckpoint,
   deleteTripDay,
@@ -287,6 +288,94 @@ describe("moveCheckpoint", () => {
     expect(getCheckpointRow("cp-1").sort_order).toBe(1);
     expect(getCheckpointRow("cp-x").sort_order).toBe(1); // 触らない
     expect(getCheckpointRow("cp-x").updated_at).toBe(OLD);
+  });
+});
+
+describe("adoptPlanSuggestion", () => {
+  const suggestedDays = [
+    {
+      date: "2026-09-01",
+      title: "松本周辺を観光して泊",
+      checkpoints: [
+        { type: "departure" as const, name: "東京駅", note: null },
+        { type: "sightseeing" as const, name: "松本城", note: "国宝" },
+      ],
+    },
+    {
+      date: "2026-09-02",
+      title: "帰路",
+      checkpoints: [{ type: "destination" as const, name: "自宅", note: null }],
+    },
+  ];
+
+  it("日が無ければ日を作り、チェックポイントを座標未定で入れる", () => {
+    seedTrip();
+    adoptPlanSuggestion("trip-1", suggestedDays);
+    const days = getDb()
+      .prepare(
+        "select * from trip_days where trip_id = 'trip-1' order by date",
+      )
+      .all() as TripDay[];
+    expect(days.map((d) => [d.date, d.title])).toEqual([
+      ["2026-09-01", "松本周辺を観光して泊"],
+      ["2026-09-02", "帰路"],
+    ]);
+    const checkpoints = getDb()
+      .prepare(
+        `select * from checkpoints where trip_day_id = ?
+         order by sort_order`,
+      )
+      .all(days[0].id) as Checkpoint[];
+    expect(checkpoints.map((c) => [c.type, c.name, c.sort_order])).toEqual([
+      ["departure", "東京駅", 0],
+      ["sightseeing", "松本城", 1],
+    ]);
+    expect(checkpoints[0].latitude).toBeNull();
+    expect(checkpoints[1].note).toBe("国宝");
+  });
+
+  it("同じ日付の日が既にあれば title を保ちつつ末尾に追記する", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    getDb()
+      .prepare("update trip_days set title = '既存タイトル' where id = 'day-1'")
+      .run();
+    seedCheckpoint({ id: "cp-1", sort_order: 0 });
+    adoptPlanSuggestion("trip-1", [suggestedDays[0]]);
+    const day = getDayRow("day-1");
+    expect(day.title).toBe("既存タイトル");
+    expect(day.updated_at).toBe(OLD); // 既存日は触らない
+    const checkpoints = getDb()
+      .prepare(
+        "select * from checkpoints where trip_day_id = 'day-1' order by sort_order",
+      )
+      .all() as Checkpoint[];
+    expect(checkpoints.map((c) => c.name)).toEqual([
+      "松本城",
+      "東京駅",
+      "松本城",
+    ]);
+    expect(checkpoints.map((c) => c.sort_order)).toEqual([0, 1, 2]);
+    // 日は増えていない
+    const dayCount = getDb()
+      .prepare(
+        "select count(*) as n from trip_days where trip_id = 'trip-1'",
+      )
+      .get() as { n: number };
+    expect(dayCount.n).toBe(1);
+  });
+
+  it("不正な日付・空の採用は拒否する", () => {
+    seedTrip();
+    expect(() => adoptPlanSuggestion("trip-1", [])).toThrow(/採用する日/);
+    expect(() =>
+      adoptPlanSuggestion("trip-1", [
+        { ...suggestedDays[0], date: "9月1日" },
+      ]),
+    ).toThrow(/不正な日付/);
+    expect(() => adoptPlanSuggestion("missing", suggestedDays)).toThrow(
+      /旅行が見つかりません/,
+    );
   });
 });
 

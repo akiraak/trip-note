@@ -224,6 +224,36 @@ create table app_settings (
   行表示は SSR とずれ得るので suppressHydrationWarning）。
   trip_days.date は日付のみなので UTC で整形し TZ の影響を受けない
 
+## Phase 6 実装メモ(AI 提案・検索補助)
+
+- **共通ロジック** `web/src/lib/ai.ts`: モデル許可リスト `AI_MODELS`(4 モデル。ID・価格は
+  2026-08-21 に再確認済み: claude-opus-5 $5/$25、claude-sonnet-5 $3/$15、
+  gpt-5.6-sol $5/$30、gpt-5.6-terra $2/$12)、`app_settings`(migration 4)への
+  モデル選択の保存(`ai_model` キー、許可リスト外は既定 claude-opus-5 に落とす)、
+  入力バリデーション・プロンプト生成・応答パース(すべてユニットテスト対象)
+- **構造化出力**は両プロバイダとも JSON Schema 指定に統一
+  (Anthropic = `output_config.format`(プラン当初の tool use 案から現行推奨 API に変更)/
+  OpenAI = Responses API の `text.format` + strict)。OpenAI strict が nullable と
+  相性が悪いため、任意項目は「空文字 = 無し」でスキーマを組みパース時に null へ寄せる。
+  応答の座標は信用せず返さない(地点は座標未定で作り、地図検索で具体化する方針)
+- **API route** `/api/ai/plan` / `/api/ai/search-assist`: Bearer + 手書き型ガード 400 +
+  AI 失敗 502(日本語メッセージ)。提案は DB に書かず、採用はクライアント側の操作
+- **採用ロジック**: Web = `plan.adoptPlanSuggestion`(同日付の既存日へ末尾追記・title 不変・
+  既存行の updated_at を進めない)、iOS = `PlanEditor.adopt`(同じ規則。unmanaged で採番が
+  壊れないよう日付ごとにローカルでカウント)
+- **Web UI**: `/settings`(モデル選択、キー未設定は警告表示)+ ヘッダに設定リンク、
+  `ai-plan.tsx`(条件フォーム → プレビュー → 採用。プランセクションの「AI で行程を提案」)、
+  `search-assist.tsx`(PlaceSearch に内蔵。クエリ候補・地点候補 → 選ぶと Nominatim 検索)
+- **iOS UI**: `AIPlanSuggestView`(TripDetailView プランセクションから。フォーム → プレビュー → 採用)、
+  `CheckpointSearchView` に AI 補助セクション(候補を選ぶと MKLocalSearch 実行)。
+  通信は `Services/AIClient.swift`(SyncClient の extension、タイムアウト 300 秒、
+  サーバの日本語エラーをそのまま表示)、DTO は `Models/AIRecords.swift`(camelCase)
+- **env**: `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`(任意。web/.env.example・
+  deploy-g3plus.md・g3plus-ops 側の .env.example / workflow / CLAUDE.md を追従済み)。
+  本番反映は push → サーバ git pull → rebuild + サーバ .env にキー追加が必要
+- 検証: web = vitest 46 件 + lint + build、iOS = ユニットテスト 68 件 + シミュレータビルド。
+  実 AI 呼び出しは手動確認(キー設定後)
+
 ## Phase 分割
 
 - **Phase 1: 旅行の再定義** — trips migration（started_at nullable / transport / deleted_at）、

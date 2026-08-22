@@ -94,6 +94,15 @@ const MIGRATIONS: string[] = [
   );
   create index checkpoints_day_order_idx on checkpoints (trip_day_id, sort_order);
   `,
+  // サーバ側のみの設定(同期対象外)。AI モデル選択などを key-value で保持する。
+  // AI 呼び出しはすべてサーバ側なので iOS に配る必要がない
+  `
+  create table app_settings (
+    key text primary key,
+    value text not null,
+    updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

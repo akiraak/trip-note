@@ -15,6 +15,7 @@ struct TripDetailView: View {
     @State private var selectedMedia: MediaEntity?
     @State private var showsEndConfirmation = false
     @State private var showsTripEdit = false
+    @State private var showsAIPlanSuggest = false
 
     var body: some View {
         List {
@@ -80,6 +81,11 @@ struct TripDetailView: View {
                 Button(action: addDay) {
                     Label("日を追加", systemImage: "plus")
                 }
+                Button {
+                    showsAIPlanSuggest = true
+                } label: {
+                    Label("AI で行程を提案", systemImage: "sparkles")
+                }
             }
 
             if trip.status == .inProgress {
@@ -128,6 +134,9 @@ struct TripDetailView: View {
         }
         .sheet(isPresented: $showsTripEdit) {
             TripEditView(trip: trip)
+        }
+        .sheet(isPresented: $showsAIPlanSuggest) {
+            AIPlanSuggestView(trip: trip)
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }

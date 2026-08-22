@@ -6,6 +6,12 @@ export function Header() {
       <Link href="/" className="font-semibold">
         trip-note
       </Link>
+      <Link
+        href="/settings"
+        className="text-sm text-zinc-500 hover:underline dark:text-zinc-400"
+      >
+        設定
+      </Link>
     </header>
   );
 }

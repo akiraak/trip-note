@@ -103,6 +103,58 @@ enum PlanEditor {
         }
     }
 
+    /// AI 提案を旅行に採用する(挿入・保存は呼び出し側)。
+    /// 同じ日付の日が既にあればそこへチェックポイントを末尾追記し(title は上書きしない)、
+    /// 無ければ日を作る。チェックポイントは座標未定(nil)で入れ、あとから検索で具体化する。
+    /// 戻り値は新規作成したエンティティ(呼び出し側で insert する)
+    static func adopt(
+        _ suggestion: AIPlanSuggestion,
+        into trip: TripEntity,
+        now: Date = Date()
+    ) -> (days: [TripDayEntity], checkpoints: [CheckpointEntity]) {
+        var newDays: [TripDayEntity] = []
+        var newCheckpoints: [CheckpointEntity] = []
+        // 未挿入のエンティティは関係の逆参照(day.checkpoints)が更新されないため、
+        // 採番はここで日付ごとに数える
+        var nextOrder: [String: Int] = [:]
+        let existingDays = trip.sortedDays
+        for suggested in suggestion.days {
+            let day: TripDayEntity
+            if let found = existingDays.first(where: { $0.date == suggested.date }) {
+                day = found
+            } else if let created = newDays.first(where: { $0.date == suggested.date }) {
+                day = created
+            } else {
+                day = TripDayEntity(
+                    date: suggested.date,
+                    title: suggested.title.isEmpty ? nil : suggested.title,
+                    updatedAt: now,
+                    trip: trip
+                )
+                newDays.append(day)
+            }
+            var order = nextOrder[suggested.date] ?? nextSortOrder(in: day)
+            for checkpoint in suggested.checkpoints {
+                let name = checkpoint.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { continue }
+                newCheckpoints.append(
+                    CheckpointEntity(
+                        type: checkpoint.type,
+                        name: name,
+                        note: checkpoint.note,
+                        sortOrder: order,
+                        updatedAt: now,
+                        trip: trip,
+                        tripDay: day
+                    )
+                )
+                order += 1
+            }
+            nextOrder[suggested.date] = order
+        }
+        return (newDays, newCheckpoints)
+    }
+
     private static func formatter(_ calendar: Calendar) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = calendar

@@ -2,7 +2,7 @@
 
 サーバは `web/` の Next.js が兼ねる(閲覧 UI と同一プロセス)。DB は SQLite で、
 スキーマの正は `web/src/lib/db.ts` の `MIGRATIONS`
-(trips / location_points / media / trip_days / checkpoints)。
+(trips / location_points / media / trip_days / checkpoints / app_settings)。
 
 ## データモデルの概要
 
@@ -104,6 +104,69 @@ location_points / media は対象外(一方向アップロードのみ)。
   行単位の LWW(`updated_at` の新しい方が勝つ、同時刻はローカル保持)で反映する。
   ローカルに無い tombstone 行は取り込まない
 
+## POST /api/ai/plan
+
+AI 行程提案(iOS 向け。Web は Server Action から `web/src/lib/ai.ts` を直接呼ぶ)。
+モデルは Web の設定画面(`/settings`)で選択し、サーバの `app_settings`(key `ai_model`)に
+保持する(同期対象外。iOS からの呼び出しにも自動で適用)。許可リストは
+Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
+(`web/src/lib/ai.ts` の `AI_MODELS` が正)。API キーは env
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`(使うプロバイダの分だけ設定)。
+
+リクエスト:
+
+```json
+{
+  "departure": "東京駅",
+  "destination": "自宅",
+  "startDate": "YYYY-MM-DD",
+  "dayCount": 3,
+  "transport": "car|null(省略可)",
+  "request": "要望の自由記述|null(省略可)"
+}
+```
+
+レスポンス(提案のみ。DB には書かない。採用するかはクライアントが決め、
+採用時は通常の同期/Server Action で trip_days / checkpoints を作る):
+
+```json
+{
+  "days": [
+    { "date": "YYYY-MM-DD", "title": "松本周辺を観光して泊", "area": "松本市",
+      "checkpoints": [ { "type": "departure", "name": "東京駅", "note": "…|null" } ] }
+  ]
+}
+```
+
+- `type` は checkpoints と同じ 7 種(サーバが許可リスト外を other に寄せる)。
+  地点は座標未定(採用後に検索で具体化する)
+- `401` / `400 {"error":"<バリデーションメッセージ>"}` /
+  `502 {"error":"AI (...) の呼び出しに失敗しました: ..."}`(キー未設定・API エラー)
+- 生成に数十秒〜数分かかる(iOS 側はタイムアウトを 300 秒にしている)
+
+## POST /api/ai/search-assist
+
+AI 検索補助。大まかな地域 + 種別 + 自由記述から、地図検索(MapKit / Nominatim)の
+クエリ候補と具体的な地点候補を返す。モデル・認証・エラーは /api/ai/plan と同じ。
+
+リクエスト:
+
+```json
+{ "area": "松本市周辺", "type": "cafe|null(省略可)", "request": "静かなカフェ|null(省略可)" }
+```
+
+レスポンス:
+
+```json
+{
+  "queries": ["松本市 カフェ"],
+  "places": [ { "name": "珈琲まるも", "type": "cafe", "area": "松本市", "note": "…|null" } ]
+}
+```
+
+- クライアントは候補を選ぶとそのクエリで通常の地図検索を実行する
+  (座標の確定は地図検索に任せ、AI の座標は信用しない)
+
 ## POST /api/media
 
 iOS アプリからのメディアアップロード(1 リクエスト 1 ファイル)。詳細は
@@ -130,5 +193,7 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
   pull DTO は `Models/PullRecords.swift`(小数秒なしの ISO8601 も受け付ける)
 - pull 反映(LWW)は `Domain/PlanPull.swift`、実行は `Services/SyncEngine.swift`
   (pull → push の順)。前回 pull の serverTime は UserDefaults(`syncPullSince`)に保存
+- AI(/api/ai/*)は `Services/AIClient.swift`(SyncClient の extension)、
+  DTO は `Models/AIRecords.swift`(camelCase)、提案の採用は `Domain/PlanEditor.adopt`
 - 接続設定は `Resources/ServerConfig.plist`(SERVER_URL / API_KEY、gitignore 済み。
   雛形は `ServerConfig.example.plist`。作成後は `xcodegen generate` を再実行)

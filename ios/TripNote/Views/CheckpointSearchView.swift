@@ -22,6 +22,12 @@ struct CheckpointSearchView: View {
     @State private var results: [MKMapItem] = []
     @State private var isSearching = false
     @State private var message: String?
+    @State private var showsAssist = false
+    @State private var assistArea = ""
+    @State private var assistRequest = ""
+    @State private var assistSuggestion: AISearchAssistSuggestion?
+    @State private var isAssisting = false
+    @State private var assistMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -36,6 +42,7 @@ struct CheckpointSearchView: View {
                         }
                     }
                 }
+                assistSection
                 Section {
                     if let message {
                         Text(message)
@@ -66,6 +73,106 @@ struct CheckpointSearchView: View {
                 }
             }
         }
+    }
+
+    /// AI 検索補助。地域 + 要望からクエリ候補・地点候補をもらい、
+    /// 選ぶとそのクエリで MKLocalSearch を実行する(座標の確定は地図検索に任せる)
+    @ViewBuilder
+    private var assistSection: some View {
+        if !showsAssist {
+            Section {
+                Button {
+                    showsAssist = true
+                } label: {
+                    Label("AI に候補を聞く", systemImage: "sparkles")
+                }
+            }
+        } else {
+            Section("AI に候補を聞く") {
+                TextField("地域(例: 松本市周辺)", text: $assistArea)
+                TextField("要望(例: 静かなカフェ)", text: $assistRequest)
+                if let assistMessage {
+                    Text(assistMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                Button {
+                    Task { await assist() }
+                } label: {
+                    if isAssisting {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("候補を作成中…")
+                        }
+                    } else {
+                        Label("候補をもらう", systemImage: "sparkles")
+                    }
+                }
+                .disabled(
+                    isAssisting
+                        || assistArea.trimmingCharacters(in: .whitespaces).isEmpty
+                )
+            }
+            if let assistSuggestion {
+                Section("AI の候補(選ぶと検索します)") {
+                    ForEach(assistSuggestion.queries, id: \.self) { suggestedQuery in
+                        Button {
+                            searchSuggested(suggestedQuery)
+                        } label: {
+                            Label(suggestedQuery, systemImage: "magnifyingglass")
+                        }
+                    }
+                    ForEach(assistSuggestion.places, id: \.self) { place in
+                        Button {
+                            searchSuggested(place.name)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: place.type.systemImage)
+                                    .foregroundStyle(place.type.tint)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(place.name)
+                                    Text(
+                                        place.note.map { "\(place.area) — \($0)" }
+                                            ?? place.area
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func assist() async {
+        guard let client = SyncClient.fromBundle() else {
+            assistMessage = "サーバが未設定です(ServerConfig.plist を確認してください)"
+            return
+        }
+        isAssisting = true
+        assistMessage = nil
+        defer { isAssisting = false }
+        let trimmedRequest = assistRequest.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            assistSuggestion = try await client.searchAssist(
+                AISearchAssistRequest(
+                    area: assistArea.trimmingCharacters(in: .whitespacesAndNewlines),
+                    type: nil,
+                    request: trimmedRequest.isEmpty ? nil : trimmedRequest
+                )
+            )
+        } catch {
+            assistMessage = error.localizedDescription
+        }
+    }
+
+    private func searchSuggested(_ suggestedQuery: String) {
+        query = suggestedQuery
+        Task { await search() }
     }
 
     private func search() async {

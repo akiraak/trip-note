@@ -6,6 +6,7 @@ import { TripMap } from "./trip-map";
 import { transportLabel } from "@/lib/checkpoint-style";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime } from "@/lib/format";
+import { dateStringOf } from "@/lib/plan";
 import { formatDistance, totalDistance } from "@/lib/geo";
 import {
   tripStatus,
@@ -83,6 +84,13 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       note: c.note,
     })),
   }));
+  // AI 行程提案フォームの初期値: 開始日 = 既存プランの初日 ?? 出発日 ?? 今日
+  const aiDefaults = {
+    startDate:
+      days[0]?.date ??
+      dateStringOf(trip.started_at ? new Date(trip.started_at) : new Date()),
+    dayCount: Math.max(days.length, 2),
+  };
   const checkpointMarkers = checkpoints
     .filter((c) => c.latitude !== null && c.longitude !== null)
     .map((c) => ({
@@ -161,7 +169,12 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
         </dl>
         <h2 className="mb-2 font-medium">プラン</h2>
         <div className="mb-8">
-          <PlanSection tripId={trip.id} days={planDays} />
+          <PlanSection
+            tripId={trip.id}
+            days={planDays}
+            transport={trip.transport}
+            aiDefaults={aiDefaults}
+          />
         </div>
         {media.length > 0 && (
           <>

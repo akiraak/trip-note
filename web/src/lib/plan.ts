@@ -216,6 +216,85 @@ export function deleteCheckpoint(id: string): Checkpoint {
   return checkpoint;
 }
 
+/** AI 行程提案の採用入力(lib/ai.ts の SuggestedDay に対応。座標は未定) */
+export type AdoptDay = {
+  /** YYYY-MM-DD */
+  date: string;
+  title: string | null;
+  checkpoints: { type: CheckpointType; name: string; note: string | null }[];
+};
+
+/** AI 提案を採用して trip_days / checkpoints を作成する。
+ *  同じ日付の日が既にあればそこへチェックポイントを末尾追記し(title は上書きしない)、
+ *  無ければ日を作る。チェックポイントは座標未定(latitude/longitude null)で入れる */
+export function adoptPlanSuggestion(tripId: string, days: AdoptDay[]): Trip {
+  const trip = getTrip(tripId);
+  if (days.length === 0) throw new Error("採用する日がありません");
+  const db = getDb();
+  const now = nowIso();
+  const findDay = db.prepare(
+    "select * from trip_days where trip_id = ? and date = ? and deleted_at is null",
+  );
+  const insertDay = db.prepare(
+    `insert into trip_days (id, trip_id, date, title, updated_at)
+     values (@id, @trip_id, @date, @title, @updated_at)`,
+  );
+  const maxOrder = db.prepare(
+    `select max(sort_order) as max_order from checkpoints
+     where trip_day_id = ? and deleted_at is null`,
+  );
+  const insertCheckpoint = db.prepare(
+    `insert into checkpoints
+       (id, trip_id, trip_day_id, type, name, latitude, longitude,
+        planned_time, note, sort_order, updated_at)
+     values
+       (@id, @trip_id, @trip_day_id, @type, @name, null, null,
+        null, @note, @sort_order, @updated_at)`,
+  );
+  db.transaction(() => {
+    for (const day of days) {
+      if (!DATE_RE.test(day.date)) {
+        throw new Error(`不正な日付です: ${day.date}`);
+      }
+      let dayId = (findDay.get(tripId, day.date) as TripDay | undefined)?.id;
+      if (!dayId) {
+        dayId = randomUUID();
+        insertDay.run({
+          id: dayId,
+          trip_id: tripId,
+          date: day.date,
+          title: day.title?.trim() || null,
+          updated_at: now,
+        });
+      }
+      const { max_order } = maxOrder.get(dayId) as { max_order: number | null };
+      let order = max_order !== null ? max_order + 1 : 0;
+      for (const checkpoint of day.checkpoints) {
+        const valid = validateInput({
+          type: checkpoint.type,
+          name: checkpoint.name,
+          latitude: null,
+          longitude: null,
+          planned_time: null,
+          note: checkpoint.note,
+        });
+        insertCheckpoint.run({
+          id: randomUUID(),
+          trip_id: tripId,
+          trip_day_id: dayId,
+          type: valid.type,
+          name: valid.name,
+          note: valid.note,
+          sort_order: order,
+          updated_at: now,
+        });
+        order += 1;
+      }
+    }
+  })();
+  return trip;
+}
+
 /** 同じ日の中で 1 つ上/下と入れ替える。端では何もしない。
  *  位置が変わった行だけ sort_order と updated_at を更新する
  *  (変わらない行の updated_at を進めて LWW で他方の編集を潰さないため) */

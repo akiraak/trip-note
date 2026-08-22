@@ -1,9 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  parsePlanInput,
+  parseSearchAssistInput,
+  searchAssist,
+  suggestPlan,
+  type PlanSuggestion,
+  type SearchAssistSuggestion,
+} from "@/lib/ai";
 import { searchPlaces, type Place } from "@/lib/nominatim";
 import * as plan from "@/lib/plan";
-import type { CheckpointInput } from "@/lib/plan";
+import type { AdoptDay, CheckpointInput } from "@/lib/plan";
 
 // プラン編集の Server Actions。ページと同じ保護範囲(本番は Cloudflare Access)で
 // 動くため Bearer 認証は使わない(/api/* の規約は変えない)。
@@ -113,6 +121,54 @@ export async function moveCheckpointAction(
 export async function searchPlacesAction(query: string): Promise<SearchResult> {
   try {
     return { ok: true, places: await searchPlaces(query) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ---- AI 提案・検索補助 ----
+// AI 呼び出しの実処理は lib/ai.ts。入力は API route と同じ関数で再検証する
+
+export type PlanSuggestResult =
+  | { ok: true; suggestion: PlanSuggestion }
+  | { ok: false; error: string };
+
+export type SearchAssistResult =
+  | { ok: true; suggestion: SearchAssistSuggestion }
+  | { ok: false; error: string };
+
+export async function suggestPlanAction(
+  input: unknown,
+): Promise<PlanSuggestResult> {
+  try {
+    return { ok: true, suggestion: await suggestPlan(parsePlanInput(input)) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** AI 提案の採用。クライアントで確認済みの内容を trip_days / checkpoints にする */
+export async function adoptPlanAction(
+  tripId: string,
+  days: AdoptDay[],
+): Promise<ActionResult> {
+  try {
+    plan.adoptPlanSuggestion(tripId, days);
+    revalidateTrip(tripId);
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function searchAssistAction(
+  input: unknown,
+): Promise<SearchAssistResult> {
+  try {
+    return {
+      ok: true,
+      suggestion: await searchAssist(parseSearchAssistInput(input)),
+    };
   } catch (error) {
     return failure(error);
   }

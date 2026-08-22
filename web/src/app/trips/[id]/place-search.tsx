@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { searchPlacesAction } from "./actions";
+import { SearchAssist } from "./search-assist";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import type { Place } from "@/lib/nominatim";
 
 // Nominatim(サーバ経由プロキシ)の地点検索。結果の選択で onSelect を呼ぶ。
-// チェックポイントの即時追加(plan-section)と、編集フォームでの位置設定の両方で使う
+// チェックポイントの即時追加(plan-section)と、編集フォームでの位置設定の両方で使う。
+// AI 検索補助(SearchAssist)の候補を選ぶと、そのクエリでこの検索を実行する
 export function PlaceSearch({
   onSelect,
   selectLabel,
@@ -21,8 +23,8 @@ export function PlaceSearch({
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function search() {
-    const q = query.trim();
+  async function searchWith(rawQuery: string) {
+    const q = rawQuery.trim();
     if (!q || searching) return;
     setSearching(true);
     setError(null);
@@ -33,6 +35,10 @@ export function PlaceSearch({
     } else {
       setError(result.error);
     }
+  }
+
+  function search() {
+    return searchWith(query);
   }
 
   return (
@@ -59,6 +65,13 @@ export function PlaceSearch({
           {searching ? "検索中…" : "検索"}
         </button>
       </form>
+      <SearchAssist
+        disabled={disabled || searching}
+        onQuery={(q) => {
+          setQuery(q);
+          searchWith(q);
+        }}
+      />
       {error && <p className="text-sm text-red-600">{error}</p>}
       {places && places.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">

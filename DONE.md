@@ -2,6 +2,15 @@
 
 ## 2026-08-21
 
+- 「1つの旅行」の定義とプラン機能 [plan](docs/plans/archive/trip-definition-and-planning.md)
+  - Phase 1: 旅行の再定義(記録停止≠旅行終了・GPS ギャップの区間分け描画・trips migration)
+  - Phase 2: プランのデータモデル(trip_days / checkpoints、iOS エンティティ・型)
+  - Phase 3: 双方向同期(/api/sync 拡張・/api/sync/pull 新設・LWW + tombstone)
+  - Phase 4: iOS プラン UI(旅行作成・日別リスト・CP CRUD・MapKit 検索)
+  - Phase 5: Web プラン UI(Server Actions・日別編集・Nominatim 検索)
+  - Phase 6: AI 提案・検索補助(/api/ai/plan・/api/ai/search-assist、Claude/ChatGPT の 2 プロバイダ、Web /settings でモデル選択〔app_settings〕、iOS/Web の提案採用・検索補助導線、env 追加と g3plus-ops 追従)
+    - 検証: web vitest 46 件 + lint + build、iOS ユニットテスト 68 件 + シミュレータビルド。本番反映(push → サーバ pull → rebuild + .env に AI キー追加)と実 AI 呼び出しの手動確認は未実施
+
 - Web の地図タイルを本番向けに差し替える [plan](docs/plans/archive/web-map-tiles-production.md)
   - OSM 公式ラスタタイル → OpenFreeMap ベクタタイル（Liberty スタイル。登録・API キー不要で本番利用可、帰属表記はスタイル側に含まれる）
   - 検証: lint / build、ローカルでタイル描画・軌跡・マーカー・帰属表記を目視確認
