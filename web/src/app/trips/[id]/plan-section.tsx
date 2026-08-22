@@ -16,6 +16,7 @@ import { CheckpointForm } from "./checkpoint-form";
 import { PlaceSearch } from "./place-search";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { formatDay } from "@/lib/format";
+import { googleMapsSearchUrl } from "@/lib/google-maps";
 import type { CheckpointType } from "@/lib/types";
 
 // 旅行詳細のプラン(日別)表示・編集。データは server component (page.tsx) から
@@ -405,6 +406,17 @@ function CheckpointRow({
         )}
       </span>
       <span className="flex shrink-0 items-center gap-1 text-xs">
+        {checkpoint.latitude !== null && checkpoint.longitude !== null && (
+          <a
+            href={googleMapsSearchUrl(checkpoint.latitude, checkpoint.longitude)}
+            target="_blank"
+            rel="noreferrer"
+            title="Google Maps で開く"
+            className="mr-1 underline"
+          >
+            地図↗
+          </a>
+        )}
         <button
           type="button"
           disabled={pending || isFirst}

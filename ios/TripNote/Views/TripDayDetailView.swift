@@ -8,6 +8,7 @@ struct TripDayDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @Environment(SyncEngine.self) private var sync
 
     @State private var showsDayEdit = false
@@ -74,6 +75,19 @@ struct TripDayDetailView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    // 行タップは編集に割り当て済みなので、外部地図への転送は長押しで
+                    .contextMenu {
+                        if let latitude = checkpoint.latitude,
+                           let longitude = checkpoint.longitude {
+                            Button {
+                                openURL(GoogleMapsLink.searchURL(
+                                    latitude: latitude, longitude: longitude
+                                ))
+                            } label: {
+                                Label("Google Maps で開く", systemImage: "arrow.up.right.square")
+                            }
+                        }
+                    }
                 }
                 .onMove { source, destination in
                     var ordered = day.sortedCheckpoints

@@ -2,6 +2,12 @@
 
 ## 2026-08-22
 
+- チェックポイントなど座標があるところから Google Maps に転送できるようにする [plan](docs/plans/archive/checkpoint-google-maps-link.md)
+  - 公式のクロスプラットフォーム URL(`https://www.google.com/maps/search/?api=1&query=<lat>,<lng>`)を使用。クエリは座標のみ(名前検索は同名の別地点に飛び得る)。iOS はユニバーサルリンクなので `comgooglemaps://` スキーム + `LSApplicationQueriesSchemes` は不要
+  - iOS: `Domain/GoogleMapsLink.swift`(URL 生成の純関数)を新設し、日詳細の CP 行の長押しメニュー(行タップの「編集」は現状維持)と CP 編集画面「位置」セクションに「Google Maps で開く」を追加(座標ありのみ)
+  - Web: `lib/google-maps.ts` を新設し、プラン CP 行の操作ボタン群に「地図↗」リンク、地図マーカーのポップアップに「Google Maps で開く」リンクを追加(名前は XSS 回避のため setHTML でなく DOM 組み立て)
+  - 検証: iOS ユニットテスト 117 件(GoogleMapsLink 3 件新規)+ シミュレータビルド、web vitest 92 件(3 件新規)+ lint + build
+
 - プランの各日をタップしたら日の詳細画面を表示(AI 候補のワンタップ追加・目的地の宿泊化・出発時刻と到着予想) [plan](docs/plans/archive/day-detail-editing.md)
   - Phase 1: search-assist の候補(places)に概算座標を追加し、iOS の AI 候補行に「追加」ボタンを付けてワンタップでチェックポイント化(座標なし候補は従来どおり検索クエリ反映のみ)
   - Phase 2: チェックポイント編集の「検索して位置を設定」で名前・種別も常に検索結果で置き換え(目的地 CP をホテル検索 → 宿泊にまとめて差し替えられる。保存までフォーム内なのでキャンセルで戻せる)

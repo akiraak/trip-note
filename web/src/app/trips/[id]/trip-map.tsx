@@ -11,6 +11,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { boundingBox, splitByTimeGap } from "@/lib/geo";
+import { googleMapsSearchUrl } from "@/lib/google-maps";
 import type { CheckpointType } from "@/lib/types";
 
 // バンドラ(Turbopack)経由だと maplibre が自身のワーカーを解決できないため、
@@ -109,13 +110,25 @@ export function TripMap({
       }
     }
 
-    // プランのチェックポイント(種別ごとの色。クリックで名前を表示)
+    // プランのチェックポイント(種別ごとの色。クリックで名前と Google Maps リンクを表示)
     for (const checkpoint of checkpoints) {
+      // 名前はユーザー入力なので setHTML ではなく DOM 組み立てで渡す
+      const popupContent = document.createElement("div");
+      const title = document.createElement("div");
+      title.textContent = `${CHECKPOINT_LABELS[checkpoint.type]}: ${checkpoint.name}`;
+      popupContent.appendChild(title);
+      const link = document.createElement("a");
+      link.href = googleMapsSearchUrl(checkpoint.latitude, checkpoint.longitude);
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Google Maps で開く";
+      link.className = "underline";
+      popupContent.appendChild(link);
       new Marker({ color: CHECKPOINT_COLORS[checkpoint.type] })
         .setLngLat([checkpoint.longitude, checkpoint.latitude])
         .setPopup(
-          new Popup({ closeButton: false, offset: 24 }).setText(
-            `${CHECKPOINT_LABELS[checkpoint.type]}: ${checkpoint.name}`,
+          new Popup({ closeButton: false, offset: 24 }).setDOMContent(
+            popupContent,
           ),
         )
         .addTo(map);

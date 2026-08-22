@@ -10,6 +10,7 @@ struct CheckpointEditView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @Environment(SyncEngine.self) private var sync
 
     @State private var type: CheckpointType
@@ -121,6 +122,11 @@ struct CheckpointEditView: View {
             Text(String(format: "%.5f, %.5f", latitude, longitude))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Button {
+                openURL(GoogleMapsLink.searchURL(latitude: latitude, longitude: longitude))
+            } label: {
+                Label("Google Maps で開く", systemImage: "arrow.up.right.square")
+            }
             Button("座標をクリア") {
                 self.latitude = nil
                 self.longitude = nil
