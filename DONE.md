@@ -2,6 +2,14 @@
 
 ## 2026-08-22
 
+- プラン表示の UI 再構成 [plan](docs/plans/archive/plan-first-ui.md)
+  - 「記録を開始」を旅行の中へ(LocationRecorder.startRecording(trip:) 新設。自動選択・自動作成の beginOrResumeTrip は廃止)。撮影ボタンも旅行内へ
+  - 旅行作成後はその旅行の中へ遷移(NavigationStack path + onCreated)
+  - AI 候補ごとにミニ地図(nights に概算座標を追加。プレビュー専用で CP には保存しない)
+  - 旅行画面は地図 → プラン(日別 + CP 名の概要)→ 記録 → 基本情報 → … の順に変更
+  - 日詳細にもその日のチェックポイント地図を表示。UI テストも新フローに追従
+  - 検証: web vitest 60 件 + lint + build、iOS ユニットテスト 82 件 + UI テストターゲットのビルド
+
 - 移動手段を車に固定 [plan](docs/plans/archive/transport-fixed-to-car.md)
   - 選択 UI(ピッカー)と表示行を削除し、作成時は常に car、編集保存時も car へ正規化。AI へは trip.transport ?? car を送る
   - データモデル・同期・API は変更なし(trips.transport は残す)

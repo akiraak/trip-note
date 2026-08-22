@@ -2,6 +2,7 @@ import CoreLocation
 import PhotosUI
 import SwiftData
 import SwiftUI
+import UIKit
 
 /// trip の詳細。地図と統計ヘッダ、日別プラン、メディアグリッド、位置情報のタイムラインを表示する。
 struct TripDetailView: View {
@@ -13,6 +14,7 @@ struct TripDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedMedia: MediaEntity?
+    @State private var showsCamera = false
     @State private var showsEndConfirmation = false
     @State private var showsDeleteConfirmation = false
     @State private var showsTripEdit = false
@@ -43,6 +45,30 @@ struct TripDetailView: View {
                     .listRowInsets(EdgeInsets())
                 }
             }
+            Section("プラン") {
+                let days = trip.sortedDays
+                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
+                    NavigationLink(value: day) {
+                        TripDayRow(index: index, day: day)
+                    }
+                }
+                Button(action: addDay) {
+                    Label("日を追加", systemImage: "plus")
+                }
+                Button {
+                    showsAIPlanSuggest = true
+                } label: {
+                    Label("AI で行程を提案", systemImage: "sparkles")
+                }
+            }
+
+            // 終了した旅行には記録できない(記録はこの旅行に対して開始する)
+            if trip.endedAt == nil {
+                Section("記録") {
+                    recordingSection
+                }
+            }
+
             Section {
                 LabeledContent("開始") {
                     if let startedAt = trip.startedAt {
@@ -75,23 +101,6 @@ struct TripDetailView: View {
                 LabeledContent("総距離", value: ContentView.formatDistance(trip.totalDistanceMeters))
             }
 
-            Section("プラン") {
-                let days = trip.sortedDays
-                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
-                    NavigationLink(value: day) {
-                        TripDayRow(index: index, day: day)
-                    }
-                }
-                Button(action: addDay) {
-                    Label("日を追加", systemImage: "plus")
-                }
-                Button {
-                    showsAIPlanSuggest = true
-                } label: {
-                    Label("AI で行程を提案", systemImage: "sparkles")
-                }
-            }
-
             if trip.status == .inProgress {
                 Section {
                     Button("旅行を終了", role: .destructive) {
@@ -99,12 +108,6 @@ struct TripDetailView: View {
                     }
                 } footer: {
                     Text("記録の停止では旅行は終了しません。終了すると一覧で「進行中」ではなくなります。")
-                }
-            }
-
-            Section {
-                Button("旅行を削除", role: .destructive) {
-                    showsDeleteConfirmation = true
                 }
             }
 
@@ -120,6 +123,12 @@ struct TripDetailView: View {
                 }
                 ForEach(points) { point in
                     PointRow(point: point)
+                }
+            }
+
+            Section {
+                Button("旅行を削除", role: .destructive) {
+                    showsDeleteConfirmation = true
                 }
             }
         }
@@ -156,6 +165,13 @@ struct TripDetailView: View {
         .fullScreenCover(item: $selectedMedia) { media in
             MediaViewerView(media: media, store: importer.store)
         }
+        .fullScreenCover(isPresented: $showsCamera) {
+            CameraPicker { result in
+                showsCamera = false
+                handleCapture(result)
+            }
+            .ignoresSafeArea()
+        }
         .confirmationDialog(
             "この旅行を終了しますか?",
             isPresented: $showsEndConfirmation,
@@ -176,6 +192,76 @@ struct TripDetailView: View {
             Button("旅行を削除", role: .destructive, action: deleteTrip)
         } message: {
             Text("プラン・記録・メディアごと削除され、Web にも同期されます。")
+        }
+    }
+
+    /// この旅行への記録の開始/停止と記録中の撮影(記録はこの旅行に対して行う)
+    @ViewBuilder
+    private var recordingSection: some View {
+        if trip.isRecordingActive {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("記録中", systemImage: "location.fill")
+                    .foregroundStyle(.green)
+                    .font(.headline)
+                HStack(spacing: 16) {
+                    Text("\(recorder.recordedPointCount) 地点")
+                    Text(ContentView.formatDistance(recorder.totalDistanceMeters))
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                Text("画面を閉じても記録は続きます")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if CameraPicker.isAvailable {
+                Button {
+                    showsCamera = true
+                } label: {
+                    Label("写真・動画を撮影", systemImage: "camera")
+                }
+            }
+            Button("記録を停止", role: .destructive) {
+                recorder.stopRecording()
+                Task { await sync.syncNow() }
+            }
+            Text("停止しても旅行は終了しません。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if recorder.isRecording {
+            Text("別の旅行を記録中です")
+                .foregroundStyle(.secondary)
+        } else {
+            Button {
+                recorder.startRecording(trip: trip)
+            } label: {
+                Label("記録を開始", systemImage: "record.circle")
+            }
+        }
+
+        if let error = recorder.lastError {
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+
+        if recorder.authorizationStatus == .denied || recorder.authorizationStatus == .restricted {
+            Link(
+                "設定アプリで位置情報を許可する",
+                destination: URL(string: UIApplication.openSettingsURLString)!
+            )
+            .font(.caption)
+        }
+    }
+
+    private func handleCapture(_ result: CameraPicker.CaptureResult?) {
+        guard let result else { return }
+        Task {
+            switch result {
+            case .photo(let image):
+                await importer.importPhoto(image, into: trip, takenAt: Date())
+            case .video(let url):
+                await importer.importVideo(at: url, into: trip, takenAt: Date())
+            }
         }
     }
 
@@ -292,10 +378,18 @@ private struct TripDayRow: View {
                 Text(title)
                     .font(.subheadline)
             }
-            let count = day.sortedCheckpoints.count
-            Text(count > 0 ? "チェックポイント \(count) 件" : "チェックポイントなし")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // チェックポイントの概要(訪問順に名前を繋ぐ)
+            let checkpoints = day.sortedCheckpoints
+            if checkpoints.isEmpty {
+                Text("チェックポイントなし")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(checkpoints.map(\.name).joined(separator: " → "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
         .padding(.vertical, 2)
     }

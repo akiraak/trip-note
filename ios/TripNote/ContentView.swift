@@ -1,26 +1,23 @@
 import SwiftData
 import SwiftUI
-import UIKit
 
 struct ContentView: View {
     @Environment(LocationRecorder.self) private var recorder
     @Environment(SyncEngine.self) private var sync
-    @Environment(MediaImporter.self) private var importer
     @Environment(\.scenePhase) private var scenePhase
     // 削除済み(tombstone)は表示しない。未出発(startedAt nil)は先頭に来る
     @Query(
         filter: #Predicate<TripEntity> { $0.deletedAt == nil },
         sort: [SortDescriptor(\TripEntity.startedAt, order: .reverse)]
     ) private var trips: [TripEntity]
-    @State private var showsCamera = false
     @State private var showsTripCreate = false
+    /// 作成シートが閉じたら旅行の中へ遷移するための path
+    @State private var path: [TripEntity] = []
+    @State private var createdTrip: TripEntity?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
-                Section {
-                    recordingSection
-                }
                 Section("同期") {
                     syncSection
                 }
@@ -48,8 +45,19 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $showsTripCreate) {
-            TripCreateView()
+        .sheet(
+            isPresented: $showsTripCreate,
+            onDismiss: {
+                // 作成済みならその旅行の中へ(AI 候補のスキップ・採用・目的地なしのどれでも)
+                if let trip = createdTrip {
+                    createdTrip = nil
+                    path.append(trip)
+                }
+            }
+        ) {
+            TripCreateView { trip in
+                createdTrip = trip
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             // 記録中はローカル優先(自動同期しない)。復帰時に未同期分をまとめて送る
@@ -61,92 +69,6 @@ struct ContentView: View {
             if !recorder.isRecording {
                 await sync.syncNow()
             }
-        }
-        .fullScreenCover(isPresented: $showsCamera) {
-            CameraPicker { result in
-                showsCamera = false
-                handleCapture(result)
-            }
-            .ignoresSafeArea()
-        }
-    }
-
-    private func handleCapture(_ result: CameraPicker.CaptureResult?) {
-        guard let result, let trip = recorder.activeTrip else { return }
-        Task {
-            switch result {
-            case .photo(let image):
-                await importer.importPhoto(image, into: trip, takenAt: Date())
-            case .video(let url):
-                await importer.importVideo(at: url, into: trip, takenAt: Date())
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var recordingSection: some View {
-        if recorder.isRecording {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("記録中", systemImage: "location.fill")
-                    .foregroundStyle(.green)
-                    .font(.headline)
-                HStack(spacing: 16) {
-                    Text("\(recorder.recordedPointCount) 地点")
-                    Text(Self.formatDistance(recorder.totalDistanceMeters))
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                Text("画面を閉じても記録は続きます")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if CameraPicker.isAvailable {
-                Button {
-                    showsCamera = true
-                } label: {
-                    Label("写真・動画を撮影", systemImage: "camera")
-                }
-            }
-            if importer.isImporting {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("メディアを取り込み中…")
-                        .foregroundStyle(.secondary)
-                }
-                .font(.subheadline)
-            }
-            if let mediaError = importer.lastError {
-                Text(mediaError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-            Button("記録を停止", role: .destructive) {
-                recorder.stopRecording()
-                Task { await sync.syncNow() }
-            }
-            Text("停止しても旅行は終了しません。終了は旅行の詳細画面から行えます。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            Button {
-                recorder.startRecording()
-            } label: {
-                Label("記録を開始", systemImage: "record.circle")
-            }
-        }
-
-        if let error = recorder.lastError {
-            Text(error)
-                .font(.caption)
-                .foregroundStyle(.red)
-        }
-
-        if recorder.authorizationStatus == .denied || recorder.authorizationStatus == .restricted {
-            Link(
-                "設定アプリで位置情報を許可する",
-                destination: URL(string: UIApplication.openSettingsURLString)!
-            )
-            .font(.caption)
         }
     }
 

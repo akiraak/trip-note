@@ -1,6 +1,6 @@
 import XCTest
 
-/// 記録 → ライブラリから写真取り込み → 同期までの E2E。
+/// 旅行作成 → 記録(旅行の中)→ ライブラリから写真取り込み → 同期までの E2E。
 ///
 /// 前提(手動 or スクリプトで実行):
 /// - `xcrun simctl privacy <udid> grant location-always com.akiraak.TripNote`
@@ -12,12 +12,28 @@ final class MediaImportUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        // 前回の実行が記録中のまま残っていた場合は止める
-        let stopButton = app.buttons["記録を停止"]
-        if stopButton.waitForExistence(timeout: 3) {
-            stopButton.tap()
+        // 前回の実行が記録中のまま残っていた場合は、その旅行を開いて止める
+        let recordingRow = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "記録中")
+        ).firstMatch
+        if recordingRow.waitForExistence(timeout: 3) {
+            recordingRow.tap()
+            let leftoverStop = app.buttons["記録を停止"]
+            if leftoverStop.waitForExistence(timeout: 5) {
+                leftoverStop.tap()
+            }
+            app.navigationBars.buttons.firstMatch.tap()
         }
 
+        // 旅行を作成する(目的地は空 = AI 候補をスキップ)。作成後は旅行の中へ遷移する
+        app.buttons["旅行を作成"].tap()
+        let titleField = app.textFields["タイトル(例: 松本旅行)"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 10))
+        titleField.tap()
+        titleField.typeText("UIテスト取込")
+        app.buttons["作成"].tap()
+
+        // 記録はこの旅行に対して開始する
         let startButton = app.buttons["記録を開始"]
         XCTAssertTrue(startButton.waitForExistence(timeout: 10))
         startButton.tap()
@@ -31,17 +47,11 @@ final class MediaImportUITests: XCTestCase {
             "位置情報が貯まらなかった。simctl location のシナリオが動いているか確認する"
         )
 
+        let stopButton = app.buttons["記録を停止"]
         XCTAssertTrue(stopButton.waitForExistence(timeout: 5))
         stopButton.tap()
 
-        // 一覧の先頭 trip を開く
-        let tripRow = app.buttons.containing(
-            NSPredicate(format: "label CONTAINS %@", "の旅行")
-        ).firstMatch
-        XCTAssertTrue(tripRow.waitForExistence(timeout: 10))
-        tripRow.tap()
-
-        // PhotosPicker からシミュレータ標準の写真を 1 枚選ぶ
+        // そのまま旅行詳細で PhotosPicker からシミュレータ標準の写真を 1 枚選ぶ
         // (グリッドの写真は identifier "PXGGridLayout-Info" の Image として見える)
         app.buttons["ライブラリから追加"].tap()
         let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch

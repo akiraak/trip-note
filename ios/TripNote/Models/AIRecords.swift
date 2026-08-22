@@ -73,6 +73,9 @@ struct AISuggestedNight: Decodable, Hashable {
     /// 宿の候補または「◯◯周辺の宿」のような検索しやすい表現
     let name: String
     let note: String?
+    /// 地域の概算座標(候補プレビュー地図専用。チェックポイントには保存しない)
+    let latitude: Double?
+    let longitude: Double?
 }
 
 /// 日数と宿泊地の候補 1 件(例: 2泊3日 + 各泊の宿泊地)

@@ -178,14 +178,17 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 {
   "candidates": [
     { "dayCount": 3, "title": "2泊3日でゆったり",
-      "nights": [ { "area": "松本市街", "name": "松本駅周辺のホテル", "note": "…|null" } ] }
+      "nights": [ { "area": "松本市街", "name": "松本駅周辺のホテル", "note": "…|null",
+        "latitude": 36.23, "longitude": 137.97 } ] }
   ]
 }
 ```
 
 - `nights` は泊数分(通常 `dayCount - 1`)。n 番目 = n+1 泊目。
-  宿は座標未定(採用後に検索で具体化する)。`dayCount` が 1〜30 の範囲外の候補は
-  サーバ側で落とす
+  `latitude` / `longitude` は地域の概算座標で**候補プレビュー地図専用**
+  (採用時のチェックポイントには保存しない = 「AI の座標は信用しない」方針は維持。
+  不正な値は null)。宿の位置は採用後に検索で具体化する。
+  `dayCount` が 1〜30 の範囲外の候補はサーバ側で落とす
 
 ## POST /api/ai/search-assist
 

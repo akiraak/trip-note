@@ -56,7 +56,8 @@ struct AIRecordsTests {
               "dayCount": 3,
               "title": "2泊3日でゆったり",
               "nights": [
-                { "area": "松本市街", "name": "松本駅周辺のホテル", "note": null },
+                { "area": "松本市街", "name": "松本駅周辺のホテル", "note": null,
+                  "latitude": 36.23, "longitude": 137.97 },
                 { "area": "上高地", "name": "上高地の宿", "note": "要予約" }
               ]
             },
@@ -71,6 +72,10 @@ struct AIRecordsTests {
         #expect(suggestion.candidates[0].nights.map(\.name)
             == ["松本駅周辺のホテル", "上高地の宿"])
         #expect(suggestion.candidates[0].nights[1].note == "要予約")
+        // プレビュー地図用の概算座標(無い泊は nil)
+        #expect(suggestion.candidates[0].nights[0].latitude == 36.23)
+        #expect(suggestion.candidates[0].nights[0].longitude == 137.97)
+        #expect(suggestion.candidates[0].nights[1].latitude == nil)
         #expect(suggestion.candidates[1].nights.isEmpty)
     }
 

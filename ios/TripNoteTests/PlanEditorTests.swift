@@ -325,8 +325,8 @@ struct PlanEditorTests {
             dayCount: 3,
             title: "2泊3日でゆったり",
             nights: [
-                AISuggestedNight(area: "松本市街", name: "松本駅周辺のホテル", note: nil),
-                AISuggestedNight(area: "上高地", name: "上高地の宿", note: "要予約"),
+                AISuggestedNight(area: "松本市街", name: "松本駅周辺のホテル", note: nil, latitude: nil, longitude: nil),
+                AISuggestedNight(area: "上高地", name: "上高地の宿", note: "要予約", latitude: nil, longitude: nil),
             ]
         )
         let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar, now: now)
@@ -348,7 +348,7 @@ struct PlanEditorTests {
         let candidate = AITripOutlineCandidate(
             dayCount: 2,
             title: "1泊2日",
-            nights: [AISuggestedNight(area: "松本", name: "松本の宿", note: nil)]
+            nights: [AISuggestedNight(area: "松本", name: "松本の宿", note: nil, latitude: nil, longitude: nil)]
         )
         let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar)
         #expect(made.days.map(\.date) == ["2026-09-01", "2026-09-02"])
@@ -362,8 +362,8 @@ struct PlanEditorTests {
             dayCount: 1,
             title: "日帰り",
             nights: [
-                AISuggestedNight(area: "a", name: "  ", note: nil),  // 空の名前
-                AISuggestedNight(area: "b", name: "余分な宿", note: nil),  // 日数超え
+                AISuggestedNight(area: "a", name: "  ", note: nil, latitude: nil, longitude: nil),  // 空の名前
+                AISuggestedNight(area: "b", name: "余分な宿", note: nil, latitude: nil, longitude: nil),  // 日数超え
             ]
         )
         let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar)

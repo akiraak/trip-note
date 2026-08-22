@@ -146,6 +146,9 @@ export type SuggestedNight = {
   /** 宿の候補または「◯◯周辺の宿」のような検索しやすい表現 */
   name: string;
   note: string | null;
+  /** 地域の概算座標(候補プレビュー地図専用。チェックポイントには保存しない) */
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type TripOutlineCandidate = {
@@ -364,8 +367,16 @@ export const TRIP_OUTLINE_SCHEMA: Record<string, unknown> = {
                     "宿の候補または「◯◯温泉の宿」のような地図検索でヒットしやすい表現",
                 },
                 note: { type: "string", description: "補足。無ければ空文字" },
+                latitude: {
+                  type: "number",
+                  description: "地域の概算緯度(プレビュー地図用。市レベルの精度でよい)",
+                },
+                longitude: {
+                  type: "number",
+                  description: "地域の概算経度",
+                },
               },
-              required: ["area", "name", "note"],
+              required: ["area", "name", "note", "latitude", "longitude"],
               additionalProperties: false,
             },
           },
@@ -456,6 +467,15 @@ export function parsePlanSuggestion(value: unknown): PlanSuggestion {
   return { days };
 }
 
+/** 表示専用の座標。数値でない・範囲外なら null(エラーにしない) */
+function displayCoordinate(value: unknown, limit: number): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Math.abs(value) <= limit
+    ? value
+    : null;
+}
+
 /** AI の応答(JSON)を検証して TripOutlineSuggestion にする。構造が不正なら throw */
 export function parseTripOutlineSuggestion(value: unknown): TripOutlineSuggestion {
   if (!isRecord(value) || !Array.isArray(value.candidates)) {
@@ -481,6 +501,9 @@ export function parseTripOutlineSuggestion(value: unknown): TripOutlineSuggestio
           area: typeof night.area === "string" ? night.area.trim() : "",
           name: night.name.trim(),
           note: emptyToNull(night.note),
+          // プレビュー地図専用の概算座標。不正でも候補ごと落とさず null に寄せる
+          latitude: displayCoordinate(night.latitude, 90),
+          longitude: displayCoordinate(night.longitude, 180),
         };
       });
       return { dayCount: candidate.dayCount, title: candidate.title.trim(), nights };
@@ -559,6 +582,7 @@ export function buildTripOutlinePrompt(input: TripOutlineInput): {
     "- candidates は 2〜4 件。日数やペースの違い(最短で移動重視 / 途中の観光も楽しむ など)を出す",
     "- dayCount は旅行全体の日数(日帰りは 1)。nights は泊数分(dayCount - 1)で、n 番目が n 泊目",
     "- 各泊の area は宿泊する大まかな地域(経路上の都市・観光地)、name は「◯◯温泉の宿」「◯◯駅周辺のホテル」のような地図検索でヒットしやすい表現にする(実在が不確かな固有名は使わない)",
+    "- 各泊の latitude / longitude はその地域の概算座標(候補のプレビュー地図用。市レベルの精度でよい)",
     "- title は「4泊5日で移動重視」のような候補の短い説明",
   ].join("\n");
   const coordinateLine =

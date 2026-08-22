@@ -1,3 +1,4 @@
+import MapKit
 import SwiftData
 import SwiftUI
 
@@ -6,6 +7,9 @@ import SwiftUI
 /// AI の日数・宿泊地候補ステップへ進む。候補を採用すると日別プランと
 /// 宿泊チェックポイント(座標未定)が作られる
 struct TripCreateView: View {
+    /// 旅行を作成した直後に呼ばれる(呼び出し側はシートが閉じたら旅行の中へ遷移する)
+    var onCreated: ((TripEntity) -> Void)?
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(SyncEngine.self) private var sync
@@ -93,25 +97,31 @@ struct TripCreateView: View {
     @ViewBuilder
     private func outlineSections(for trip: TripEntity) -> some View {
         if let suggestion {
-            Section {
-                ForEach(suggestion.candidates, id: \.self) { candidate in
+            ForEach(suggestion.candidates, id: \.self) { candidate in
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(candidate.title)
+                            .font(.headline)
+                        Text(Self.summary(of: candidate))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    let points = Self.mapPoints(for: candidate, trip: trip)
+                    if !points.isEmpty {
+                        OutlineCandidateMap(points: points)
+                            .frame(height: 150)
+                            .listRowInsets(EdgeInsets())
+                    }
                     Button {
                         adopt(candidate, into: trip)
                     } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(candidate.title)
-                                .font(.headline)
-                            Text(Self.summary(of: candidate))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+                        Label("この候補を採用", systemImage: "checkmark")
                     }
-                    .tint(.primary)
                 }
-            } header: {
-                Text("候補を選ぶとプランに追加されます")
+            }
+            Section {
             } footer: {
-                Text("採用後は通常の編集で調整できます。宿の位置は未定のため、検索で具体化してください。")
+                Text("採用後は通常の編集で調整できます。地図はおおよその位置です。宿の位置は採用後に検索で具体化してください。")
             }
         } else {
             Section {
@@ -154,6 +164,38 @@ struct TripCreateView: View {
     /// 1 日目の出発チェックポイント名(AI 行程提案の出発地初期値に使う)
     static func departureName(of trip: TripEntity) -> String? {
         departureCheckpoint(of: trip)?.name
+    }
+
+    /// 候補プレビュー地図の点列(出発地 + 各泊。座標が無い泊は飛ばす)
+    static func mapPoints(
+        for candidate: AITripOutlineCandidate,
+        trip: TripEntity
+    ) -> [OutlineMapPoint] {
+        var points: [OutlineMapPoint] = []
+        if let departure = departureCheckpoint(of: trip),
+           let latitude = departure.latitude,
+           let longitude = departure.longitude {
+            points.append(
+                OutlineMapPoint(
+                    id: 0,
+                    label: "出発",
+                    isDeparture: true,
+                    coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                )
+            )
+        }
+        for (index, night) in candidate.nights.enumerated() {
+            guard let latitude = night.latitude, let longitude = night.longitude else { continue }
+            points.append(
+                OutlineMapPoint(
+                    id: index + 1,
+                    label: "\(index + 1)泊目 \(night.area)",
+                    isDeparture: false,
+                    coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                )
+            )
+        }
+        return points
     }
 
     /// 例: 「2泊3日・泊: 松本 → 上高地」「1日間(日帰り)」
@@ -213,6 +255,7 @@ struct TripCreateView: View {
             modelContext.insert(checkpoint)
         }
         try? modelContext.save()
+        onCreated?(made.trip)
         Task { await sync.syncNow() }
         if dest == nil {
             dismiss()
@@ -263,6 +306,46 @@ struct TripCreateView: View {
         try? modelContext.save()
         dismiss()
         Task { await sync.syncNow() }
+    }
+}
+
+/// 候補プレビュー地図の 1 点(出発地 or 宿泊地。AI の概算座標なのでおおよその位置)
+struct OutlineMapPoint: Identifiable {
+    let id: Int
+    let label: String
+    let isDeparture: Bool
+    let coordinate: CLLocationCoordinate2D
+}
+
+/// AI 候補 1 件のミニ地図。出発地と各泊をマーカー + ポリラインで表示する(操作不可)
+private struct OutlineCandidateMap: View {
+    let points: [OutlineMapPoint]
+
+    var body: some View {
+        Map(initialPosition: .automatic, interactionModes: []) {
+            if points.count >= 2 {
+                MapPolyline(coordinates: points.map(\.coordinate))
+                    .stroke(
+                        .blue,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+            }
+            ForEach(points) { point in
+                Marker(
+                    point.label,
+                    systemImage: point.isDeparture
+                        ? CheckpointType.departure.systemImage
+                        : CheckpointType.lodging.systemImage,
+                    coordinate: point.coordinate
+                )
+                .tint(
+                    point.isDeparture
+                        ? CheckpointType.departure.tint
+                        : CheckpointType.lodging.tint
+                )
+            }
+        }
+        .mapStyle(.standard)
     }
 }
 

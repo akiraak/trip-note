@@ -20,8 +20,8 @@ final class LocationRecorder: NSObject {
     /// 記録中の trip(撮影したメディアの紐付け先として外からも参照する)
     private(set) var activeTrip: TripEntity?
     private var lastRecorded: LocationSample?
-    /// 権限リクエストの応答待ちで記録開始が保留されているか
-    private var isStartPending = false
+    /// 権限リクエストの応答待ちで記録開始が保留されている trip
+    private var pendingTrip: TripEntity?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -36,17 +36,19 @@ final class LocationRecorder: NSObject {
 
     // MARK: - 記録の開始 / 停止
 
-    func startRecording() {
+    /// 指定した旅行への記録を開始する(旅行詳細画面から呼ぶ)。
+    /// 未出発(プラン中)の旅行はここで startedAt が入り進行中になる
+    func startRecording(trip: TripEntity) {
         guard !isRecording else { return }
         lastError = nil
         switch manager.authorizationStatus {
         case .notDetermined:
-            isStartPending = true
+            pendingTrip = trip
             manager.requestWhenInUseAuthorization()
         case .denied, .restricted:
             lastError = "位置情報へのアクセスが許可されていません。設定アプリから許可してください。"
         default:
-            beginOrResumeTrip()
+            begin(trip: trip)
         }
     }
 
@@ -88,23 +90,9 @@ final class LocationRecorder: NSObject {
 
     // MARK: - 内部処理
 
-    /// 進行中 or プラン中の旅行があればそれに追記し、無ければ新しい旅行を作って記録を始める
-    private func beginOrResumeTrip() {
-        let trip: TripEntity
-        let descriptor = FetchDescriptor<TripEntity>(
-            predicate: #Predicate { $0.endedAt == nil && $0.deletedAt == nil }
-        )
-        let candidates = (try? modelContext.fetch(descriptor)) ?? []
-        // 未出発(プラン中)を優先し、次に開始が新しいもの
-        if let existing = candidates.max(by: {
-            ($0.startedAt ?? .distantFuture) < ($1.startedAt ?? .distantFuture)
-        }) {
-            trip = existing
-        } else {
-            let title = Date().formatted(.dateTime.year().month().day()) + " の旅行"
-            trip = TripEntity(title: title)
-            modelContext.insert(trip)
-        }
+    /// 指定した旅行で記録を始める(削除済み・終了済みには記録しない)
+    private func begin(trip: TripEntity) {
+        guard trip.deletedAt == nil, trip.endedAt == nil else { return }
         if trip.startedAt == nil {
             trip.startedAt = Date()
             trip.updatedAt = Date()
@@ -184,7 +172,7 @@ final class LocationRecorder: NSObject {
         case .authorizedAlways:
             startIfPending()
         case .denied, .restricted:
-            isStartPending = false
+            pendingTrip = nil
             if isRecording {
                 stopRecording()
                 lastError = "位置情報へのアクセスが取り消されたため記録を停止しました。"
@@ -195,9 +183,9 @@ final class LocationRecorder: NSObject {
     }
 
     private func startIfPending() {
-        if isStartPending {
-            isStartPending = false
-            beginOrResumeTrip()
+        if let trip = pendingTrip {
+            pendingTrip = nil
+            begin(trip: trip)
         } else {
             resumeIfNeeded()
         }

@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftData
 import SwiftUI
 
@@ -17,6 +18,19 @@ struct TripDayDetailView: View {
 
     var body: some View {
         List {
+            // 座標が決まっているチェックポイントの地図(この日の分だけ)
+            let pins = checkpointAnnotations
+            if !pins.isEmpty {
+                Section {
+                    TripMapView(
+                        segments: [],
+                        isActive: false,
+                        checkpointAnnotations: pins
+                    )
+                    .frame(height: 220)
+                    .listRowInsets(EdgeInsets())
+                }
+            }
             Section {
                 LabeledContent("日付") {
                     Text(displayDate)
@@ -133,6 +147,19 @@ struct TripDayDetailView: View {
         modelContext.insert(checkpoint)
         try? modelContext.save()
         Task { await sync.syncNow() }
+    }
+
+    private var checkpointAnnotations: [TripCheckpointAnnotation] {
+        day.sortedCheckpoints.compactMap { checkpoint in
+            guard
+                let latitude = checkpoint.latitude,
+                let longitude = checkpoint.longitude
+            else { return nil }
+            return TripCheckpointAnnotation(
+                checkpoint: checkpoint,
+                coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            )
+        }
     }
 
     private var dayTitle: String {

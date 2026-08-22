@@ -236,7 +236,13 @@ describe("parseTripOutlineSuggestion", () => {
     dayCount: 3,
     title: "2泊3日でゆったり",
     nights: [
-      { area: "松本市街", name: "松本駅周辺のホテル", note: "" },
+      {
+        area: "松本市街",
+        name: "松本駅周辺のホテル",
+        note: "",
+        latitude: 36.23,
+        longitude: 137.97,
+      },
       { area: "上高地", name: "上高地帝国ホテル周辺の宿", note: "要予約" },
     ],
   };
@@ -246,6 +252,26 @@ describe("parseTripOutlineSuggestion", () => {
     expect(suggestion.candidates).toHaveLength(1);
     expect(suggestion.candidates[0].nights[0].note).toBeNull();
     expect(suggestion.candidates[0].nights[1].note).toBe("要予約");
+  });
+
+  it("泊の概算座標は範囲内なら通し、不正・欠落は null に寄せる", () => {
+    const suggestion = parseTripOutlineSuggestion({
+      candidates: [
+        {
+          ...candidate,
+          nights: [
+            ...candidate.nights,
+            { area: "変な値", name: "宿", note: "", latitude: 91, longitude: "東経" },
+          ],
+        },
+      ],
+    });
+    const nights = suggestion.candidates[0].nights;
+    expect(nights[0].latitude).toBe(36.23);
+    expect(nights[0].longitude).toBe(137.97);
+    expect(nights[1].latitude).toBeNull();  // 欠落
+    expect(nights[2].latitude).toBeNull();  // 範囲外
+    expect(nights[2].longitude).toBeNull();  // 数値でない
   });
 
   it("日数が範囲外の候補は落とし、全滅なら throw する", () => {
