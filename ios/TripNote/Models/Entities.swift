@@ -5,9 +5,18 @@ import SwiftData
 final class TripEntity {
     @Attribute(.unique) var id: UUID
     var title: String
-    var startedAt: Date
+    /// nil はプラン段階(未出発)。記録開始時に設定される
+    var startedAt: Date?
+    /// 「旅行を終了」の明示操作で設定する(記録停止 ≠ 旅行終了)
     var endedAt: Date?
-    /// Supabase へ未同期の変更があるか(作成・記録停止で true に戻す)
+    /// 移動手段(car / train / walk / bicycle / mixed など)。AI 行程提案の入力に使う
+    var transport: String?
+    /// tombstone。削除は物理削除せず deleted_at を同期で伝搬する
+    var deletedAt: Date?
+    /// この旅行を現在記録中か(ローカル専用・同期しない)。
+    /// アプリがシステムに終了された後の記録再開(resumeIfNeeded)の目印になる
+    var isRecordingActive: Bool = false
+    /// サーバへ未同期の変更があるか
     var needsSync: Bool = true
 
     @Relationship(deleteRule: .cascade, inverse: \LocationPointEntity.trip)
@@ -16,14 +25,23 @@ final class TripEntity {
     @Relationship(deleteRule: .cascade, inverse: \MediaEntity.trip)
     var media: [MediaEntity] = []
 
-    init(id: UUID = UUID(), title: String, startedAt: Date = Date(), endedAt: Date? = nil) {
+    @Relationship(deleteRule: .cascade, inverse: \TripDayEntity.trip)
+    var days: [TripDayEntity] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \CheckpointEntity.trip)
+    var checkpoints: [CheckpointEntity] = []
+
+    init(id: UUID = UUID(), title: String, startedAt: Date? = nil, endedAt: Date? = nil) {
         self.id = id
         self.title = title
         self.startedAt = startedAt
         self.endedAt = endedAt
     }
 
-    var isActive: Bool { endedAt == nil }
+    var status: TripStatus {
+        if startedAt == nil { return .planning }
+        return endedAt == nil ? .inProgress : .finished
+    }
 
     var sortedPoints: [LocationPointEntity] {
         points.sorted { $0.recordedAt < $1.recordedAt }
@@ -33,9 +51,111 @@ final class TripEntity {
         media.sorted { $0.takenAt < $1.takenAt }
     }
 
+    /// 削除済み(tombstone)を除いた日付順のプラン日
+    var sortedDays: [TripDayEntity] {
+        days.filter { $0.deletedAt == nil }.sorted { $0.date < $1.date }
+    }
+
     var totalDistanceMeters: Double {
         Geo.totalDistance(coordinates: sortedPoints.map { ($0.latitude, $0.longitude) })
     }
+}
+
+/// プランの 1 日。チェックポイントはこの日に紐付く
+@Model
+final class TripDayEntity {
+    @Attribute(.unique) var id: UUID
+    /// YYYY-MM-DD(タイムゾーンの揺れを避けるため文字列で保持。サーバと同形式)
+    var date: String
+    /// 大まかな行程(例: 松本周辺を観光して泊)
+    var title: String?
+    var note: String?
+    /// 編集時刻。双方向同期の LWW の基準になるため、変更時は必ず更新する
+    var updatedAt: Date
+    /// tombstone。削除は物理削除せず deleted_at を同期で伝搬する
+    var deletedAt: Date?
+    /// サーバへ未同期の変更があるか
+    var needsSync: Bool = true
+    var trip: TripEntity?
+
+    @Relationship(deleteRule: .cascade, inverse: \CheckpointEntity.tripDay)
+    var checkpoints: [CheckpointEntity] = []
+
+    init(
+        id: UUID = UUID(),
+        date: String,
+        title: String? = nil,
+        note: String? = nil,
+        updatedAt: Date = Date(),
+        trip: TripEntity? = nil
+    ) {
+        self.id = id
+        self.date = date
+        self.title = title
+        self.note = note
+        self.updatedAt = updatedAt
+        self.trip = trip
+    }
+
+    /// 削除済み(tombstone)を除いた表示順のチェックポイント
+    var sortedCheckpoints: [CheckpointEntity] {
+        checkpoints.filter { $0.deletedAt == nil }.sorted {
+            ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name)
+        }
+    }
+}
+
+/// プランのチェックポイント(出発地・観光地・宿など)
+@Model
+final class CheckpointEntity {
+    @Attribute(.unique) var id: UUID
+    /// CheckpointType.rawValue。SwiftData には文字列で保存する
+    var typeRawValue: String
+    var name: String
+    /// 地域だけ決まっていて座標未定なら nil
+    var latitude: Double?
+    var longitude: Double?
+    /// 立ち寄り予定時刻(任意)
+    var plannedTime: Date?
+    var note: String?
+    /// 日の中での表示順
+    var sortOrder: Int
+    /// 編集時刻。双方向同期の LWW の基準になるため、変更時は必ず更新する
+    var updatedAt: Date
+    /// tombstone。削除は物理削除せず deleted_at を同期で伝搬する
+    var deletedAt: Date?
+    /// サーバへ未同期の変更があるか
+    var needsSync: Bool = true
+    var trip: TripEntity?
+    var tripDay: TripDayEntity?
+
+    init(
+        id: UUID = UUID(),
+        type: CheckpointType,
+        name: String,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        plannedTime: Date? = nil,
+        note: String? = nil,
+        sortOrder: Int = 0,
+        updatedAt: Date = Date(),
+        trip: TripEntity? = nil,
+        tripDay: TripDayEntity? = nil
+    ) {
+        self.id = id
+        self.typeRawValue = type.rawValue
+        self.name = name
+        self.latitude = latitude
+        self.longitude = longitude
+        self.plannedTime = plannedTime
+        self.note = note
+        self.sortOrder = sortOrder
+        self.updatedAt = updatedAt
+        self.trip = trip
+        self.tripDay = tripDay
+    }
+
+    var type: CheckpointType { CheckpointType(rawValue: typeRawValue) ?? .other }
 }
 
 @Model

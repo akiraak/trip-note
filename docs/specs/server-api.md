@@ -1,7 +1,21 @@
 # サーバ API 仕様
 
 サーバは `web/` の Next.js が兼ねる(閲覧 UI と同一プロセス)。DB は SQLite で、
-スキーマの正は `web/src/lib/db.ts` の `MIGRATIONS`(trips / location_points / media)。
+スキーマの正は `web/src/lib/db.ts` の `MIGRATIONS`
+(trips / location_points / media / trip_days / checkpoints)。
+
+## データモデルの概要
+
+- trips は「旅行」単位。`started_at == null` はプラン中(未出発)、
+  `ended_at == null` は進行中、両方あれば終了(status カラムは持たず導出)
+- trip_days はプランの 1 日(`date` は YYYY-MM-DD)。checkpoints は trip_day に紐付く
+  地点(出発地・観光地・宿など。`type` は departure / destination / sightseeing / cafe /
+  restaurant / lodging / other)
+- プラン系(trips / trip_days / checkpoints)は iOS と双方向同期する。
+  `updated_at` はクライアントの編集時刻(LWW の基準)、`deleted_at` は tombstone。
+  location_points / media は従来通り不変・一方向アップロード
+- trip_days / checkpoints の同期 API(POST /api/sync 拡張・GET /api/sync/pull)は
+  Phase 3 で追加予定(iOS 側 DTO は `Models/SyncRecords.swift` に定義済み)
 
 ## 認証
 
@@ -18,7 +32,8 @@ iOS アプリからのアップロード。upsert で冪等(id はクライア�
 ```json
 {
   "trips": [
-    { "id": "uuid", "title": "…", "started_at": "ISO8601", "ended_at": "ISO8601|null" }
+    { "id": "uuid", "title": "…", "started_at": "ISO8601|null", "ended_at": "ISO8601|null",
+      "transport": "car|null", "deleted_at": "ISO8601|null" }
   ],
   "points": [
     { "id": "uuid", "trip_id": "uuid", "latitude": 0, "longitude": 0,
@@ -27,7 +42,10 @@ iOS アプリからのアップロード。upsert で冪等(id はクライア�
 }
 ```
 
-- trips: `ON CONFLICT(id) DO UPDATE`(title / started_at / ended_at を更新、updated_at 更新)
+- trips は「旅行」単位(記録の開始/停止では分割しない)。`started_at` はプラン段階(未出発)では
+  null、`deleted_at` は tombstone(物理削除しない)。閲覧 UI は `deleted_at is null` のみ表示
+- trips: `ON CONFLICT(id) DO UPDATE`
+  (title / started_at / ended_at / transport / deleted_at を更新、updated_at 更新)
 - points: 不変のため `INSERT OR IGNORE`。存在しない trip_id を参照する点は FK 違反で全体を
   失敗させず、スキップして `skippedPoints` で返す
 - どちらのキーも省略可(iOS は trips だけ → points 500 件ずつの順で送る)

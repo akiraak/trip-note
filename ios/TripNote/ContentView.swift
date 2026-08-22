@@ -7,7 +7,11 @@ struct ContentView: View {
     @Environment(SyncEngine.self) private var sync
     @Environment(MediaImporter.self) private var importer
     @Environment(\.scenePhase) private var scenePhase
-    @Query(sort: \TripEntity.startedAt, order: .reverse) private var trips: [TripEntity]
+    // 削除済み(tombstone)は表示しない。未出発(startedAt nil)は先頭に来る
+    @Query(
+        filter: #Predicate<TripEntity> { $0.deletedAt == nil },
+        sort: [SortDescriptor(\TripEntity.startedAt, order: .reverse)]
+    ) private var trips: [TripEntity]
     @State private var showsCamera = false
 
     var body: some View {
@@ -109,6 +113,9 @@ struct ContentView: View {
                 recorder.stopRecording()
                 Task { await sync.syncNow() }
             }
+            Text("停止しても旅行は終了しません。終了は旅行の詳細画面から行えます。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         } else {
             Button {
                 recorder.startRecording()
@@ -188,17 +195,20 @@ private struct TripRow: View {
             HStack {
                 Text(trip.title)
                     .font(.headline)
-                if trip.isActive {
-                    Text("記録中")
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.green.opacity(0.2), in: Capsule())
-                        .foregroundStyle(.green)
+                if trip.isRecordingActive {
+                    badge("記録中", color: .green)
+                } else if trip.status == .inProgress {
+                    badge("進行中", color: .green)
+                } else if trip.status == .planning {
+                    badge("プラン中", color: .blue)
                 }
             }
             HStack(spacing: 12) {
-                Text(trip.startedAt, format: .dateTime.year().month().day().hour().minute())
+                if let startedAt = trip.startedAt {
+                    Text(startedAt, format: .dateTime.year().month().day().hour().minute())
+                } else {
+                    Text("未出発")
+                }
                 Text("\(trip.points.count) 地点")
                 Text(ContentView.formatDistance(trip.totalDistanceMeters))
             }
@@ -206,5 +216,14 @@ private struct TripRow: View {
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+    }
+
+    private func badge(_ label: String, color: Color) -> some View {
+        Text(label)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.2), in: Capsule())
+            .foregroundStyle(color)
     }
 }

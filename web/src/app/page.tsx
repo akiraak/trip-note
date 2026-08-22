@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Header } from "./header";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
-import type { Trip } from "@/lib/types";
+import { tripStatus, type Trip } from "@/lib/types";
 
 type TripListRow = Pick<Trip, "id" | "title" | "started_at" | "ended_at"> & {
   point_count: number;
@@ -12,13 +12,15 @@ type TripListRow = Pick<Trip, "id" | "title" | "started_at" | "ended_at"> & {
 export const dynamic = "force-dynamic";
 
 export default function Home() {
+  // プラン中(未出発)を先頭に、あとは開始日時の新しい順
   const trips = getDb()
     .prepare(
       `select t.id, t.title, t.started_at, t.ended_at, count(p.id) as point_count
        from trips t
        left join location_points p on p.trip_id = t.id
+       where t.deleted_at is null
        group by t.id
-       order by t.started_at desc`,
+       order by t.started_at is null desc, t.started_at desc`,
     )
     .all() as TripListRow[];
 
@@ -41,14 +43,21 @@ export default function Home() {
                 >
                   <span className="flex items-center gap-2 font-medium">
                     {trip.title}
-                    {trip.ended_at === null && (
+                    {tripStatus(trip) === "in_progress" && (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">
-                        記録中
+                        進行中
+                      </span>
+                    )}
+                    {tripStatus(trip) === "planning" && (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                        プラン中
                       </span>
                     )}
                   </span>
                   <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                    {formatDateTime(trip.started_at)} · {trip.point_count} 地点
+                    {trip.started_at ? formatDateTime(trip.started_at) : "未出発"}
+                    {" · "}
+                    {trip.point_count} 地点
                   </span>
                 </Link>
               </li>

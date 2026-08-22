@@ -8,8 +8,10 @@ import { getDb } from "@/lib/db";
 type SyncTrip = {
   id: string;
   title: string;
-  started_at: string;
+  started_at: string | null;
   ended_at: string | null;
+  transport?: string | null;
+  deleted_at?: string | null;
 };
 
 type SyncPoint = {
@@ -22,14 +24,21 @@ type SyncPoint = {
   recorded_at: string;
 };
 
+function isNullableString(value: unknown): boolean {
+  return value === null || value === undefined || typeof value === "string";
+}
+
 function isTrip(value: unknown): value is SyncTrip {
   if (typeof value !== "object" || value === null) return false;
   const t = value as Record<string, unknown>;
   return (
     typeof t.id === "string" &&
     typeof t.title === "string" &&
-    typeof t.started_at === "string" &&
-    (t.ended_at === null || t.ended_at === undefined || typeof t.ended_at === "string")
+    // started_at はプラン段階(未出発)では null
+    isNullableString(t.started_at) &&
+    isNullableString(t.ended_at) &&
+    isNullableString(t.transport) &&
+    isNullableString(t.deleted_at)
   );
 }
 
@@ -73,12 +82,14 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const upsertTrip = db.prepare(`
-    insert into trips (id, title, started_at, ended_at)
-    values (@id, @title, @started_at, @ended_at)
+    insert into trips (id, title, started_at, ended_at, transport, deleted_at)
+    values (@id, @title, @started_at, @ended_at, @transport, @deleted_at)
     on conflict (id) do update set
       title = excluded.title,
       started_at = excluded.started_at,
       ended_at = excluded.ended_at,
+      transport = excluded.transport,
+      deleted_at = excluded.deleted_at,
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   `);
   // 位置情報は不変なので既存 id は無視する
@@ -93,7 +104,13 @@ export async function POST(request: Request) {
   let skippedPoints = 0;
   db.transaction(() => {
     for (const trip of trips) {
-      upsertTrip.run({ ...trip, ended_at: trip.ended_at ?? null });
+      upsertTrip.run({
+        ...trip,
+        started_at: trip.started_at ?? null,
+        ended_at: trip.ended_at ?? null,
+        transport: trip.transport ?? null,
+        deleted_at: trip.deleted_at ?? null,
+      });
     }
     for (const point of points) {
       // trip が存在しない点は FK 違反で全体を失敗させず、スキップして数を返す

@@ -7,19 +7,27 @@ struct TripDetailView: View {
     let trip: TripEntity
 
     @Environment(MediaImporter.self) private var importer
+    @Environment(LocationRecorder.self) private var recorder
+    @Environment(SyncEngine.self) private var sync
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedMedia: MediaEntity?
+    @State private var showsEndConfirmation = false
 
     var body: some View {
         List {
-            let coordinates = trip.sortedPoints.map {
-                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            // GPS 切断・記録停止中を線で結ばないよう、時間ギャップで区間分けして描く
+            let segments = TrackSegmenter.split(
+                trip.sortedPoints, recordedAt: \.recordedAt
+            ).map { segment in
+                segment.map {
+                    CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                }
             }
-            if !coordinates.isEmpty {
+            if !segments.isEmpty {
                 Section {
                     TripMapView(
-                        coordinates: coordinates,
-                        isActive: trip.isActive,
+                        segments: segments,
+                        isActive: trip.isRecordingActive,
                         mediaAnnotations: mediaAnnotations,
                         onSelectMedia: { selectedMedia = $0 }
                     )
@@ -29,18 +37,36 @@ struct TripDetailView: View {
             }
             Section {
                 LabeledContent("開始") {
-                    Text(trip.startedAt, format: .dateTime.year().month().day().hour().minute())
+                    if let startedAt = trip.startedAt {
+                        Text(startedAt, format: .dateTime.year().month().day().hour().minute())
+                    } else {
+                        Text("未出発")
+                            .foregroundStyle(.blue)
+                    }
                 }
                 LabeledContent("終了") {
                     if let endedAt = trip.endedAt {
                         Text(endedAt, format: .dateTime.year().month().day().hour().minute())
-                    } else {
-                        Text("記録中")
+                    } else if trip.status == .inProgress {
+                        Text("進行中")
                             .foregroundStyle(.green)
+                    } else {
+                        Text("—")
+                            .foregroundStyle(.secondary)
                     }
                 }
                 LabeledContent("地点数", value: "\(trip.points.count)")
                 LabeledContent("総距離", value: ContentView.formatDistance(trip.totalDistanceMeters))
+            }
+
+            if trip.status == .inProgress {
+                Section {
+                    Button("旅行を終了", role: .destructive) {
+                        showsEndConfirmation = true
+                    }
+                } footer: {
+                    Text("記録の停止では旅行は終了しません。終了すると一覧で「進行中」ではなくなります。")
+                }
             }
 
             Section("メディア") {
@@ -76,6 +102,18 @@ struct TripDetailView: View {
         }
         .fullScreenCover(item: $selectedMedia) { media in
             MediaViewerView(media: media, store: importer.store)
+        }
+        .confirmationDialog(
+            "この旅行を終了しますか?",
+            isPresented: $showsEndConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("旅行を終了", role: .destructive) {
+                recorder.endTrip(trip)
+                Task { await sync.syncNow() }
+            }
+        } message: {
+            Text("記録中の場合は記録も停止します。")
         }
     }
 

@@ -11,7 +11,8 @@ struct TripNoteApp: App {
     init() {
         do {
             let container = try ModelContainer(
-                for: TripEntity.self, LocationPointEntity.self, MediaEntity.self
+                for: TripEntity.self, LocationPointEntity.self, MediaEntity.self,
+                TripDayEntity.self, CheckpointEntity.self
             )
             self.container = container
             let recorder = LocationRecorder(modelContext: container.mainContext)

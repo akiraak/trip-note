@@ -31,6 +31,34 @@ export function totalDistance(
   return total;
 }
 
+// GPS 切断・記録停止中を線で結ばないための区間分割の閾値
+// (iOS 側 TrackSegmenter.gapThreshold と揃える)
+export const TRACK_GAP_THRESHOLD_MS = 10 * 60 * 1000;
+
+/// recorded_at 昇順に並んだ点列を、隣接点の時間ギャップが閾値を超えた箇所で区間に分割する
+export function splitByTimeGap<T extends { recorded_at: string }>(
+  points: T[],
+  thresholdMs: number = TRACK_GAP_THRESHOLD_MS,
+): T[][] {
+  const segments: T[][] = [];
+  let current: T[] = [];
+  for (const point of points) {
+    const last = current[current.length - 1];
+    if (
+      last &&
+      Date.parse(point.recorded_at) - Date.parse(last.recorded_at) > thresholdMs
+    ) {
+      segments.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+  if (current.length > 0) {
+    segments.push(current);
+  }
+  return segments;
+}
+
 /// 軌跡全体を含むバウンディングボックス([west, south], [east, north])
 export function boundingBox(
   coordinates: { latitude: number; longitude: number }[],

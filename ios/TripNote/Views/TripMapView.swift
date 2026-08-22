@@ -10,10 +10,12 @@ struct TripMediaAnnotation: Identifiable {
 }
 
 /// trip の軌跡をポリラインで表示する地図。
+/// GPS 切断・記録停止中を線で結ばないよう、時間ギャップで分割済みの区間ごとに描く。
 /// 個々の位置情報のドットは描画しない(数千点になり得るため)。
 /// 位置に紐付いたメディアはサムネイルの Annotation で表示する。
 struct TripMapView: View {
-    let coordinates: [CLLocationCoordinate2D]
+    /// TrackSegmenter.split で区間分割済みの座標列
+    let segments: [[CLLocationCoordinate2D]]
     /// 記録中は最新地点のマーカーを「現在」として表示する
     let isActive: Bool
     var mediaAnnotations: [TripMediaAnnotation] = []
@@ -21,20 +23,26 @@ struct TripMapView: View {
 
     private let store = MediaStore.makeDefault()
 
+    private var totalCount: Int {
+        segments.reduce(0) { $0 + $1.count }
+    }
+
     var body: some View {
         Map(initialPosition: .automatic) {
-            if coordinates.count >= 2 {
-                MapPolyline(coordinates: coordinates)
-                    .stroke(
-                        .blue,
-                        style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
-                    )
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                if segment.count >= 2 {
+                    MapPolyline(coordinates: segment)
+                        .stroke(
+                            .blue,
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                        )
+                }
             }
-            if let first = coordinates.first {
+            if let first = segments.first?.first {
                 Marker("開始", systemImage: "flag.fill", coordinate: first)
                     .tint(.green)
             }
-            if coordinates.count >= 2, let last = coordinates.last {
+            if totalCount >= 2, let last = segments.last?.last {
                 Marker(isActive ? "現在" : "終了", systemImage: "flag.checkered", coordinate: last)
                     .tint(.red)
             }

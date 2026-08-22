@@ -18,14 +18,18 @@ enum SyncDateFormat {
 struct TripRecord: Encodable, Sendable {
     let id: UUID
     let title: String
-    let startedAt: Date
+    let startedAt: Date?
     let endedAt: Date?
+    let transport: String?
+    let deletedAt: Date?
 
     init(_ trip: TripEntity) {
         id = trip.id
         title = trip.title
         startedAt = trip.startedAt
         endedAt = trip.endedAt
+        transport = trip.transport
+        deletedAt = trip.deletedAt
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -33,6 +37,8 @@ struct TripRecord: Encodable, Sendable {
         case title
         case startedAt = "started_at"
         case endedAt = "ended_at"
+        case transport
+        case deletedAt = "deleted_at"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -41,6 +47,8 @@ struct TripRecord: Encodable, Sendable {
         try container.encode(title, forKey: .title)
         try container.encode(startedAt, forKey: .startedAt)
         try container.encode(endedAt, forKey: .endedAt)
+        try container.encode(transport, forKey: .transport)
+        try container.encode(deletedAt, forKey: .deletedAt)
     }
 }
 
@@ -84,6 +92,114 @@ struct LocationPointRecord: Encodable, Sendable {
         try container.encode(altitude, forKey: .altitude)
         try container.encode(accuracy, forKey: .accuracy)
         try container.encode(recordedAt, forKey: .recordedAt)
+    }
+}
+
+/// プランの 1 日の同期 DTO(双方向同期。updated_at は編集時刻 = LWW の基準)
+struct TripDayRecord: Encodable, Sendable {
+    let id: UUID
+    let tripId: UUID
+    let date: String
+    let title: String?
+    let note: String?
+    let updatedAt: Date
+    let deletedAt: Date?
+
+    /// trip との関連が切れている日は同期できないため nil を返す
+    init?(_ day: TripDayEntity) {
+        guard let trip = day.trip else { return nil }
+        id = day.id
+        tripId = trip.id
+        date = day.date
+        title = day.title
+        note = day.note
+        updatedAt = day.updatedAt
+        deletedAt = day.deletedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case tripId = "trip_id"
+        case date
+        case title
+        case note
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(tripId, forKey: .tripId)
+        try container.encode(date, forKey: .date)
+        try container.encode(title, forKey: .title)
+        try container.encode(note, forKey: .note)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(deletedAt, forKey: .deletedAt)
+    }
+}
+
+/// チェックポイントの同期 DTO(双方向同期。updated_at は編集時刻 = LWW の基準)
+struct CheckpointRecord: Encodable, Sendable {
+    let id: UUID
+    let tripId: UUID
+    let tripDayId: UUID
+    let type: String
+    let name: String
+    let latitude: Double?
+    let longitude: Double?
+    let plannedTime: Date?
+    let note: String?
+    let sortOrder: Int
+    let updatedAt: Date
+    let deletedAt: Date?
+
+    /// trip / trip_day との関連が切れている点は同期できないため nil を返す
+    init?(_ checkpoint: CheckpointEntity) {
+        guard let trip = checkpoint.trip, let day = checkpoint.tripDay else { return nil }
+        id = checkpoint.id
+        tripId = trip.id
+        tripDayId = day.id
+        type = checkpoint.typeRawValue
+        name = checkpoint.name
+        latitude = checkpoint.latitude
+        longitude = checkpoint.longitude
+        plannedTime = checkpoint.plannedTime
+        note = checkpoint.note
+        sortOrder = checkpoint.sortOrder
+        updatedAt = checkpoint.updatedAt
+        deletedAt = checkpoint.deletedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case tripId = "trip_id"
+        case tripDayId = "trip_day_id"
+        case type
+        case name
+        case latitude
+        case longitude
+        case plannedTime = "planned_time"
+        case note
+        case sortOrder = "sort_order"
+        case updatedAt = "updated_at"
+        case deletedAt = "deleted_at"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(tripId, forKey: .tripId)
+        try container.encode(tripDayId, forKey: .tripDayId)
+        try container.encode(type, forKey: .type)
+        try container.encode(name, forKey: .name)
+        try container.encode(latitude, forKey: .latitude)
+        try container.encode(longitude, forKey: .longitude)
+        try container.encode(plannedTime, forKey: .plannedTime)
+        try container.encode(note, forKey: .note)
+        try container.encode(sortOrder, forKey: .sortOrder)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(deletedAt, forKey: .deletedAt)
     }
 }
 

@@ -5,17 +5,18 @@ import { TripMap } from "./trip-map";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime } from "@/lib/format";
 import { formatDistance, totalDistance } from "@/lib/geo";
-import type { LocationPoint, Media, Trip } from "@/lib/types";
+import { tripStatus, type LocationPoint, type Media, type Trip } from "@/lib/types";
 
 export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
   const { id } = await props.params;
   const db = getDb();
-  const trip = db.prepare("select * from trips where id = ?").get(id) as
-    | Trip
-    | undefined;
+  const trip = db
+    .prepare("select * from trips where id = ? and deleted_at is null")
+    .get(id) as Trip | undefined;
   if (!trip) {
     notFound();
   }
+  const status = tripStatus(trip);
   const points = db
     .prepare(
       "select * from location_points where trip_id = ? order by recorded_at",
@@ -52,9 +53,14 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
         </Link>
         <h1 className="mt-2 mb-4 flex items-center gap-2 text-xl font-semibold">
           {trip.title}
-          {trip.ended_at === null && (
+          {status === "in_progress" && (
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">
-              記録中
+              進行中
+            </span>
+          )}
+          {status === "planning" && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+              プラン中
             </span>
           )}
         </h1>
@@ -64,6 +70,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
               points={points.map((p) => ({
                 latitude: p.latitude,
                 longitude: p.longitude,
+                recorded_at: p.recorded_at,
               }))}
               media={mediaMarkers}
             />
@@ -72,11 +79,19 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
         <dl className="mb-8 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-zinc-500 dark:text-zinc-400">開始</dt>
-            <dd>{formatDateTime(trip.started_at)}</dd>
+            <dd>
+              {trip.started_at ? formatDateTime(trip.started_at) : "未出発"}
+            </dd>
           </div>
           <div>
             <dt className="text-zinc-500 dark:text-zinc-400">終了</dt>
-            <dd>{trip.ended_at ? formatDateTime(trip.ended_at) : "記録中"}</dd>
+            <dd>
+              {trip.ended_at
+                ? formatDateTime(trip.ended_at)
+                : status === "in_progress"
+                  ? "進行中"
+                  : "—"}
+            </dd>
           </div>
           <div>
             <dt className="text-zinc-500 dark:text-zinc-400">地点数</dt>

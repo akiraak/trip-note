@@ -46,14 +46,15 @@ final class LocationRecorder: NSObject {
         case .denied, .restricted:
             lastError = "位置情報へのアクセスが許可されていません。設定アプリから許可してください。"
         default:
-            beginTrip()
+            beginOrResumeTrip()
         }
     }
 
+    /// 記録を停止する。旅行は終了しない(記録停止 ≠ 旅行終了)。
+    /// 同じ旅行に対して記録の開始/停止は何度でも行える。
     func stopRecording() {
         guard isRecording, let trip = activeTrip else { return }
-        trip.endedAt = Date()
-        trip.needsSync = true
+        trip.isRecordingActive = false
         saveContext()
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
@@ -62,13 +63,22 @@ final class LocationRecorder: NSObject {
         lastRecorded = nil
     }
 
-    /// 起動時に呼ぶ。終了していない trip があれば記録を再開する。
+    /// 旅行を明示的に終了する。この旅行を記録中なら記録も停止する。
+    func endTrip(_ trip: TripEntity) {
+        if trip.persistentModelID == activeTrip?.persistentModelID {
+            stopRecording()
+        }
+        trip.endedAt = Date()
+        trip.needsSync = true
+        saveContext()
+    }
+
+    /// 起動時に呼ぶ。記録中のまま終了された trip があれば記録を再開する。
     /// バックグラウンドでの再起動(significant location change)時にも UI なしで動く。
     func resumeIfNeeded() {
         guard !isRecording, isAuthorized else { return }
         var descriptor = FetchDescriptor<TripEntity>(
-            predicate: #Predicate { $0.endedAt == nil },
-            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+            predicate: #Predicate { $0.isRecordingActive && $0.deletedAt == nil }
         )
         descriptor.fetchLimit = 1
         guard let trip = try? modelContext.fetch(descriptor).first else { return }
@@ -77,10 +87,28 @@ final class LocationRecorder: NSObject {
 
     // MARK: - 内部処理
 
-    private func beginTrip() {
-        let title = Date().formatted(.dateTime.year().month().day()) + " の旅行"
-        let trip = TripEntity(title: title)
-        modelContext.insert(trip)
+    /// 進行中 or プラン中の旅行があればそれに追記し、無ければ新しい旅行を作って記録を始める
+    private func beginOrResumeTrip() {
+        let trip: TripEntity
+        let descriptor = FetchDescriptor<TripEntity>(
+            predicate: #Predicate { $0.endedAt == nil && $0.deletedAt == nil }
+        )
+        let candidates = (try? modelContext.fetch(descriptor)) ?? []
+        // 未出発(プラン中)を優先し、次に開始が新しいもの
+        if let existing = candidates.max(by: {
+            ($0.startedAt ?? .distantFuture) < ($1.startedAt ?? .distantFuture)
+        }) {
+            trip = existing
+        } else {
+            let title = Date().formatted(.dateTime.year().month().day()) + " の旅行"
+            trip = TripEntity(title: title)
+            modelContext.insert(trip)
+        }
+        if trip.startedAt == nil {
+            trip.startedAt = Date()
+        }
+        trip.isRecordingActive = true
+        trip.needsSync = true
         saveContext()
         resume(trip: trip)
     }
@@ -167,7 +195,7 @@ final class LocationRecorder: NSObject {
     private func startIfPending() {
         if isStartPending {
             isStartPending = false
-            beginTrip()
+            beginOrResumeTrip()
         } else {
             resumeIfNeeded()
         }

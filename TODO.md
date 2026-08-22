@@ -1,6 +1,6 @@
 - 「1つの旅行」の定義とプラン機能 [plan](docs/plans/trip-definition-and-planning.md)
-  - [ ] Phase 1: 旅行の再定義（記録停止≠旅行終了・GPS ギャップの区間分け描画・trips migration）
-  - [ ] Phase 2: プランのデータモデル（trip_days / checkpoints、iOS エンティティ・型）
+  - [x] Phase 1: 旅行の再定義（記録停止≠旅行終了・GPS ギャップの区間分け描画・trips migration）
+  - [x] Phase 2: プランのデータモデル（trip_days / checkpoints、iOS エンティティ・型）
   - [ ] Phase 3: 双方向同期（/api/sync 拡張・/api/sync/pull 新設・LWW + tombstone）
   - [ ] Phase 4: iOS プラン UI（旅行作成・日別リスト・チェックポイント CRUD・MapKit 検索）
   - [ ] Phase 5: Web プラン UI（Server Actions・日別編集・Nominatim 検索）
