@@ -2,6 +2,12 @@
 
 ## 2026-08-22
 
+- 旅行を生成中にアプリを切り替えたら "The network connection was lost" と表示された。生成は全部サーバでやって非同期化する [plan](docs/plans/archive/ai-async-jobs.md)
+  - 原因: iOS が最大 300 秒の同期 HTTP を張りっぱなしにしており、バックグラウンド移行でソケットが切られていた(生成自体は元からサーバ側)
+  - `ai_jobs` テーブルとジョブ API(POST /api/ai/jobs → 202、GET /api/ai/jobs/[id])を追加。生成は応答送信後に `after()` で実行し、iOS は 3 秒間隔のポーリング(一時的な通信エラーは無視して続行、全体 10 分で打ち切り)
+  - id はクライアント発行 UUID で再送冪等。10 分更新の無い pending/running は取得時に failed へ回収。同期版 /api/ai/plan・/api/ai/trip-outline は旧クライアント互換で残置(search-assist は同期のまま)
+  - 検証: web vitest 75 件(ai-jobs 12 件新規)+ lint + build、iOS ユニットテスト 92 件(ジョブ DTO 2 件新規)、curl でジョブ登録 → 実行 → ポーリングのスモークテスト
+
 - AI 候補の採用時に最終日へ目的地チェックポイントを作る(最終日の地図が出ない件) [plan](docs/plans/archive/outline-destination-checkpoint.md)
   - trip-outline の応答に目的地の概算座標(destinationLatitude/Longitude)を追加
   - 採用時に最終日へ type=destination のチェックポイント(名前 = 目的地、概算座標付き)を作成。同日に宿泊がある場合は「到着 → 宿泊」の順

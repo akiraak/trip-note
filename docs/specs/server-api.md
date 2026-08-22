@@ -2,7 +2,7 @@
 
 サーバは `web/` の Next.js が兼ねる(閲覧 UI と同一プロセス)。DB は SQLite で、
 スキーマの正は `web/src/lib/db.ts` の `MIGRATIONS`
-(trips / location_points / media / trip_days / checkpoints / app_settings)。
+(trips / location_points / media / trip_days / checkpoints / app_settings / ai_jobs)。
 
 ## データモデルの概要
 
@@ -109,9 +109,56 @@ location_points / media は対象外(一方向アップロードのみ)。
   行単位の LWW(`updated_at` の新しい方が勝つ、同時刻はローカル保持)で反映する。
   ローカルに無い tombstone 行は取り込まない
 
+## POST /api/ai/jobs
+
+AI 生成ジョブの登録(iOS 向け)。plan / trip-outline の生成は数十秒〜数分かかり、
+接続を張りっぱなしにするとアプリ切替で iOS がソケットを切って
+"The network connection was lost" になるため、ジョブ登録 → ポーリングで結果を受け取る。
+実装は `web/src/lib/ai-jobs.ts`(生成は応答送信後に next/server の `after()` で実行し、
+結果は `ai_jobs.result` に JSON で保持する。提案を trip_days / checkpoints に書かないのは
+同期版と同じで、採用はクライアントが決める)。
+
+リクエスト:
+
+```json
+{
+  "id": "uuid(クライアント発行)",
+  "kind": "plan | trip_outline",
+  "input": { "…": "kind に応じた /api/ai/plan・/api/ai/trip-outline と同じリクエスト" }
+}
+```
+
+- 同 id の再送は入力を差し替えず既存ジョブの状態を返す(再送冪等。
+  登録応答を取りこぼしたクライアントが安全に再送できる)
+- `input` のバリデーションは同期版と同じ(不正なら 400)
+- 登録時に 7 日より古いジョブを削除する(掃除)
+
+レスポンス:
+
+- `202 {"id":"…","status":"pending|running|succeeded|failed"}`(既存 id ならその時点の状態)
+- `401` / `400 {"error":"<バリデーションメッセージ>"}`
+
+## GET /api/ai/jobs/[id]
+
+ジョブの状態取得(ポーリング用)。
+
+```json
+{ "id": "…", "kind": "plan", "status": "succeeded",
+  "result": { "…": "kind に応じた同期版と同じレスポンス。succeeded 以外は null" },
+  "error": "失敗時のメッセージ。failed 以外は null" }
+```
+
+- `401` / `404 {"error":"not found"}`
+- pending / running のまま `updated_at` が 10 分以上更新されないジョブは、
+  サーバ再起動などで実行が失われたとみなし取得時に failed へ落とす
+- iOS は 3 秒間隔でポーリングし、全体 10 分で打ち切る。一時的な通信エラー
+  (アプリ切替・電波断)は無視して続行し、サーバが明示的にエラーボディを
+  返したときだけ失敗にする
+
 ## POST /api/ai/plan
 
-AI 行程提案(iOS 向け。Web は Server Action から `web/src/lib/ai.ts` を直接呼ぶ)。
+AI 行程提案(**旧クライアント互換の同期版**。現行 iOS は /api/ai/jobs を使う。
+Web は Server Action から `web/src/lib/ai.ts` を直接呼ぶ)。
 モデルは Web の設定画面(`/settings`)で選択し、サーバの `app_settings`(key `ai_model`)に
 保持する(同期対象外。iOS からの呼び出しにも自動で適用)。許可リストは
 Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
@@ -151,12 +198,14 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 - `401` / `400 {"error":"<バリデーションメッセージ>"}` /
   `500 {"error":"AI (...) の呼び出しに失敗しました: ..."}`(キー未設定・API エラー。
   502/504 だと Cloudflare がボディを差し替えてメッセージが届かないため 500 を使う)
-- 生成に数十秒〜数分かかる(iOS 側はタイムアウトを 300 秒にしている)
+- 生成に数十秒〜数分かかるため、現行 iOS は同一のリクエスト/レスポンスを
+  /api/ai/jobs 経由(非同期)で使う
 
 ## POST /api/ai/trip-outline
 
-日数・宿泊地候補(iOS の旅行作成直後に使う)。目的地と出発日時から、日数違いの
-大枠候補(各泊の宿泊地付き)を返す。モデル・認証・エラーは /api/ai/plan と同じ。
+日数・宿泊地候補(**旧クライアント互換の同期版**。現行 iOS は /api/ai/jobs を使う)。
+目的地と出発日時から、日数違いの大枠候補(各泊の宿泊地付き)を返す。
+モデル・認証・エラーは /api/ai/plan と同じ。
 出発日時はタイムゾーン変換を避けるためクライアントのローカル日付と時刻で送る。
 
 リクエスト:
@@ -247,6 +296,8 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
 - pull 反映(LWW)は `Domain/PlanPull.swift`、実行は `Services/SyncEngine.swift`
   (pull → push の順)。前回 pull の serverTime は UserDefaults(`syncPullSince`)に保存
 - AI(/api/ai/*)は `Services/AIClient.swift`(SyncClient の extension)、
-  DTO は `Models/AIRecords.swift`(camelCase)、提案の採用は `Domain/PlanEditor.adopt`
+  DTO は `Models/AIRecords.swift`(camelCase)、提案の採用は `Domain/PlanEditor.adopt`。
+  plan / trip-outline はジョブ方式(POST /api/ai/jobs → 3 秒間隔で
+  GET /api/ai/jobs/[id]、全体 10 分で打ち切り)。search-assist のみ同期 POST
 - 接続設定は `Resources/ServerConfig.plist`(SERVER_URL / API_KEY、gitignore 済み。
   雛形は `ServerConfig.example.plist`。作成後は `xcodegen generate` を再実行)

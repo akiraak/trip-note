@@ -100,6 +100,34 @@ struct AITripOutlineSuggestion: Decodable, Hashable {
     let destinationLongitude: Double?
 }
 
+// ---- 生成ジョブ (/api/ai/jobs) ----
+// plan / trip-outline の生成は数十秒〜数分かかり、接続を張りっぱなしにすると
+// アプリ切替で iOS がソケットを切ってしまう。そのためジョブ登録 → ポーリングで
+// 結果を受け取る(search-assist は数秒で返るので従来の同期 POST のまま)
+
+/// POST /api/ai/jobs のリクエスト。id はクライアント発行の UUID(再送冪等)
+struct AIJobCreateRequest<Input: Encodable>: Encodable {
+    let id: String
+    /// "plan" | "trip_outline"
+    let kind: String
+    let input: Input
+}
+
+/// POST /api/ai/jobs の応答(登録直後の状態)
+struct AIJobCreated: Decodable {
+    let id: String
+    let status: String
+}
+
+/// GET /api/ai/jobs/[id] の応答。status が succeeded なら result、
+/// failed なら error が入る(pending / running では両方 nil)
+struct AIJobStatusResponse<Output: Decodable>: Decodable {
+    let id: String
+    let status: String
+    let result: Output?
+    let error: String?
+}
+
 /// POST /api/ai/search-assist のリクエスト
 struct AISearchAssistRequest: Encodable {
     /// 大まかな地域(例: 松本市周辺)

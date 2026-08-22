@@ -109,6 +109,21 @@ const MIGRATIONS: string[] = [
   alter table trips add column departure_at text;
   alter table trips add column destination text;
   `,
+  // AI 生成の非同期ジョブ(サーバ専用・同期対象外)。生成に数分かかるため、
+  // iOS は接続を張りっぱなしにせずジョブ登録 → ポーリングで結果を受け取る。
+  // result は提案 JSON の置き場で、採用するまで trip_days / checkpoints には書かない
+  `
+  create table ai_jobs (
+    id text primary key,
+    kind text not null check (kind in ('plan', 'trip_outline')),
+    status text not null check (status in ('pending', 'running', 'succeeded', 'failed')),
+    input text not null,
+    result text,
+    error text,
+    created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

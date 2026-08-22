@@ -111,6 +111,59 @@ struct AIRecordsTests {
         #expect(object?["transport"] as? String == "car")
     }
 
+    @Test func 生成ジョブの登録リクエストは入力をネストして送る() throws {
+        let body = AIJobCreateRequest(
+            id: "0b7e4a52-1f0f-4c4c-9a3e-2f4f8f0d1234",
+            kind: "trip_outline",
+            input: AITripOutlineRequest(
+                destination: "上高地",
+                departureDate: "2026-09-01",
+                departureTime: "08:00",
+                departure: nil,
+                departureLatitude: nil,
+                departureLongitude: nil,
+                transport: nil,
+                request: nil
+            )
+        )
+        let data = try JSONEncoder().encode(body)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object?["id"] as? String == "0b7e4a52-1f0f-4c4c-9a3e-2f4f8f0d1234")
+        #expect(object?["kind"] as? String == "trip_outline")
+        let input = object?["input"] as? [String: Any]
+        #expect(input?["destination"] as? String == "上高地")
+        #expect(input?["departureDate"] as? String == "2026-09-01")
+    }
+
+    @Test func 生成ジョブの状態応答をデコードする() throws {
+        // 実行中(result / error なし)
+        let running = try JSONDecoder().decode(
+            AIJobStatusResponse<AIPlanSuggestion>.self,
+            from: Data(#"{ "id": "a", "status": "running", "result": null, "error": null }"#.utf8)
+        )
+        #expect(running.status == "running")
+        #expect(running.result == nil)
+
+        // 成功(result に kind ごとの提案が入る)
+        let succeeded = try JSONDecoder().decode(
+            AIJobStatusResponse<AIPlanSuggestion>.self,
+            from: Data("""
+            { "id": "a", "status": "succeeded", "error": null,
+              "result": { "days": [ { "date": "2026-09-01", "title": "移動日",
+                "area": "松本市", "checkpoints": [] } ] } }
+            """.utf8)
+        )
+        #expect(succeeded.result?.days.map(\.title) == ["移動日"])
+
+        // 失敗(error にサーバのメッセージ)
+        let failed = try JSONDecoder().decode(
+            AIJobStatusResponse<AIPlanSuggestion>.self,
+            from: Data(#"{ "id": "a", "status": "failed", "result": null, "error": "boom" }"#.utf8)
+        )
+        #expect(failed.status == "failed")
+        #expect(failed.error == "boom")
+    }
+
     @Test func プラン提案のリクエストはサーバの期待するキーで送る() throws {
         let body = AIPlanRequest(
             departure: "東京駅",
