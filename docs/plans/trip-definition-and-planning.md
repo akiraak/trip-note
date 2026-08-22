@@ -179,6 +179,28 @@ create table app_settings (
   pull 反映の LWW ロジック、日付グルーピング、ギャップ区間分割ロジックをテスト
 - AI 部分はプロンプト・スキーマ検証を中心に（実 API 呼び出しのテストは手動確認）
 
+## Phase 4 実装メモ（iOS プラン UI）
+
+- **旅行作成** `TripCreateView`: タイトル・移動手段（`Transport` enum を Models に追加）・
+  開始日・日数のフォーム。`PlanEditor.makeTrip` で trip + trip_days を作り挿入
+  （startedAt は nil のまま = プラン中）。一覧のツールバー「+」から開く
+- **旅行編集** `TripEditView`: タイトル・移動手段のみ（開始/終了は記録ライフサイクル側）
+- **日別リスト**: `TripDetailView` に「プラン」セクションを追加（n日目・日付・タイトル・
+  CP 件数）。「日を追加」は最終日の翌日を追加（日が無ければ startedAt ?? 今日）
+- **日詳細** `TripDayDetailView`: タイトル・メモ編集（シート）、チェックポイントの
+  追加（検索 / 手入力）・編集・並べ替え（EditButton + onMove）・スワイプ削除。
+  日の削除は tombstone で、ぶら下がるチェックポイントも道連れにする
+- **検索** `CheckpointSearchView`: MKLocalSearch。旅行内の既存座標（CP・記録点）が
+  あればその周辺を region ヒントにする。検索結果の選択で即追加
+  （種別は POI カテゴリから推測。修正は行タップ → 編集フォームで）
+- **編集フォーム** `CheckpointEditView`: 種別・名前・予定時刻（トグルで任意）・メモ・
+  位置（検索で設定 / クリア可。座標なし = 地域だけ決定も許容）
+- **地図ピン**: `TripMapView` に checkpointAnnotations を追加し、種別ごとの
+  アイコン・色（`CheckpointStyle.swift`）の Marker で表示
+- 編集系の保存時は必ず `updatedAt = now` + `needsSync = true`（LWW の基準）とし、
+  保存後に `sync.syncNow()` を投げる
+- 純ロジックは `PlanEditor` に寄せ、unmanaged エンティティでユニットテストする
+
 ## Phase 分割
 
 - **Phase 1: 旅行の再定義** — trips migration（started_at nullable / transport / deleted_at）、

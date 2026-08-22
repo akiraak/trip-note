@@ -9,16 +9,26 @@ struct TripMediaAnnotation: Identifiable {
     var id: UUID { media.id }
 }
 
+/// 地図上に出すプランのチェックポイントピン
+struct TripCheckpointAnnotation: Identifiable {
+    let checkpoint: CheckpointEntity
+    let coordinate: CLLocationCoordinate2D
+
+    var id: UUID { checkpoint.id }
+}
+
 /// trip の軌跡をポリラインで表示する地図。
 /// GPS 切断・記録停止中を線で結ばないよう、時間ギャップで分割済みの区間ごとに描く。
 /// 個々の位置情報のドットは描画しない(数千点になり得るため)。
-/// 位置に紐付いたメディアはサムネイルの Annotation で表示する。
+/// 位置に紐付いたメディアはサムネイルの Annotation で、
+/// プランのチェックポイントは種別ごとのアイコン・色の Marker で表示する。
 struct TripMapView: View {
     /// TrackSegmenter.split で区間分割済みの座標列
     let segments: [[CLLocationCoordinate2D]]
     /// 記録中は最新地点のマーカーを「現在」として表示する
     let isActive: Bool
     var mediaAnnotations: [TripMediaAnnotation] = []
+    var checkpointAnnotations: [TripCheckpointAnnotation] = []
     var onSelectMedia: ((MediaEntity) -> Void)?
 
     private let store = MediaStore.makeDefault()
@@ -45,6 +55,14 @@ struct TripMapView: View {
             if totalCount >= 2, let last = segments.last?.last {
                 Marker(isActive ? "現在" : "終了", systemImage: "flag.checkered", coordinate: last)
                     .tint(.red)
+            }
+            ForEach(checkpointAnnotations) { annotation in
+                Marker(
+                    annotation.checkpoint.name,
+                    systemImage: annotation.checkpoint.type.systemImage,
+                    coordinate: annotation.coordinate
+                )
+                .tint(annotation.checkpoint.type.tint)
             }
             ForEach(mediaAnnotations) { annotation in
                 Annotation("", coordinate: annotation.coordinate) {

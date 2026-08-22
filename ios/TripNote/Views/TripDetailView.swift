@@ -1,17 +1,20 @@
 import CoreLocation
 import PhotosUI
+import SwiftData
 import SwiftUI
 
-/// trip の詳細。地図と統計ヘッダ、メディアグリッド、位置情報のタイムラインを表示する。
+/// trip の詳細。地図と統計ヘッダ、日別プラン、メディアグリッド、位置情報のタイムラインを表示する。
 struct TripDetailView: View {
     let trip: TripEntity
 
     @Environment(MediaImporter.self) private var importer
     @Environment(LocationRecorder.self) private var recorder
     @Environment(SyncEngine.self) private var sync
+    @Environment(\.modelContext) private var modelContext
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedMedia: MediaEntity?
     @State private var showsEndConfirmation = false
+    @State private var showsTripEdit = false
 
     var body: some View {
         List {
@@ -23,12 +26,14 @@ struct TripDetailView: View {
                     CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
                 }
             }
-            if !segments.isEmpty {
+            let checkpointPins = checkpointAnnotations
+            if !segments.isEmpty || !checkpointPins.isEmpty {
                 Section {
                     TripMapView(
                         segments: segments,
                         isActive: trip.isRecordingActive,
                         mediaAnnotations: mediaAnnotations,
+                        checkpointAnnotations: checkpointPins,
                         onSelectMedia: { selectedMedia = $0 }
                     )
                     .frame(height: 300)
@@ -55,8 +60,26 @@ struct TripDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                if let transport = trip.transport {
+                    LabeledContent(
+                        "移動手段",
+                        value: Transport(rawValue: transport)?.label ?? transport
+                    )
+                }
                 LabeledContent("地点数", value: "\(trip.points.count)")
                 LabeledContent("総距離", value: ContentView.formatDistance(trip.totalDistanceMeters))
+            }
+
+            Section("プラン") {
+                let days = trip.sortedDays
+                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
+                    NavigationLink(value: day) {
+                        TripDayRow(index: index, day: day)
+                    }
+                }
+                Button(action: addDay) {
+                    Label("日を追加", systemImage: "plus")
+                }
             }
 
             if trip.status == .inProgress {
@@ -86,6 +109,9 @@ struct TripDetailView: View {
         }
         .navigationTitle(trip.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: TripDayEntity.self) { day in
+            TripDayDetailView(day: day)
+        }
         .toolbar {
             // ネイティブカメラで撮った写真・動画を後から紐付ける(シミュレータの動作確認も兼ねる)
             PhotosPicker(
@@ -94,6 +120,14 @@ struct TripDetailView: View {
             ) {
                 Label("ライブラリから追加", systemImage: "photo.badge.plus")
             }
+            Button {
+                showsTripEdit = true
+            } label: {
+                Label("旅行を編集", systemImage: "pencil")
+            }
+        }
+        .sheet(isPresented: $showsTripEdit) {
+            TripEditView(trip: trip)
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
@@ -114,6 +148,28 @@ struct TripDetailView: View {
             }
         } message: {
             Text("記録中の場合は記録も停止します。")
+        }
+    }
+
+    private func addDay() {
+        guard let day = PlanEditor.addedDay(to: trip) else { return }
+        modelContext.insert(day)
+        try? modelContext.save()
+        Task { await sync.syncNow() }
+    }
+
+    /// 座標が決まっているチェックポイント(tombstone 除く)の地図ピン
+    private var checkpointAnnotations: [TripCheckpointAnnotation] {
+        trip.checkpoints.compactMap { checkpoint in
+            guard
+                checkpoint.deletedAt == nil,
+                let latitude = checkpoint.latitude,
+                let longitude = checkpoint.longitude
+            else { return nil }
+            return TripCheckpointAnnotation(
+                checkpoint: checkpoint,
+                coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            )
         }
     }
 
@@ -176,6 +232,38 @@ struct TripDetailView: View {
                 await importer.importPhoto(data: data, into: trip)
             }
         }
+    }
+}
+
+private struct TripDayRow: View {
+    let index: Int
+    let day: TripDayEntity
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text("\(index + 1)日目")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(dateText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let title = day.title, !title.isEmpty {
+                Text(title)
+                    .font(.subheadline)
+            }
+            let count = day.sortedCheckpoints.count
+            Text(count > 0 ? "チェックポイント \(count) 件" : "チェックポイントなし")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var dateText: String {
+        guard let date = PlanEditor.parseDate(day.date) else { return day.date }
+        return date.formatted(.dateTime.month().day().weekday())
     }
 }
 

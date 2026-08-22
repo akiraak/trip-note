@@ -11,6 +11,17 @@ enum TripStatus {
     case finished
 }
 
+/// 移動手段。旅行単位で持ち、AI 行程提案の入力に使う。
+/// サーバへは rawValue の文字列で同期する(TripEntity.transport は String? のままにして
+/// 未知の値も落とさず保持する)
+enum Transport: String, Codable, CaseIterable {
+    case car
+    case train
+    case walk
+    case bicycle
+    case mixed
+}
+
 struct Trip: Codable, Identifiable, Hashable {
     let id: UUID
     var title: String

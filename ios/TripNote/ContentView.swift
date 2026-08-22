@@ -13,6 +13,7 @@ struct ContentView: View {
         sort: [SortDescriptor(\TripEntity.startedAt, order: .reverse)]
     ) private var trips: [TripEntity]
     @State private var showsCamera = false
+    @State private var showsTripCreate = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,16 @@ struct ContentView: View {
             .navigationDestination(for: TripEntity.self) { trip in
                 TripDetailView(trip: trip)
             }
+            .toolbar {
+                Button {
+                    showsTripCreate = true
+                } label: {
+                    Label("旅行を作成", systemImage: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showsTripCreate) {
+            TripCreateView()
         }
         .onChange(of: scenePhase) { _, newPhase in
             // 記録中はローカル優先(自動同期しない)。復帰時に未同期分をまとめて送る
@@ -206,11 +217,15 @@ private struct TripRow: View {
             HStack(spacing: 12) {
                 if let startedAt = trip.startedAt {
                     Text(startedAt, format: .dateTime.year().month().day().hour().minute())
+                    Text("\(trip.points.count) 地点")
+                    Text(ContentView.formatDistance(trip.totalDistanceMeters))
+                } else if let first = trip.sortedDays.first,
+                          let date = PlanEditor.parseDate(first.date) {
+                    // プラン中はプランの期間を出す(地点数・距離は 0 なので出さない)
+                    Text("\(date.formatted(.dateTime.month().day())) から \(trip.sortedDays.count) 日間")
                 } else {
                     Text("未出発")
                 }
-                Text("\(trip.points.count) 地点")
-                Text(ContentView.formatDistance(trip.totalDistanceMeters))
             }
             .font(.caption)
             .foregroundStyle(.secondary)

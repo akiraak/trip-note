@@ -1,0 +1,114 @@
+import Foundation
+
+/// プラン(trip_days / checkpoints)を編集する純粋ロジック。
+/// ModelContext には触れない(挿入・保存は呼び出し側で行う)ため、
+/// unmanaged なエンティティだけでテストできる。
+/// 同期対象フィールドを変更した行は updatedAt を更新し needsSync を立てる(LWW の基準)。
+enum PlanEditor {
+    /// trip_days.date と同じ YYYY-MM-DD 形式に変換する
+    static func dateString(_ date: Date, calendar: Calendar = .current) -> String {
+        formatter(calendar).string(from: date)
+    }
+
+    /// YYYY-MM-DD をその日の 0 時(カレンダーのタイムゾーン)として解釈する
+    static func parseDate(_ dateString: String, calendar: Calendar = .current) -> Date? {
+        formatter(calendar).date(from: dateString)
+    }
+
+    /// 開始日から連続した日数分の日付(YYYY-MM-DD)を返す
+    static func dayDates(
+        startingOn start: Date,
+        count: Int,
+        calendar: Calendar = .current
+    ) -> [String] {
+        guard count > 0 else { return [] }
+        return (0..<count).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: start)
+                .map { dateString($0, calendar: calendar) }
+        }
+    }
+
+    /// 翌日の日付(YYYY-MM-DD)を返す
+    static func nextDate(after dateString: String, calendar: Calendar = .current) -> String? {
+        guard
+            let date = parseDate(dateString, calendar: calendar),
+            let next = calendar.date(byAdding: .day, value: 1, to: date)
+        else { return nil }
+        return Self.dateString(next, calendar: calendar)
+    }
+
+    /// プラン段階の旅行と日別プランを作る(挿入は呼び出し側)。startedAt は nil のまま
+    static func makeTrip(
+        title: String,
+        transport: String?,
+        startDate: Date,
+        dayCount: Int,
+        calendar: Calendar = .current,
+        now: Date = Date()
+    ) -> (trip: TripEntity, days: [TripDayEntity]) {
+        let trip = TripEntity(title: title, updatedAt: now)
+        trip.transport = transport
+        let days = dayDates(startingOn: startDate, count: dayCount, calendar: calendar)
+            .map { TripDayEntity(date: $0, updatedAt: now, trip: trip) }
+        return (trip, days)
+    }
+
+    /// 最終日の翌日の trip_day を作る(挿入は呼び出し側)。
+    /// 日が 1 つも無ければ startedAt(未出発なら now)の日付で 1 日目を作る
+    static func addedDay(
+        to trip: TripEntity,
+        calendar: Calendar = .current,
+        now: Date = Date()
+    ) -> TripDayEntity? {
+        let date: String
+        if let last = trip.sortedDays.last {
+            guard let next = nextDate(after: last.date, calendar: calendar) else { return nil }
+            date = next
+        } else {
+            date = dateString(trip.startedAt ?? now, calendar: calendar)
+        }
+        return TripDayEntity(date: date, updatedAt: now, trip: trip)
+    }
+
+    /// 日を削除する(tombstone)。ぶら下がるチェックポイントも道連れにする
+    static func delete(_ day: TripDayEntity, now: Date = Date()) {
+        for checkpoint in day.checkpoints where checkpoint.deletedAt == nil {
+            delete(checkpoint, now: now)
+        }
+        day.deletedAt = now
+        day.updatedAt = now
+        day.needsSync = true
+    }
+
+    /// チェックポイントを削除する(tombstone)
+    static func delete(_ checkpoint: CheckpointEntity, now: Date = Date()) {
+        checkpoint.deletedAt = now
+        checkpoint.updatedAt = now
+        checkpoint.needsSync = true
+    }
+
+    /// 新規チェックポイントの表示順(その日の末尾)
+    static func nextSortOrder(in day: TripDayEntity) -> Int {
+        let orders = day.checkpoints.filter { $0.deletedAt == nil }.map(\.sortOrder)
+        return orders.max().map { $0 + 1 } ?? 0
+    }
+
+    /// 並べ替え後の配列を受け取り、位置が変わった行だけ sort_order を振り直す
+    /// (変わらない行の updatedAt を無駄に進めて LWW で他方の編集を潰さないため)
+    static func applyOrder(_ ordered: [CheckpointEntity], now: Date = Date()) {
+        for (index, checkpoint) in ordered.enumerated() where checkpoint.sortOrder != index {
+            checkpoint.sortOrder = index
+            checkpoint.updatedAt = now
+            checkpoint.needsSync = true
+        }
+    }
+
+    private static func formatter(_ calendar: Calendar) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
+}
