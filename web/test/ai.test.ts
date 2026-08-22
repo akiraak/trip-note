@@ -117,10 +117,12 @@ describe("parsePlanInput", () => {
 
 describe("parseTripOutlineInput", () => {
   const valid = {
-    destination: "上高地",
+    destination: "シカゴ",
     departureDate: "2026-09-01",
     departureTime: "08:30",
-    departure: "自宅",
+    departure: "シアトル 5th Ave",
+    departureLatitude: 47.6062,
+    departureLongitude: -122.3321,
     transport: "car",
     request: "温泉に入りたい",
   };
@@ -129,15 +131,26 @@ describe("parseTripOutlineInput", () => {
     expect(parseTripOutlineInput(valid)).toEqual(valid);
   });
 
-  it("departure / transport / request は省略できる", () => {
+  it("departure / 座標 / transport / request は省略できる", () => {
     const input = parseTripOutlineInput({
       destination: "上高地",
       departureDate: "2026-09-01",
       departureTime: "08:30",
     });
     expect(input.departure).toBeNull();
+    expect(input.departureLatitude).toBeNull();
+    expect(input.departureLongitude).toBeNull();
     expect(input.transport).toBeNull();
     expect(input.request).toBeNull();
+  });
+
+  it("範囲外・数値でない座標は拒否する", () => {
+    expect(() =>
+      parseTripOutlineInput({ ...valid, departureLatitude: 91 }),
+    ).toThrow(/座標/);
+    expect(() =>
+      parseTripOutlineInput({ ...valid, departureLongitude: "西経" }),
+    ).toThrow(/座標/);
   });
 
   it("目的地が空なら拒否する", () => {
@@ -307,18 +320,37 @@ describe("buildPlanPrompt", () => {
 describe("buildTripOutlinePrompt", () => {
   it("入力の全項目をプロンプトに含める", () => {
     const { system, user } = buildTripOutlinePrompt({
-      destination: "上高地",
+      destination: "シカゴ",
       departureDate: "2026-09-01",
       departureTime: "08:30",
-      departure: "自宅",
+      departure: "シアトル",
+      departureLatitude: 47.6062,
+      departureLongitude: -122.3321,
       transport: "car",
       request: "温泉に入りたい",
     });
     expect(system).toContain("candidates");
-    expect(user).toContain("自宅");
-    expect(user).toContain("上高地");
+    // 長距離移動は経路上の中継地で宿泊しながら向かう指示
+    expect(system).toContain("経路上の中継地");
+    expect(user).toContain("シアトル");
+    expect(user).toContain("47.6062, -122.3321");
+    expect(user).toContain("シカゴ");
     expect(user).toContain("2026-09-01 08:30");
     expect(user).toContain("car");
     expect(user).toContain("温泉に入りたい");
+  });
+
+  it("座標が無ければ座標行を出さない", () => {
+    const { user } = buildTripOutlinePrompt({
+      destination: "上高地",
+      departureDate: "2026-09-01",
+      departureTime: "08:30",
+      departure: null,
+      departureLatitude: null,
+      departureLongitude: null,
+      transport: null,
+      request: null,
+    });
+    expect(user).not.toContain("座標");
   });
 });

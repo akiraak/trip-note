@@ -39,8 +39,25 @@ final class OneShotLocationProvider: NSObject {
     nonisolated static func placeName(for location: CLLocation) async -> String? {
         let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first
         guard let placemark else { return nil }
-        // name は POI 名や番地(例: 「松本駅」「大手3丁目」)。無ければ市区町村まで
-        return placemark.name ?? placemark.subLocality ?? placemark.locality
+        return composedPlaceName(
+            name: placemark.name ?? placemark.subLocality,
+            city: placemark.locality
+        )
+    }
+
+    /// 地名の合成。name は POI 名や番地(例: 「5th Ave 401」)で都市が分からないことが
+    /// あるため、市区町村名を前置する(例: 「シアトル 5th Ave 401」。重複はさせない)
+    nonisolated static func composedPlaceName(name: String?, city: String?) -> String? {
+        switch (city, name) {
+        case let (city?, name?) where !name.contains(city):
+            return "\(city) \(name)"
+        case let (_, name?):
+            return name
+        case let (city?, nil):
+            return city
+        case (nil, nil):
+            return nil
+        }
     }
 
     private static var deniedError: LocationError {

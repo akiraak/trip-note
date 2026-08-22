@@ -148,9 +148,14 @@ struct TripCreateView: View {
         departurePlace.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// 1 日目の出発チェックポイント名(AI 候補出しの出発地に使う)
+    /// 1 日目の出発チェックポイント(AI 候補出しの出発地・座標に使う)
+    static func departureCheckpoint(of trip: TripEntity) -> CheckpointEntity? {
+        trip.sortedDays.first?.sortedCheckpoints.first { $0.type == .departure }
+    }
+
+    /// 1 日目の出発チェックポイント名(AI 行程提案の出発地初期値に使う)
     static func departureName(of trip: TripEntity) -> String? {
-        trip.sortedDays.first?.sortedCheckpoints.first { $0.type == .departure }?.name
+        departureCheckpoint(of: trip)?.name
     }
 
     /// 例: 「2泊3日・泊: 松本 → 上高地」「1日間(日帰り)」
@@ -230,11 +235,14 @@ struct TripCreateView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        let departureCheckpoint = Self.departureCheckpoint(of: trip)
         let body = AITripOutlineRequest(
             destination: destination,
             departureDate: PlanEditor.dateString(departureAt),
             departureTime: PlanEditor.timeString(departureAt),
-            departure: Self.departureName(of: trip),
+            departure: departureCheckpoint?.name,
+            departureLatitude: departureCheckpoint?.latitude,
+            departureLongitude: departureCheckpoint?.longitude,
             transport: trip.transport,
             request: nil
         )

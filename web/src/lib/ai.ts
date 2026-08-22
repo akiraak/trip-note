@@ -132,6 +132,9 @@ export type TripOutlineInput = {
   departureTime: string;
   /** 出発地(任意。1 日目の departure チェックポイント名) */
   departure: string | null;
+  /** 出発地の座標(任意。現在地から設定した場合。地名が番地でも位置を特定できる) */
+  departureLatitude: number | null;
+  departureLongitude: number | null;
   transport: string | null;
   /** 自由記述の要望 */
   request: string | null;
@@ -226,6 +229,14 @@ export function parsePlanInput(value: unknown): PlanSuggestionInput {
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+function optionalCoordinate(value: unknown, limit: number): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > limit) {
+    throw new Error("不正な座標です");
+  }
+  return value;
+}
+
 export function parseTripOutlineInput(value: unknown): TripOutlineInput {
   if (!isRecord(value)) throw new Error("不正な入力です");
   const destination =
@@ -248,6 +259,8 @@ export function parseTripOutlineInput(value: unknown): TripOutlineInput {
     departureDate: value.departureDate,
     departureTime: value.departureTime,
     departure: optionalText(value.departure),
+    departureLatitude: optionalCoordinate(value.departureLatitude, 90),
+    departureLongitude: optionalCoordinate(value.departureLongitude, 180),
     transport: optionalText(value.transport),
     request: optionalText(value.request),
   };
@@ -539,15 +552,22 @@ export function buildTripOutlinePrompt(input: TripOutlineInput): {
   user: string;
 } {
   const system = [
-    "あなたは旅行プランナーです。目的地と出発日時から、旅行の大枠(日数と各泊の宿泊地)の候補を JSON で作成してください。",
-    "- candidates は日数違いで 2〜4 件(例: 日帰り / 1泊2日 / 2泊3日)。無理のない日数の候補だけを出す",
+    "あなたは旅行プランナーです。出発地から目的地へ向かう旅行の大枠(日数と各泊の宿泊地)の候補を JSON で作成してください。",
+    "- この旅行は出発地を出発日時に出て、最終日に目的地へ到着する行程(到着後の滞在泊を含めてもよい)",
+    "- 出発地と目的地が離れている場合は、移動手段で 1 日に現実的に移動できる距離を見積もり、経路上の中継地で宿泊しながら向かう(例: 車なら 1 日の運転は概ね 400〜600km。出発時刻が遅い日はさらに短く)。必要な日数を惜しまないこと",
+    "- 近場なら日帰りや 1 泊の候補でよい",
+    "- candidates は 2〜4 件。日数やペースの違い(最短で移動重視 / 途中の観光も楽しむ など)を出す",
     "- dayCount は旅行全体の日数(日帰りは 1)。nights は泊数分(dayCount - 1)で、n 番目が n 泊目",
-    "- 各泊の area は宿泊する大まかな地域、name は「◯◯温泉の宿」「◯◯駅周辺のホテル」のような地図検索でヒットしやすい表現にする(実在が不確かな固有名は使わない)",
-    "- title は「2泊3日でゆったり」のような候補の短い説明",
-    "- 出発地・出発時刻・移動手段から、初日に現実的に移動できる範囲を見積もる",
+    "- 各泊の area は宿泊する大まかな地域(経路上の都市・観光地)、name は「◯◯温泉の宿」「◯◯駅周辺のホテル」のような地図検索でヒットしやすい表現にする(実在が不確かな固有名は使わない)",
+    "- title は「4泊5日で移動重視」のような候補の短い説明",
   ].join("\n");
+  const coordinateLine =
+    input.departureLatitude !== null && input.departureLongitude !== null
+      ? [`出発地の座標: ${input.departureLatitude}, ${input.departureLongitude}`]
+      : [];
   const user = [
     `出発地: ${input.departure ?? "未指定"}`,
+    ...coordinateLine,
     `目的地: ${input.destination}`,
     `出発日時: ${input.departureDate} ${input.departureTime}`,
     `移動手段: ${input.transport ?? "未指定"}`,

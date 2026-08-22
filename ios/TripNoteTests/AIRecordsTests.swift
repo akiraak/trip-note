@@ -76,19 +76,23 @@ struct AIRecordsTests {
 
     @Test func 日数宿泊地候補のリクエストはサーバの期待するキーで送る() throws {
         let body = AITripOutlineRequest(
-            destination: "上高地",
+            destination: "シカゴ",
             departureDate: "2026-09-01",
             departureTime: "08:30",
-            departure: "自宅",
+            departure: "シアトル",
+            departureLatitude: 47.6062,
+            departureLongitude: -122.3321,
             transport: "car",
             request: nil
         )
         let data = try JSONEncoder().encode(body)
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        #expect(object?["destination"] as? String == "上高地")
+        #expect(object?["destination"] as? String == "シカゴ")
         #expect(object?["departureDate"] as? String == "2026-09-01")
         #expect(object?["departureTime"] as? String == "08:30")
-        #expect(object?["departure"] as? String == "自宅")
+        #expect(object?["departure"] as? String == "シアトル")
+        #expect(object?["departureLatitude"] as? Double == 47.6062)
+        #expect(object?["departureLongitude"] as? Double == -122.3321)
         #expect(object?["transport"] as? String == "car")
     }
 

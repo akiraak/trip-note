@@ -57,6 +57,9 @@ struct AITripOutlineRequest: Encodable {
     let departureTime: String
     /// 出発地(任意。1 日目の departure チェックポイント名)
     let departure: String?
+    /// 出発地の座標(任意。現在地から設定した場合。地名が番地でも位置を特定できる)
+    let departureLatitude: Double?
+    let departureLongitude: Double?
     /// Transport.rawValue(未設定なら nil)
     let transport: String?
     /// 自由記述の要望
