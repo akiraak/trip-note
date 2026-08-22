@@ -130,11 +130,13 @@ async function fetchFromOsrm(from: LatLng, to: LatLng): Promise<RouteLeg | null>
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
+    console.error(`[routing] OSRM HTTP ${response.status} for ${url.pathname}`);
     return null;
   }
   const body = (await response.json()) as OsrmResponse;
   const route = body.routes?.[0];
   if (body.code !== "Ok" || !route) {
+    console.error(`[routing] OSRM code=${body.code} for ${url.pathname}`);
     return null;
   }
   return {
@@ -197,7 +199,11 @@ export async function fetchRouteLegs(
             if (fetched) saveCached(key, fetched);
             return fetched;
           })
-          .catch(() => null);
+          .catch((error) => {
+            // 失敗レグは null(クライアントは直線フォールバック)。原因調査用にログだけ残す
+            console.error(`[routing] leg ${key} failed:`, error);
+            return null;
+          });
         pending.set(key, promise);
       }
       return promise;
