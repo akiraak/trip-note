@@ -21,7 +21,7 @@ targets:
     info:
       path: TripNote/Info.plist
       properties:
-        CFBundleDisplayName: TripNote
+        CFBundleDisplayName: 旅ログ
         UILaunchScreen: {}
         UIBackgroundModes: [location]
         # ローカル開発で Mac 上の dev サーバ(http)へ同期するための例外。本番は https

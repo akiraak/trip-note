@@ -2,6 +2,10 @@
 
 ## 2026-08-22
 
+- アプリ名を「旅ログ」に変更 [plan](docs/plans/archive/rename-app-tabilog.md)
+  - 表示名のみ変更(iOS: CFBundleDisplayName + navigationTitle / Web: metadata.title + ヘッダ)。ターゲット名・bundle id 等の内部識別子は不変
+  - 検証: xcodegen 再生成 + iOS シミュレータビルド、web lint + build
+
 - 旅行を生成中にアプリを切り替えたら "The network connection was lost" と表示された。生成は全部サーバでやって非同期化する [plan](docs/plans/archive/ai-async-jobs.md)
   - 原因: iOS が最大 300 秒の同期 HTTP を張りっぱなしにしており、バックグラウンド移行でソケットが切られていた(生成自体は元からサーバ側)
   - `ai_jobs` テーブルとジョブ API(POST /api/ai/jobs → 202、GET /api/ai/jobs/[id])を追加。生成は応答送信後に `after()` で実行し、iOS は 3 秒間隔のポーリング(一時的な通信エラーは無視して続行、全体 10 分で打ち切り)

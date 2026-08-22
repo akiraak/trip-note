@@ -33,7 +33,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("trip-note")
+            .navigationTitle("旅ログ")
             .navigationDestination(for: TripEntity.self) { trip in
                 TripDetailView(trip: trip)
             }

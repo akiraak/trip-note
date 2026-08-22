@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "trip-note",
+  title: "旅ログ",
   description: "旅行の移動経路を記録・閲覧するアプリ",
 };
 
