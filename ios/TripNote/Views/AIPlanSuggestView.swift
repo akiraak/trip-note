@@ -60,19 +60,13 @@ struct AIPlanSuggestView: View {
             TextField("到着予定地(例: 自宅)", text: $destination)
             DatePicker("開始日", selection: $startDate, displayedComponents: .date)
             Stepper("日数: \(dayCount)日", value: $dayCount, in: 1...30)
-            if let transport = trip.transport {
-                LabeledContent(
-                    "移動手段",
-                    value: Transport(rawValue: transport)?.label ?? transport
-                )
-            }
             TextField(
                 "要望(例: 城と温泉を入れたい)",
                 text: $request,
                 axis: .vertical
             )
         } footer: {
-            Text("移動手段は旅行の設定を使います。提案の作成には 1 分ほどかかります。")
+            Text("車での移動を前提に提案します。作成には 1 分ほどかかります。")
         }
         Section {
             if let errorMessage {
@@ -152,7 +146,7 @@ struct AIPlanSuggestView: View {
             destination: trimmed(destination),
             startDate: PlanEditor.dateString(startDate),
             dayCount: dayCount,
-            transport: trip.transport,
+            transport: trip.transport ?? Transport.car.rawValue,
             request: trimmed(request).isEmpty ? nil : trimmed(request)
         )
         do {

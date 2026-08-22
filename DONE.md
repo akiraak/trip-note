@@ -2,6 +2,10 @@
 
 ## 2026-08-22
 
+- 移動手段を車に固定 [plan](docs/plans/archive/transport-fixed-to-car.md)
+  - 選択 UI(ピッカー)と表示行を削除し、作成時は常に car、編集保存時も car へ正規化。AI へは trip.transport ?? car を送る
+  - データモデル・同期・API は変更なし(trips.transport は残す)
+
 - アイコンの設定 [plan](docs/plans/archive/app-icon.md)
   - iOS: Assets.xcassets の AppIcon(1024 single-size)+ project.yml に ASSETCATALOG_COMPILER_APPICON_NAME
   - Web: favicon.ico(16/32/48 マルチサイズ・RGBA)/ icon.png(512)/ apple-icon.png(180)

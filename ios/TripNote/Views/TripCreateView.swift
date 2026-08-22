@@ -11,7 +11,6 @@ struct TripCreateView: View {
     @Environment(SyncEngine.self) private var sync
 
     @State private var title = ""
-    @State private var transport: Transport?
     @State private var departureAt = Date()
     @State private var departurePlace = ""
     @State private var destination = ""
@@ -63,7 +62,6 @@ struct TripCreateView: View {
     private var inputForm: some View {
         Section {
             TextField("タイトル(例: 松本旅行)", text: $title)
-            TransportPicker(transport: $transport)
             DatePicker("出発日時", selection: $departureAt)
             HStack(spacing: 8) {
                 TextField("出発地(例: 自宅)", text: $departurePlace)
@@ -201,7 +199,8 @@ struct TripCreateView: View {
         let dest = trimmedDestination.isEmpty ? nil : trimmedDestination
         let made = PlanEditor.makeTrip(
             title: trimmedTitle,
-            transport: transport?.rawValue,
+            // 移動手段は車に固定(選択 UI は持たない)
+            transport: Transport.car.rawValue,
             departureAt: departureAt,
             destination: dest,
             departurePlace: enteredDeparturePlace
@@ -243,7 +242,7 @@ struct TripCreateView: View {
             departure: departureCheckpoint?.name,
             departureLatitude: departureCheckpoint?.latitude,
             departureLongitude: departureCheckpoint?.longitude,
-            transport: trip.transport,
+            transport: trip.transport ?? Transport.car.rawValue,
             request: nil
         )
         do {
@@ -277,7 +276,6 @@ struct TripEditView: View {
     @Environment(SyncEngine.self) private var sync
 
     @State private var title: String
-    @State private var transport: Transport?
     @State private var hasDeparture: Bool
     @State private var departureAt: Date
     @State private var destination: String
@@ -285,7 +283,6 @@ struct TripEditView: View {
     init(trip: TripEntity) {
         self.trip = trip
         _title = State(initialValue: trip.title)
-        _transport = State(initialValue: trip.transport.flatMap(Transport.init(rawValue:)))
         _hasDeparture = State(initialValue: trip.departureAt != nil)
         _departureAt = State(initialValue: trip.departureAt ?? Date())
         _destination = State(initialValue: trip.destination ?? "")
@@ -295,7 +292,6 @@ struct TripEditView: View {
         NavigationStack {
             Form {
                 TextField("タイトル", text: $title)
-                TransportPicker(transport: $transport)
                 Toggle("出発日時を設定", isOn: $hasDeparture.animation())
                 if hasDeparture {
                     DatePicker("出発日時", selection: $departureAt)
@@ -326,7 +322,8 @@ struct TripEditView: View {
 
     private func save() {
         trip.title = trimmedTitle
-        trip.transport = transport?.rawValue
+        // 移動手段は車に固定。過去の旅行も編集のたびに car へ正規化する
+        trip.transport = Transport.car.rawValue
         trip.departureAt = hasDeparture ? departureAt : nil
         trip.destination = trimmedDestination.isEmpty ? nil : trimmedDestination
         trip.updatedAt = Date()
@@ -334,18 +331,5 @@ struct TripEditView: View {
         try? modelContext.save()
         dismiss()
         Task { await sync.syncNow() }
-    }
-}
-
-private struct TransportPicker: View {
-    @Binding var transport: Transport?
-
-    var body: some View {
-        Picker("移動手段", selection: $transport) {
-            Text("未設定").tag(Transport?.none)
-            ForEach(Transport.allCases, id: \.self) { transport in
-                Text(transport.label).tag(Transport?.some(transport))
-            }
-        }
     }
 }

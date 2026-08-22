@@ -71,12 +71,6 @@ struct TripDetailView: View {
                 if let destination = trip.destination {
                     LabeledContent("目的地", value: destination)
                 }
-                if let transport = trip.transport {
-                    LabeledContent(
-                        "移動手段",
-                        value: Transport(rawValue: transport)?.label ?? transport
-                    )
-                }
                 LabeledContent("地点数", value: "\(trip.points.count)")
                 LabeledContent("総距離", value: ContentView.formatDistance(trip.totalDistanceMeters))
             }

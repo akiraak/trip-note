@@ -4,7 +4,6 @@ import { Header } from "../../header";
 import { DeleteTrip } from "./delete-trip";
 import { PlanSection, type PlanDay } from "./plan-section";
 import { TripMap } from "./trip-map";
-import { transportLabel } from "@/lib/checkpoint-style";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime } from "@/lib/format";
 import { dateStringOf } from "@/lib/plan";
@@ -168,10 +167,6 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             </div>
           )}
           <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">移動手段</dt>
-            <dd>{transportLabel(trip.transport) ?? "—"}</dd>
-          </div>
-          <div>
             <dt className="text-zinc-500 dark:text-zinc-400">地点数</dt>
             <dd>{points.length}</dd>
           </div>
@@ -185,7 +180,8 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
           <PlanSection
             tripId={trip.id}
             days={planDays}
-            transport={trip.transport}
+            // 移動手段は車に固定(古い旅行の null も car として AI に渡す)
+            transport={trip.transport ?? "car"}
             aiDefaults={aiDefaults}
           />
         </div>
