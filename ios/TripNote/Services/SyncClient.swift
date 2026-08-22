@@ -28,12 +28,7 @@ struct SyncClient: Sendable {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            let style = Date.ISO8601FormatStyle()
-                .year().month().day()
-                .dateTimeSeparator(.standard)
-                .time(includingFractionalSeconds: true)
-                .timeZone(separator: .omitted)
-            try container.encode(date.formatted(style))
+            try container.encode(SyncDateFormat.string(from: date))
         }
         return encoder
     }()
@@ -45,6 +40,32 @@ struct SyncClient: Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try Self.encoder.encode(SyncPayload(trips: trips, points: points))
         let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SyncClientError.serverError(statusCode: -1)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SyncClientError.serverError(statusCode: http.statusCode)
+        }
+    }
+
+    /// メディアファイルを 1 件アップロードする。メタデータはクエリ、ボディはファイル。
+    /// `upload(fromFile:)` なのでファイル全体をメモリに載せない
+    func upload(media meta: MediaUploadMeta, fileURL: URL) async throws {
+        guard
+            var components = URLComponents(
+                url: baseURL.appending(path: "api/media"),
+                resolvingAgainstBaseURL: false
+            )
+        else { throw SyncClientError.serverError(statusCode: -1) }
+        components.queryItems = meta.queryItems
+        guard let url = components.url else {
+            throw SyncClientError.serverError(statusCode: -1)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
         guard let http = response as? HTTPURLResponse else {
             throw SyncClientError.serverError(statusCode: -1)
         }

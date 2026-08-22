@@ -17,7 +17,8 @@ final class LocationRecorder: NSObject {
 
     private let manager = CLLocationManager()
     private let modelContext: ModelContext
-    private var activeTrip: TripEntity?
+    /// 記録中の trip(撮影したメディアの紐付け先として外からも参照する)
+    private(set) var activeTrip: TripEntity?
     private var lastRecorded: LocationSample?
     /// 権限リクエストの応答待ちで記録開始が保留されているか
     private var isStartPending = false

@@ -12,6 +12,7 @@ final class SyncEngine {
 
     private let modelContext: ModelContext
     private let client: SyncClient?
+    private let store: MediaStore
 
     private(set) var isSyncing = false
     private(set) var lastError: String?
@@ -19,13 +20,25 @@ final class SyncEngine {
 
     var isConfigured: Bool { client != nil }
 
-    init(modelContext: ModelContext, client: SyncClient? = SyncClient.fromBundle()) {
+    init(
+        modelContext: ModelContext,
+        client: SyncClient? = SyncClient.fromBundle(),
+        store: MediaStore = .makeDefault()
+    ) {
         self.modelContext = modelContext
         self.client = client
+        self.store = store
     }
 
     var pendingPointCount: Int {
         let descriptor = FetchDescriptor<LocationPointEntity>(
+            predicate: #Predicate { $0.needsSync }
+        )
+        return (try? modelContext.fetchCount(descriptor)) ?? 0
+    }
+
+    var pendingMediaCount: Int {
+        let descriptor = FetchDescriptor<MediaEntity>(
             predicate: #Predicate { $0.needsSync }
         )
         return (try? modelContext.fetchCount(descriptor)) ?? 0
@@ -37,9 +50,10 @@ final class SyncEngine {
         lastError = nil
         defer { isSyncing = false }
         do {
-            // 点は trip_id を参照するため trip を先に送る
+            // メディアは trip_id / location_point_id を参照するため trips → points → media の順に送る
             try await pushTrips(client)
             try await pushPoints(client)
+            try await pushMedia(client)
             lastSyncedAt = Date()
         } catch {
             lastError = "同期に失敗しました: \(error.localizedDescription)"
@@ -75,6 +89,31 @@ final class SyncEngine {
             for point in points {
                 point.needsSync = false
             }
+            try modelContext.save()
+        }
+    }
+
+    private func pushMedia(_ client: SyncClient) async throws {
+        let descriptor = FetchDescriptor<MediaEntity>(
+            predicate: #Predicate { $0.needsSync },
+            sortBy: [SortDescriptor(\.takenAt)]
+        )
+        let mediaItems = try modelContext.fetch(descriptor)
+        for media in mediaItems {
+            let fileURL = store.url(for: media.fileName)
+            guard
+                let meta = MediaUploadMeta(media),
+                FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false))
+            else {
+                // trip との関連が切れた・ファイルが無いメディアは同期できないため
+                // needsSync を下ろして再送し続けない
+                media.needsSync = false
+                try modelContext.save()
+                continue
+            }
+            try await client.upload(media: meta, fileURL: fileURL)
+            // 動画は大きく途中失敗もあり得るので 1 件ごとに確定させる
+            media.needsSync = false
             try modelContext.save()
         }
     }

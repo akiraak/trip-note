@@ -30,7 +30,7 @@ trip-note は旅行のサポートをするアプリで、モバイルと Web �
 
 ```bash
 cd ios
-xcodegen generate      # project.yml から TripNote.xcodeproj を生成（project.yml 変更時・クローン直後に実行）
+xcodegen generate      # project.yml から TripNote.xcodeproj を生成（project.yml 変更時・クローン直後・ソースファイル追加時に実行。古いままだとテストが 0 件実行でも成功扱いになる）
 open TripNote.xcodeproj
 # CLI ビルド
 xcodebuild -project TripNote.xcodeproj -scheme TripNote -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build

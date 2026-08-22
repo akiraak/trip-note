@@ -17,6 +17,13 @@ setWorkerUrl("/maplibre-gl-worker.mjs");
 
 type LatLng = { latitude: number; longitude: number };
 
+type MediaMarker = {
+  id: string;
+  type: "photo" | "video";
+  latitude: number;
+  longitude: number;
+};
+
 // OSM 公式ラスタタイル。API キー不要だが大量アクセスには不適のため、
 // 本番運用時はタイルソースを差し替える(docs/specs/phase3-map-display.md)
 const OSM_STYLE: StyleSpecification = {
@@ -33,7 +40,13 @@ const OSM_STYLE: StyleSpecification = {
   layers: [{ id: "osm", type: "raster", source: "osm" }],
 };
 
-export function TripMap({ points }: { points: LatLng[] }) {
+export function TripMap({
+  points,
+  media = [],
+}: {
+  points: LatLng[];
+  media?: MediaMarker[];
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -86,10 +99,33 @@ export function TripMap({ points }: { points: LatLng[] }) {
         .addTo(map);
     }
 
+    // 撮影地点のサムネイルマーカー(クリックで原本を開く)
+    for (const m of media) {
+      const anchor = document.createElement("a");
+      anchor.href = `/media/${m.id}`;
+      anchor.target = "_blank";
+      anchor.rel = "noreferrer";
+      if (m.type === "photo") {
+        const img = document.createElement("img");
+        img.src = `/media/${m.id}`;
+        img.alt = "";
+        img.className =
+          "h-10 w-10 rounded-md border-2 border-white object-cover shadow-md";
+        anchor.appendChild(img);
+      } else {
+        anchor.className =
+          "flex h-10 w-10 items-center justify-center rounded-md border-2 border-white bg-zinc-900/80 text-white shadow-md";
+        anchor.textContent = "▶";
+      }
+      new Marker({ element: anchor })
+        .setLngLat([m.longitude, m.latitude])
+        .addTo(map);
+    }
+
     return () => {
       map.remove();
     };
-  }, [points]);
+  }, [points, media]);
 
   return (
     <div

@@ -99,10 +99,14 @@ Swift / TypeScript 双方に同じモデルを定義する。スキーマは `su
 
 #### Phase 4: 写真撮影と動画撮影
 
-- AVFoundation / PhotosUI による撮影(写真・動画)
-- 撮影時の位置情報・時刻の紐付け(location_point / trip への関連付け)
-- Supabase Storage へのアップロード(動画はサイズ上限・圧縮方針を決める)
-- 閲覧画面・地図上でのメディア表示(サムネイル → 詳細)
+詳細仕様: [docs/specs/phase4-media.md](../specs/phase4-media.md)(Supabase Storage 前提は g3plus 構成に置き換え)
+
+- [x] iOS: 撮影・取り込みとローカル保存(MediaEntity / MediaStore、システムカメラ + PhotosPicker、位置・時刻の紐付け)。写真は JPEG 2560px、動画は H.264 mp4 720p に圧縮、サムネイル生成
+- [x] Web: メディア API(`POST /api/media` アップロード、`GET /media/[id]` 配信・Range 対応)
+- [x] iOS: 同期(SyncEngine の trips → points → media 順のアップロード。1 件ずつ確定)
+- [x] 閲覧: iOS / Web の詳細画面にメディアグリッド + フルスクリーンビューア、地図にサムネイルマーカー
+- [x] 検証: iOS ユニットテスト 24 件、Web lint/build + curl、シミュレータ E2E(取り込み → 同期 → Web 表示。`TripNoteUITests/MediaImportUITests`)すべて成功(2026-08-21)
+- [ ] 残タスク(要ユーザー操作): 本番デプロイ(git pull → rebuild)後、実機でカメラ撮影 → 本番同期 → Web 表示を確認
 
 ## 影響範囲
 

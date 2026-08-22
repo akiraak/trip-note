@@ -15,7 +15,10 @@ trip-note サーバ(`web/`)を g3plus(自宅サーバ)で動かすための契�
   - `API_SHARED_SECRET` — iOS の `/api/sync` を守る共有シークレット(`openssl rand -hex 32`)。
     iOS の `ServerConfig.plist` の API_KEY と揃える
   - `TRIPNOTE_DB_PATH=/app/data/trip-note.db`
-- **永続化**: SQLite のみ。volume `/home/ubuntu/trip-note/web/data:/app/data`
+- **永続化**: SQLite + メディアファイル(`/app/data/media/`、`TRIPNOTE_DB_PATH` と同じ
+  ディレクトリ配下なので env 追加は不要)。volume `/home/ubuntu/trip-note/web/data:/app/data`
+- **注意**: メディアアップロードは Cloudflare Tunnel 経由のため 1 リクエスト 100MB が上限
+  (無料プラン)。iOS 側は動画を 720p mp4 に圧縮して送る(docs/specs/phase4-media.md)
 - **TZ**: America/Los_Angeles(g3plus 既定。Web の表示 TZ も同じ)
 
 ## Cloudflare(要 akiraak の手作業)

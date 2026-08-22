@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { authorized } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 // iOS アプリからの同期エンドポイント。API_SHARED_SECRET の Bearer で保護する
@@ -21,16 +21,6 @@ type SyncPoint = {
   accuracy: number | null;
   recorded_at: string;
 };
-
-function authorized(header: string | null): boolean {
-  const secret = process.env.API_SHARED_SECRET;
-  if (!secret || !header || !header.startsWith("Bearer ")) {
-    return false;
-  }
-  const given = Buffer.from(header.slice("Bearer ".length));
-  const expected = Buffer.from(secret);
-  return given.length === expected.length && timingSafeEqual(given, expected);
-}
 
 function isTrip(value: unknown): value is SyncTrip {
   if (typeof value !== "object" || value === null) return false;

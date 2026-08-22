@@ -1,9 +1,14 @@
 import CoreLocation
+import PhotosUI
 import SwiftUI
 
-/// trip の詳細。地図と統計ヘッダ、続けて位置情報のタイムラインを表示する。
+/// trip の詳細。地図と統計ヘッダ、メディアグリッド、位置情報のタイムラインを表示する。
 struct TripDetailView: View {
     let trip: TripEntity
+
+    @Environment(MediaImporter.self) private var importer
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var selectedMedia: MediaEntity?
 
     var body: some View {
         List {
@@ -12,9 +17,14 @@ struct TripDetailView: View {
             }
             if !coordinates.isEmpty {
                 Section {
-                    TripMapView(coordinates: coordinates, isActive: trip.isActive)
-                        .frame(height: 300)
-                        .listRowInsets(EdgeInsets())
+                    TripMapView(
+                        coordinates: coordinates,
+                        isActive: trip.isActive,
+                        mediaAnnotations: mediaAnnotations,
+                        onSelectMedia: { selectedMedia = $0 }
+                    )
+                    .frame(height: 300)
+                    .listRowInsets(EdgeInsets())
                 }
             }
             Section {
@@ -33,6 +43,10 @@ struct TripDetailView: View {
                 LabeledContent("総距離", value: ContentView.formatDistance(trip.totalDistanceMeters))
             }
 
+            Section("メディア") {
+                mediaSection
+            }
+
             Section("タイムライン") {
                 let points = trip.sortedPoints
                 if points.isEmpty {
@@ -46,6 +60,84 @@ struct TripDetailView: View {
         }
         .navigationTitle(trip.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // ネイティブカメラで撮った写真・動画を後から紐付ける(シミュレータの動作確認も兼ねる)
+            PhotosPicker(
+                selection: $pickerItems,
+                matching: .any(of: [.images, .videos])
+            ) {
+                Label("ライブラリから追加", systemImage: "photo.badge.plus")
+            }
+        }
+        .onChange(of: pickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            pickerItems = []
+            Task { await importPicked(items) }
+        }
+        .fullScreenCover(item: $selectedMedia) { media in
+            MediaViewerView(media: media, store: importer.store)
+        }
+    }
+
+    private var mediaAnnotations: [TripMediaAnnotation] {
+        trip.sortedMedia.compactMap { media in
+            guard let point = media.locationPoint else { return nil }
+            return TripMediaAnnotation(
+                media: media,
+                coordinate: CLLocationCoordinate2D(
+                    latitude: point.latitude,
+                    longitude: point.longitude
+                )
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var mediaSection: some View {
+        let media = trip.sortedMedia
+        if media.isEmpty {
+            Text("写真・動画がありません")
+                .foregroundStyle(.secondary)
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 4)], spacing: 4) {
+                ForEach(media) { item in
+                    Button {
+                        selectedMedia = item
+                    } label: {
+                        MediaThumbnail(media: item, store: importer.store)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("media-thumbnail")
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
+        }
+        if importer.isImporting {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("取り込み中…")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+        }
+        if let error = importer.lastError {
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func importPicked(_ items: [PhotosPickerItem]) async {
+        for item in items {
+            let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
+            if isVideo {
+                if let picked = try? await item.loadTransferable(type: PickedVideo.self) {
+                    await importer.importVideo(at: picked.url, into: trip, takenAt: nil)
+                }
+            } else if let data = try? await item.loadTransferable(type: Data.self) {
+                await importer.importPhoto(data: data, into: trip)
+            }
+        }
     }
 }
 

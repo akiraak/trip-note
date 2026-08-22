@@ -5,8 +5,10 @@ import UIKit
 struct ContentView: View {
     @Environment(LocationRecorder.self) private var recorder
     @Environment(SyncEngine.self) private var sync
+    @Environment(MediaImporter.self) private var importer
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \TripEntity.startedAt, order: .reverse) private var trips: [TripEntity]
+    @State private var showsCamera = false
 
     var body: some View {
         NavigationStack {
@@ -45,6 +47,25 @@ struct ContentView: View {
                 await sync.syncNow()
             }
         }
+        .fullScreenCover(isPresented: $showsCamera) {
+            CameraPicker { result in
+                showsCamera = false
+                handleCapture(result)
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    private func handleCapture(_ result: CameraPicker.CaptureResult?) {
+        guard let result, let trip = recorder.activeTrip else { return }
+        Task {
+            switch result {
+            case .photo(let image):
+                await importer.importPhoto(image, into: trip, takenAt: Date())
+            case .video(let url):
+                await importer.importVideo(at: url, into: trip, takenAt: Date())
+            }
+        }
     }
 
     @ViewBuilder
@@ -63,6 +84,26 @@ struct ContentView: View {
                 Text("画面を閉じても記録は続きます")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if CameraPicker.isAvailable {
+                Button {
+                    showsCamera = true
+                } label: {
+                    Label("写真・動画を撮影", systemImage: "camera")
+                }
+            }
+            if importer.isImporting {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("メディアを取り込み中…")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+            }
+            if let mediaError = importer.lastError {
+                Text(mediaError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
             Button("記録を停止", role: .destructive) {
                 recorder.stopRecording()
@@ -105,8 +146,9 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     let pending = sync.pendingPointCount
-                    if pending > 0 {
-                        Text("未同期: \(pending) 地点")
+                    let pendingMedia = sync.pendingMediaCount
+                    if pending > 0 || pendingMedia > 0 {
+                        Text("未同期: \(pending) 地点 / \(pendingMedia) メディア")
                             .foregroundStyle(.secondary)
                     } else if let syncedAt = sync.lastSyncedAt {
                         Text("同期済み (\(syncedAt.formatted(.dateTime.hour().minute())))")

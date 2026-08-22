@@ -44,13 +44,34 @@ const MIGRATIONS: string[] = [
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする
 const globalCache = globalThis as unknown as { __tripnoteDb?: Database.Database };
 
+function resolveDbPath(): string {
+  return (
+    process.env.TRIPNOTE_DB_PATH ??
+    path.join(process.cwd(), "data", "trip-note.db")
+  );
+}
+
+/// メディアファイルの保存先。未設定時は DB と同じディレクトリの media/
+/// (本番は /app/data/media になり、既存の volume に含まれる)。
+/// path.dirname を静的パスに掛けると Turbopack のファイルトレースが
+/// プロジェクト全体を出力に含めてしまうため、既定値は直接書く
+export function getMediaDir(): string {
+  let dir = process.env.TRIPNOTE_MEDIA_DIR;
+  if (!dir) {
+    const dbPath = process.env.TRIPNOTE_DB_PATH;
+    dir = dbPath
+      ? path.join(path.dirname(dbPath), "media")
+      : path.join(process.cwd(), "data", "media");
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 export function getDb(): Database.Database {
   if (globalCache.__tripnoteDb) {
     return globalCache.__tripnoteDb;
   }
-  const dbPath =
-    process.env.TRIPNOTE_DB_PATH ??
-    path.join(process.cwd(), "data", "trip-note.db");
+  const dbPath = resolveDbPath();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");

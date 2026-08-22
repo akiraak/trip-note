@@ -37,6 +37,25 @@ iOS アプリからのアップロード。upsert で冪等(id はクライア�
 - `200 {"ok":true,"trips":N,"points":M,"skippedPoints":K}`
 - `401 {"error":"unauthorized"}` / `400 {"error":"invalid json"|"invalid payload"}`
 
+## POST /api/media
+
+iOS アプリからのメディアアップロード(1 リクエスト 1 ファイル)。詳細は
+[phase4-media.md](phase4-media.md)。
+
+- クエリ: `id` / `trip_id` / `type`(photo|video)/ `taken_at`(ISO8601)/
+  `ext`(jpg|mp4|mov)/ `location_point_id`(任意)
+- ボディ: ファイルバイナリ(`application/octet-stream`、上限 200MB)
+- ファイルは `<dataDir>/media/<id>.<ext>`、行は `insert or ignore` で冪等。
+  trip が無ければ `409 {"error":"unknown trip"}`(クライアントは trips → points → media の順に送る)。
+  location_point_id が未知なら null で保存
+- レスポンス: `200 {"ok":true}` / `400` / `401` / `409` / `413`
+
+## GET /media/[id]
+
+閲覧 UI(ブラウザ)向けのメディア配信。Bearer 不要(`/api/*` ではないので本番は
+Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必須)、
+`Cache-Control: private, max-age=31536000, immutable`。
+
 ## クライアント(iOS)
 
 - `Services/SyncClient.swift`。日付は ISO8601(小数秒付き)、DTO は `Models/SyncRecords.swift`

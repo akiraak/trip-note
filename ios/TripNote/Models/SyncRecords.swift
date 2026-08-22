@@ -1,5 +1,17 @@
 import Foundation
 
+/// サーバ API と揃えた ISO8601(小数秒付き)の日付文字列
+enum SyncDateFormat {
+    static func string(from date: Date) -> String {
+        let style = Date.ISO8601FormatStyle()
+            .year().month().day()
+            .dateTimeSeparator(.standard)
+            .time(includingFractionalSeconds: true)
+            .timeZone(separator: .omitted)
+        return date.formatted(style)
+    }
+}
+
 /// Supabase へアップロードする行(snake_case カラムに合わせた DTO)。
 /// PostgREST の一括 upsert は行ごとにキーが揃っている必要があるため、
 /// nil のカラムも省略せず明示的に null としてエンコードする。
@@ -72,5 +84,41 @@ struct LocationPointRecord: Encodable, Sendable {
         try container.encode(altitude, forKey: .altitude)
         try container.encode(accuracy, forKey: .accuracy)
         try container.encode(recordedAt, forKey: .recordedAt)
+    }
+}
+
+/// `POST /api/media` のクエリパラメータになるメタデータ。
+/// ボディはファイルバイナリそのものなので、この構造体は JSON にはならない。
+struct MediaUploadMeta: Sendable {
+    let id: UUID
+    let tripId: UUID
+    let locationPointId: UUID?
+    let type: String
+    let takenAt: Date
+    let ext: String
+
+    /// trip との関連が切れたメディアは同期できないため nil を返す
+    init?(_ media: MediaEntity) {
+        guard let trip = media.trip else { return nil }
+        id = media.id
+        tripId = trip.id
+        locationPointId = media.locationPoint?.id
+        type = media.typeRawValue
+        takenAt = media.takenAt
+        ext = (media.fileName as NSString).pathExtension
+    }
+
+    var queryItems: [URLQueryItem] {
+        var items = [
+            URLQueryItem(name: "id", value: id.uuidString),
+            URLQueryItem(name: "trip_id", value: tripId.uuidString),
+            URLQueryItem(name: "type", value: type),
+            URLQueryItem(name: "taken_at", value: SyncDateFormat.string(from: takenAt)),
+            URLQueryItem(name: "ext", value: ext),
+        ]
+        if let locationPointId {
+            items.append(URLQueryItem(name: "location_point_id", value: locationPointId.uuidString))
+        }
+        return items
     }
 }
