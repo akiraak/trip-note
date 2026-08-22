@@ -106,7 +106,8 @@ Swift / TypeScript 双方に同じモデルを定義する。スキーマは `su
 - [x] iOS: 同期(SyncEngine の trips → points → media 順のアップロード。1 件ずつ確定)
 - [x] 閲覧: iOS / Web の詳細画面にメディアグリッド + フルスクリーンビューア、地図にサムネイルマーカー
 - [x] 検証: iOS ユニットテスト 24 件、Web lint/build + curl、シミュレータ E2E(取り込み → 同期 → Web 表示。`TripNoteUITests/MediaImportUITests`)すべて成功(2026-08-21)
-- [ ] 残タスク(要ユーザー操作): 本番デプロイ(git pull → rebuild)後、実機でカメラ撮影 → 本番同期 → Web 表示を確認
+- [x] 本番デプロイ(2026-08-21。git pull → rebuild、compose 変更なし。疎通確認: /api/sync 401/200・/api/media 401/400・/media/[id] Access 302)
+- [ ] 残タスク(要ユーザー操作): 実機でカメラ撮影(写真・動画)→ 本番同期 → Web 表示を確認
 
 ## 影響範囲
 
