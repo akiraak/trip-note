@@ -15,6 +15,7 @@ import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
 import { PlaceSearch } from "./place-search";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
+import { dayRoute, type DayRoutePlace } from "@/lib/day-route";
 import { formatDay } from "@/lib/format";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
 import type { CheckpointType } from "@/lib/types";
@@ -87,6 +88,7 @@ export function PlanSection({
           key={day.id}
           day={day}
           dayNumber={index + 1}
+          route={dayRoute(days, index)}
           pending={pending}
           run={run}
         />
@@ -131,11 +133,14 @@ type RunAction = (
 function DayCard({
   day,
   dayNumber,
+  route,
   pending,
   run,
 }: {
   day: PlanDay;
   dayNumber: number;
+  /** この日の経路(前泊地 + 訪問順 CP)。地点検索の範囲と AI 補助の文脈に使う */
+  route: DayRoutePlace[];
   pending: boolean;
   run: RunAction;
 }) {
@@ -227,6 +232,7 @@ function DayCard({
                 <li key={checkpoint.id}>
                   <CheckpointForm
                     initial={checkpoint}
+                    route={route}
                     pending={pending}
                     submitLabel="保存"
                     onSubmit={(input) =>
@@ -255,6 +261,7 @@ function DayCard({
         {mode === "add-search" && (
           <PlaceSearch
             selectLabel="追加"
+            route={route}
             disabled={pending}
             onSelect={(place) =>
               run(() =>
@@ -273,6 +280,7 @@ function DayCard({
         {mode === "add-manual" && (
           <CheckpointForm
             initial={null}
+            route={route}
             pending={pending}
             submitLabel="追加"
             onSubmit={(input) =>

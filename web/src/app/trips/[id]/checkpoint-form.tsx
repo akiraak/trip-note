@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { PlaceSearch } from "./place-search";
 import { CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
+import type { DayRoutePlace } from "@/lib/day-route";
 import type { CheckpointInput } from "@/lib/plan";
 import { CHECKPOINT_TYPES, type CheckpointType } from "@/lib/types";
 
@@ -25,12 +26,15 @@ function fromLocalInputValue(value: string): string | null {
 
 export function CheckpointForm({
   initial,
+  route = [],
   pending,
   submitLabel,
   onSubmit,
   onCancel,
 }: {
   initial: CheckpointInput | null;
+  /** この日の経路。位置検索の範囲と AI 補助の文脈に使う */
+  route?: DayRoutePlace[];
   pending: boolean;
   submitLabel: string;
   onSubmit: (input: CheckpointInput) => void;
@@ -144,6 +148,7 @@ export function CheckpointForm({
         {locating && (
           <PlaceSearch
             selectLabel="この位置にする"
+            route={route}
             onSelect={(place) => {
               setLatitude(place.latitude);
               setLongitude(place.longitude);

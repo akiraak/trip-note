@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import type { DayRoutePlace } from "./day-route";
 import { getDb } from "./db";
 import { CHECKPOINT_TYPES, type CheckpointType } from "./types";
 
@@ -173,12 +174,16 @@ export type TripOutlineSuggestion = {
 // ---- 検索補助 (/api/ai/search-assist) ----
 
 export type SearchAssistInput = {
-  /** 大まかな地域(例: 松本市周辺) */
-  area: string;
+  /** 大まかな地域(例: 松本市周辺)。route があれば省略可(AI が経路から地域を読む) */
+  area: string | null;
   /** 種別ヒント */
   type: CheckpointType | null;
   request: string | null;
+  /** その日の経路(前泊地 + 訪問順のチェックポイント)。経路沿いの候補を優先させる */
+  route: DayRoutePlace[] | null;
 };
+
+const MAX_ROUTE_PLACES = 30;
 
 export type SuggestedPlace = {
   name: string;
@@ -280,10 +285,30 @@ export function parseTripOutlineInput(value: unknown): TripOutlineInput {
   };
 }
 
+function parseRouteInput(value: unknown): DayRoutePlace[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length > MAX_ROUTE_PLACES) {
+    throw new Error("不正な経路です");
+  }
+  const route = value.map((item): DayRoutePlace => {
+    if (!isRecord(item) || typeof item.name !== "string" || !item.name.trim()) {
+      throw new Error("不正な経路です");
+    }
+    const latitude = optionalCoordinate(item.latitude, 90);
+    const longitude = optionalCoordinate(item.longitude, 180);
+    if ((latitude === null) !== (longitude === null)) {
+      throw new Error("不正な座標です");
+    }
+    return { name: item.name.trim(), latitude, longitude };
+  });
+  return route.length > 0 ? route : null;
+}
+
 export function parseSearchAssistInput(value: unknown): SearchAssistInput {
   if (!isRecord(value)) throw new Error("不正な入力です");
-  const area = typeof value.area === "string" ? value.area.trim() : "";
-  if (!area) throw new Error("地域を入力してください");
+  const area = optionalText(value.area);
+  const route = parseRouteInput(value.route);
+  if (!area && !route) throw new Error("地域を入力してください");
   let type: CheckpointType | null = null;
   if (value.type !== undefined && value.type !== null) {
     if (
@@ -294,7 +319,7 @@ export function parseSearchAssistInput(value: unknown): SearchAssistInput {
     }
     type = value.type as CheckpointType;
   }
-  return { area, type, request: optionalText(value.request) };
+  return { area, type, request: optionalText(value.request), route };
 }
 
 // ---- 出力スキーマとパース ----
@@ -672,13 +697,25 @@ export function buildSearchAssistPrompt(input: SearchAssistInput): {
     "- places は条件に合う実在の地点を 3〜8 件。name は正式名称にする",
     "- 各地点の latitude / longitude は概算座標(市レベルの精度でよい)",
     "- 実在が不確かな地点は入れない",
+    "- この日の経路が与えられたら、経路沿い・経路から大きく外れない地点を優先し、既に経路に含まれる地点は候補に入れない",
+    "- 地域が空なら経路から地域を読み取る",
   ].join("\n");
-  const user = [
-    `地域: ${input.area}`,
+  const lines = [
+    `地域: ${input.area ?? "(指定なし。経路から推定)"}`,
     `探している種別: ${input.type ?? "指定なし"}`,
     `条件・要望: ${input.request ?? "特になし"}`,
-  ].join("\n");
-  return { system, user };
+  ];
+  if (input.route) {
+    lines.push("この日の経路(順に):");
+    input.route.forEach((place, index) => {
+      const coords =
+        place.latitude !== null && place.longitude !== null
+          ? ` (${place.latitude}, ${place.longitude})`
+          : "";
+      lines.push(`${index + 1}. ${place.name}${coords}`);
+    });
+  }
+  return { system, user: lines.join("\n") };
 }
 
 // ---- プロバイダ呼び出し ----

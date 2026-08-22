@@ -117,6 +117,28 @@ struct AIRecordsTests {
         #expect(object?["transport"] as? String == "car")
     }
 
+    @Test func 検索補助リクエストは経路を名前と座標で送り地域は省略できる() throws {
+        let body = AISearchAssistRequest(
+            area: nil,
+            type: nil,
+            request: "静かなカフェ",
+            route: [
+                DayRoutePlace(name: "宿 A", latitude: 36.23, longitude: 137.97),
+                DayRoutePlace(name: "どこかの店", latitude: nil, longitude: nil),
+            ]
+        )
+        let data = try JSONEncoder().encode(body)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object?["area"] == nil)
+        #expect(object?["request"] as? String == "静かなカフェ")
+        let route = try #require(object?["route"] as? [[String: Any]])
+        #expect(route.count == 2)
+        #expect(route[0]["name"] as? String == "宿 A")
+        #expect(route[0]["latitude"] as? Double == 36.23)
+        #expect(route[1]["name"] as? String == "どこかの店")
+        #expect(route[1]["latitude"] == nil)
+    }
+
     @Test func 生成ジョブの登録リクエストは入力をネストして送る() throws {
         let body = AIJobCreateRequest(
             id: "0b7e4a52-1f0f-4c4c-9a3e-2f4f8f0d1234",

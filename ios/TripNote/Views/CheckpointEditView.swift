@@ -82,7 +82,8 @@ struct CheckpointEditView: View {
             }
             .sheet(isPresented: $showsSearch) {
                 CheckpointSearchView(
-                    region: CheckpointSearchView.regionHint(for: day.trip)
+                    region: CheckpointSearchView.regionHint(for: day.trip),
+                    route: DayRoute.places(for: day)
                 ) { place in
                     // 名前・種別も常に検索結果で置き換える(目的地 CP をホテル検索で
                     // 宿泊にまとめて差し替える動線)。保存するまで確定しないので

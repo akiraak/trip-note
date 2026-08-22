@@ -13,8 +13,11 @@ struct PlaceSelection: Identifiable {
 
 /// MKLocalSearch で地点を検索して選ぶ画面。選択すると onSelect を呼んで閉じる
 struct CheckpointSearchView: View {
-    /// 検索の中心。旅行に既にある座標の周辺を渡す(nil なら全域)
+    /// 検索の中心のフォールバック。旅行に既にある座標の周辺を渡す(nil なら全域)
     var region: MKCoordinateRegion?
+    /// その日の経路(前泊地 + 訪問順 CP)。座標があれば検索範囲をこちらに寄せ、
+    /// AI 検索補助にも文脈として渡す
+    var route: [DayRoutePlace] = []
     let onSelect: (PlaceSelection) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -89,7 +92,10 @@ struct CheckpointSearchView: View {
             }
         } else {
             Section("AI に候補を聞く") {
-                TextField("地域(例: 松本市周辺)", text: $assistArea)
+                TextField(
+                    route.isEmpty ? "地域(例: 松本市周辺)" : "地域(空ならこの日の経路から推定)",
+                    text: $assistArea
+                )
                 TextField("要望(例: 静かなカフェ)", text: $assistRequest)
                 if let assistMessage {
                     Text(assistMessage)
@@ -110,7 +116,8 @@ struct CheckpointSearchView: View {
                 }
                 .disabled(
                     isAssisting
-                        || assistArea.trimmingCharacters(in: .whitespaces).isEmpty
+                        || (route.isEmpty
+                            && assistArea.trimmingCharacters(in: .whitespaces).isEmpty)
                 )
             }
             if let assistSuggestion {
@@ -171,13 +178,15 @@ struct CheckpointSearchView: View {
         isAssisting = true
         assistMessage = nil
         defer { isAssisting = false }
+        let trimmedArea = assistArea.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedRequest = assistRequest.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             assistSuggestion = try await client.searchAssist(
                 AISearchAssistRequest(
-                    area: assistArea.trimmingCharacters(in: .whitespacesAndNewlines),
+                    area: trimmedArea.isEmpty ? nil : trimmedArea,
                     type: nil,
-                    request: trimmedRequest.isEmpty ? nil : trimmedRequest
+                    request: trimmedRequest.isEmpty ? nil : trimmedRequest,
+                    route: route.isEmpty ? nil : route
                 )
             )
         } catch {
@@ -213,7 +222,7 @@ struct CheckpointSearchView: View {
         defer { isSearching = false }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
-        if let region {
+        if let region = searchRegion {
             request.region = region
         }
         do {
@@ -239,6 +248,20 @@ struct CheckpointSearchView: View {
             )
         )
         dismiss()
+    }
+
+    /// 検索範囲。その日の経路(座標あり)があればその周辺、無ければ旅行全体のヒント。
+    /// どちらも MapKit への優先度ヒントで、範囲外の結果も返る
+    private var searchRegion: MKCoordinateRegion? {
+        guard let dayRegion = DayRoute.searchRegion(for: route) else { return region }
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: dayRegion.center.latitude,
+                longitude: dayRegion.center.longitude
+            ),
+            latitudinalMeters: dayRegion.spanMeters,
+            longitudinalMeters: dayRegion.spanMeters
+        )
     }
 
     /// POI カテゴリからチェックポイント種別を推測する(外れても編集フォームで直せる)

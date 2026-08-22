@@ -302,12 +302,11 @@ struct TripDetailView: View {
         before index: Int,
         in days: [TripDayEntity]
     ) -> CLLocationCoordinate2D? {
-        for day in days[..<index].reversed() {
-            if let last = day.sortedCheckpoints.compactMap(TripCheckpointAnnotation.make).last {
-                return last.coordinate
-            }
-        }
-        return nil
+        guard
+            let anchor = DayRoute.anchor(before: index, in: days),
+            let latitude = anchor.latitude, let longitude = anchor.longitude
+        else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
     private var mediaAnnotations: [TripMediaAnnotation] {

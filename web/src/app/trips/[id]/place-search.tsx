@@ -1,34 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { searchPlacesAction } from "./actions";
 import { SearchAssist } from "./search-assist";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
+import { searchViewbox, type DayRoutePlace } from "@/lib/day-route";
 import type { Place } from "@/lib/nominatim";
 
 // Nominatim(サーバ経由プロキシ)の地点検索。結果の選択で onSelect を呼ぶ。
 // チェックポイントの即時追加(plan-section)と、編集フォームでの位置設定の両方で使う。
-// AI 検索補助(SearchAssist)の候補を選ぶと、そのクエリでこの検索を実行する
+// AI 検索補助(SearchAssist)の候補を選ぶと、そのクエリでこの検索を実行する。
+// route(その日の経路)があれば、その周辺を優先して検索し AI 補助にも渡す
 export function PlaceSearch({
   onSelect,
   selectLabel,
+  route = [],
   disabled = false,
 }: {
   onSelect: (place: Place) => void;
   selectLabel: string;
+  route?: DayRoutePlace[];
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const viewbox = useMemo(() => searchViewbox(route), [route]);
 
   async function searchWith(rawQuery: string) {
     const q = rawQuery.trim();
     if (!q || searching) return;
     setSearching(true);
     setError(null);
-    const result = await searchPlacesAction(q);
+    const result = await searchPlacesAction(q, viewbox);
     setSearching(false);
     if (result.ok) {
       setPlaces(result.places);
@@ -66,6 +71,7 @@ export function PlaceSearch({
         </button>
       </form>
       <SearchAssist
+        route={route}
         disabled={disabled || searching}
         onQuery={(q) => {
           setQuery(q);

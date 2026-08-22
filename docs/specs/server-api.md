@@ -254,14 +254,28 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 
 ## POST /api/ai/search-assist
 
-AI 検索補助。大まかな地域 + 種別 + 自由記述から、地図検索(MapKit / Nominatim)の
-クエリ候補と具体的な地点候補を返す。モデル・認証・エラーは /api/ai/plan と同じ。
+AI 検索補助。大まかな地域 + 種別 + 自由記述(+ その日の経路)から、地図検索
+(MapKit / Nominatim)のクエリ候補と具体的な地点候補を返す。モデル・認証・エラーは
+/api/ai/plan と同じ。
 
 リクエスト:
 
 ```json
-{ "area": "松本市周辺", "type": "cafe|null(省略可)", "request": "静かなカフェ|null(省略可)" }
+{
+  "area": "松本市周辺|null(route があれば省略可)",
+  "type": "cafe|null(省略可)",
+  "request": "静かなカフェ|null(省略可)",
+  "route": [
+    { "name": "宿 A", "latitude": 36.23, "longitude": 137.97 },
+    { "name": "どこかの店", "latitude": null, "longitude": null }
+  ]
+}
 ```
+
+- `route`(省略可、最大 30 件)はその日の経路 = 前泊地(前日までの最後の座標あり
+  チェックポイント)+ その日の訪問順チェックポイント。`name` 必須、座標は両方 number か
+  両方 null(座標なし CP も名前だけ渡す)。与えると経路沿いの候補を優先し、経路に
+  既にある地点は候補に出さない。`area` と `route` の両方が無ければ 400
 
 レスポンス:
 

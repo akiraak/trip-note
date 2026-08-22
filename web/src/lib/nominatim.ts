@@ -1,3 +1,4 @@
+import type { Viewbox } from "./day-route";
 import type { CheckpointType } from "./types";
 
 // Nominatim (OSM) の地点検索をサーバ経由でプロキシする。
@@ -110,12 +111,19 @@ type NominatimRow = {
   type: string;
 };
 
-async function fetchPlaces(query: string): Promise<Place[]> {
+async function fetchPlaces(
+  query: string,
+  viewbox: Viewbox | null,
+): Promise<Place[]> {
   const url = new URL(ENDPOINT);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", "8");
   url.searchParams.set("accept-language", "ja");
+  // bounded は付けない = 範囲内を優先するだけで、範囲外の結果も返る
+  if (viewbox) {
+    url.searchParams.set("viewbox", viewbox.join(","));
+  }
   const response = await fetch(url, {
     headers: { "User-Agent": USER_AGENT },
     cache: "no-store",
@@ -133,18 +141,23 @@ async function fetchPlaces(query: string): Promise<Place[]> {
   }));
 }
 
-export async function searchPlaces(query: string): Promise<Place[]> {
+/** viewbox はその日の経路の周辺(lib/day-route.ts の searchViewbox)。null なら全世界 */
+export async function searchPlaces(
+  query: string,
+  viewbox: Viewbox | null = null,
+): Promise<Place[]> {
   const q = query.trim();
   if (!q) return [];
   const s = state();
-  const cached = s.cache.get(q);
+  const key = viewbox ? `${q}|${viewbox.join(",")}` : q;
+  const cached = s.cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.places;
   }
-  const places = await throttled(() => fetchPlaces(q));
+  const places = await throttled(() => fetchPlaces(q, viewbox));
   // 再挿入で挿入順を新しくし、あふれたら古いものから捨てる
-  s.cache.delete(q);
-  s.cache.set(q, { at: Date.now(), places });
+  s.cache.delete(key);
+  s.cache.set(key, { at: Date.now(), places });
   while (s.cache.size > CACHE_MAX_ENTRIES) {
     const oldest = s.cache.keys().next().value;
     if (oldest === undefined) break;

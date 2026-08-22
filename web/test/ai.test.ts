@@ -7,6 +7,7 @@ import {
   AI_MODELS,
   DEFAULT_AI_MODEL_ID,
   buildPlanPrompt,
+  buildSearchAssistPrompt,
   buildTripOutlinePrompt,
   getAiModel,
   parsePlanInput,
@@ -176,7 +177,7 @@ describe("parseSearchAssistInput", () => {
   it("正常な入力を受け付ける", () => {
     expect(
       parseSearchAssistInput({ area: "松本市周辺", type: "cafe", request: "" }),
-    ).toEqual({ area: "松本市周辺", type: "cafe", request: null });
+    ).toEqual({ area: "松本市周辺", type: "cafe", request: null, route: null });
   });
 
   it("地域が空・種別が不正なら拒否する", () => {
@@ -184,6 +185,65 @@ describe("parseSearchAssistInput", () => {
     expect(() =>
       parseSearchAssistInput({ area: "松本", type: "hotel" }),
     ).toThrow(/種別/);
+  });
+
+  const route = [
+    { name: "宿 A", latitude: 36.23, longitude: 137.97 },
+    { name: "どこかの店", latitude: null, longitude: null },
+  ];
+
+  it("経路があれば地域は省略できる(名前は trim、座標なしも通る)", () => {
+    expect(
+      parseSearchAssistInput({ route: [{ ...route[0], name: " 宿 A " }, route[1]] }),
+    ).toEqual({ area: null, type: null, request: null, route });
+    // 空配列は経路なし扱い
+    expect(() => parseSearchAssistInput({ route: [] })).toThrow(/地域/);
+  });
+
+  it("不正な経路は拒否する", () => {
+    expect(() => parseSearchAssistInput({ route: "松本" })).toThrow(/経路/);
+    expect(() => parseSearchAssistInput({ route: [{ name: "" }] })).toThrow(/経路/);
+    expect(() =>
+      parseSearchAssistInput({ route: [{ name: "x", latitude: 36.2 }] }),
+    ).toThrow(/座標/);
+    expect(() =>
+      parseSearchAssistInput({
+        route: [{ name: "x", latitude: 36.2, longitude: 200 }],
+      }),
+    ).toThrow(/座標/);
+    expect(() =>
+      parseSearchAssistInput({
+        route: Array.from({ length: 31 }, () => ({ name: "x" })),
+      }),
+    ).toThrow(/経路/);
+  });
+});
+
+describe("buildSearchAssistPrompt", () => {
+  it("経路を順番・座標付きで列挙し、地域が無ければ推定を指示する", () => {
+    const { system, user } = buildSearchAssistPrompt({
+      area: null,
+      type: null,
+      request: "静かなカフェ",
+      route: [
+        { name: "宿 A", latitude: 36.23, longitude: 137.97 },
+        { name: "どこかの店", latitude: null, longitude: null },
+      ],
+    });
+    expect(system).toContain("経路沿い");
+    expect(user).toContain("地域: (指定なし。経路から推定)");
+    expect(user).toContain("この日の経路(順に):\n1. 宿 A (36.23, 137.97)\n2. どこかの店");
+  });
+
+  it("経路が無ければ従来どおり地域だけ", () => {
+    const { user } = buildSearchAssistPrompt({
+      area: "松本市周辺",
+      type: "cafe",
+      request: null,
+      route: null,
+    });
+    expect(user).toContain("地域: 松本市周辺");
+    expect(user).not.toContain("この日の経路");
   });
 });
 

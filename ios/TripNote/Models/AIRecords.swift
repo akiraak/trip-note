@@ -130,11 +130,13 @@ struct AIJobStatusResponse<Output: Decodable>: Decodable {
 
 /// POST /api/ai/search-assist のリクエスト
 struct AISearchAssistRequest: Encodable {
-    /// 大まかな地域(例: 松本市周辺)
-    let area: String
+    /// 大まかな地域(例: 松本市周辺)。route があれば省略可(AI が経路から地域を読む)
+    let area: String?
     /// CheckpointType.rawValue の種別ヒント(任意)
     let type: String?
     let request: String?
+    /// その日の経路(前泊地 + 訪問順のチェックポイント)。経路沿いの候補を優先させる
+    let route: [DayRoutePlace]?
 }
 
 struct AISuggestedPlace: Decodable, Hashable {

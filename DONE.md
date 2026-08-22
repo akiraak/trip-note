@@ -2,6 +2,12 @@
 
 ## 2026-08-22
 
+- チェックポイント検索にその日の経路を渡す(地図検索の範囲を経路に寄せる + AI 補助に経路を文脈として渡す) [plan](docs/plans/archive/checkpoint-search-day-route.md)
+  - 「その日の経路」= 前泊地(前日までの最後の座標あり CP)+ その日の訪問順 CP(座標なしも名前だけ)を iOS `Domain/DayRoute.swift` / Web `lib/day-route.ts` で共通に組み立て。`TripDetailView.routeAnchor` も同じ関数に委譲
+  - Phase 1: 地図検索の範囲を経路の外接矩形 × 1.5(最低 20km 四方)に。iOS は MKLocalSearch の region(従来の旅行全体平均はフォールバック)、Web は Nominatim の `viewbox`(`bounded` なし = 優先度のみ。キャッシュキーにも含める)
+  - Phase 2: `POST /api/ai/search-assist` に任意の `route`(最大 30 件)を追加し、経路があれば `area` 省略可。プロンプトで経路沿い優先・経路上の地点は除外を指示。iOS/Web の AI 欄は経路があれば地域未入力でも送れる(旧クライアント互換。`docs/specs/server-api.md` 更新)
+  - 検証: iOS ユニットテスト 126 件(DayRoute 8 件 + リクエスト 1 件新規)+ シミュレータビルド、web vitest 104 件(day-route 6 件・nominatim 2 件・ai 4 件新規)+ lint + build
+
 - チェックポイントなど座標があるところから Google Maps に転送できるようにする [plan](docs/plans/archive/checkpoint-google-maps-link.md)
   - 公式のクロスプラットフォーム URL(`https://www.google.com/maps/search/?api=1&query=<lat>,<lng>`)を使用。クエリは座標のみ(名前検索は同名の別地点に飛び得る)。iOS はユニバーサルリンクなので `comgooglemaps://` スキーム + `LSApplicationQueriesSchemes` は不要
   - iOS: `Domain/GoogleMapsLink.swift`(URL 生成の純関数)を新設し、日詳細の CP 行の長押しメニュー(行タップの「編集」は現状維持)と CP 編集画面「位置」セクションに「Google Maps で開く」を追加(座標ありのみ)

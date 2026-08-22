@@ -9,6 +9,7 @@ import {
   type PlanSuggestion,
   type SearchAssistSuggestion,
 } from "@/lib/ai";
+import { isViewbox } from "@/lib/day-route";
 import { searchPlaces, type Place } from "@/lib/nominatim";
 import * as plan from "@/lib/plan";
 import type { AdoptDay, CheckpointInput } from "@/lib/plan";
@@ -129,9 +130,16 @@ export async function moveCheckpointAction(
   }
 }
 
-export async function searchPlacesAction(query: string): Promise<SearchResult> {
+/** viewbox はその日の経路の周辺(lib/day-route.ts)。不正な値は無視して全世界検索 */
+export async function searchPlacesAction(
+  query: string,
+  viewbox: unknown = null,
+): Promise<SearchResult> {
   try {
-    return { ok: true, places: await searchPlaces(query) };
+    return {
+      ok: true,
+      places: await searchPlaces(query, isViewbox(viewbox) ? viewbox : null),
+    };
   } catch (error) {
     return failure(error);
   }

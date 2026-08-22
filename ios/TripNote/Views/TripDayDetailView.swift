@@ -138,7 +138,8 @@ struct TripDayDetailView: View {
         }
         .sheet(isPresented: $showsSearch) {
             CheckpointSearchView(
-                region: CheckpointSearchView.regionHint(for: day.trip)
+                region: CheckpointSearchView.regionHint(for: day.trip),
+                route: DayRoute.places(for: day)
             ) { place in
                 addCheckpoint(from: place)
             }
