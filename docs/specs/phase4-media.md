@@ -122,8 +122,12 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
     シミュレータ E2E の前に必ずローカル dev サーバ向けに差し替える**(終わったら戻す)。
     PhotosPicker の写真は identifier `PXGGridLayout-Info` の Image として見え、
     isHittable にならないため座標タップで選択する
-- 残タスク(要ユーザー操作): 本番デプロイ(サーバ上で `git pull` → rebuild)後、
-  実機でカメラ撮影(写真・動画)→ 本番同期 → Web 表示を確認する
+- 本番デプロイ(2026-08-21): サーバ上で `git pull` → rebuild。疎通確認
+  `/api/sync` 401/200・`/api/media` 401/400・`/media/[id]` Access 302
+- 実機確認(2026-08-21 完了): iPhone のカメラで写真・動画を撮影 → 停止時の自動同期で本番へ。
+  サーバに jpg(1920x2560・1.3MB)と mp4(720p 変換・3.4MB)が保存され、どちらも
+  location_point に紐付き。`/media/[id]` 配信 200(image/jpeg / video/mp4)・Range 206・
+  詳細ページのメディアグリッド/video タグ描画まで確認
 
 ## 将来課題(スコープ外)
 
