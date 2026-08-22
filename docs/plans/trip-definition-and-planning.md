@@ -201,6 +201,29 @@ create table app_settings (
   保存後に `sync.syncNow()` を投げる
 - 純ロジックは `PlanEditor` に寄せ、unmanaged エンティティでユニットテストする
 
+## Phase 5 実装メモ（Web プラン UI）
+
+- **編集ロジック** `web/src/lib/plan.ts`: 日の追加（最終日の翌日。無ければ started_at ?? 今日）、
+  日の更新・削除（tombstone + チェックポイント道連れ）、CP の CRUD・↑↓入れ替え。
+  変更した行だけ `updated_at = now`（LWW の基準。iOS の PlanEditor と同じ方針）。
+  ユニットテストは `web/test/plan.test.ts`（sync.test.ts と同じ一時 DB 方式）
+- **Server Actions** `web/src/app/trips/[id]/actions.ts`: lib/plan を呼んで
+  `revalidatePath` するだけの薄い層。ページと同じ保護範囲（本番は Cloudflare Access）で
+  Bearer は使わない。エラーは `{ ok: false, error }` で返して UI に表示
+- **Nominatim プロキシ** `web/src/lib/nominatim.ts`: `searchPlaces()` を Server Action 経由で
+  呼ぶ。利用規約対応 = User-Agent 明示・プロセス内で 1 req/s に直列化・
+  結果を 24h / 200 件までメモリキャッシュ。`guessCheckpointType()` で
+  category/type から種別を推測（tourism→観光/宿泊、amenity→カフェ/食事 など）
+- **UI** `plan-section.tsx`（日別カード・CP 行・↑↓・二段階削除）+
+  `place-search.tsx`（検索。即追加とフォーム内の位置設定で共用）+
+  `checkpoint-form.tsx`（手入力追加・編集の共通フォーム）。
+  種別の表示定義は `web/src/lib/checkpoint-style.ts`（iOS の CheckpointStyle と対応）
+- **地図** `trip-map.tsx` に checkpoints プロップを追加（種別色のピン + クリックで名前）。
+  記録点が無くても CP に座標があれば地図を表示する
+- 予定時刻の入力・表示はブラウザのローカル TZ（iOS と同じ端末基準。
+  行表示は SSR とずれ得るので suppressHydrationWarning）。
+  trip_days.date は日付のみなので UTC で整形し TZ の影響を受けない
+
 ## Phase 分割
 
 - **Phase 1: 旅行の再定義** — trips migration（started_at nullable / transport / deleted_at）、

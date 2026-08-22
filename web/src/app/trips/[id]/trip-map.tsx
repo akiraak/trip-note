@@ -4,11 +4,14 @@ import {
   MapLibreMap,
   Marker,
   NavigationControl,
+  Popup,
   setWorkerUrl,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
+import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { boundingBox, splitByTimeGap } from "@/lib/geo";
+import type { CheckpointType } from "@/lib/types";
 
 // バンドラ(Turbopack)経由だと maplibre が自身のワーカーを解決できないため、
 // public/ に置いたワーカー(npm run copy-maplibre-worker が配置)を明示する
@@ -27,6 +30,14 @@ type MediaMarker = {
   longitude: number;
 };
 
+type CheckpointMarker = {
+  id: string;
+  type: CheckpointType;
+  name: string;
+  latitude: number;
+  longitude: number;
+};
+
 // OpenFreeMap のベクタタイル。登録・API キー不要で本番利用可、帰属表記はスタイル側に
 // 含まれる。選定経緯は docs/plans/archive/web-map-tiles-production.md
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -34,15 +45,18 @@ const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 export function TripMap({
   points,
   media = [],
+  checkpoints = [],
 }: {
   points: TrackPoint[];
   media?: MediaMarker[];
+  checkpoints?: CheckpointMarker[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const container = containerRef.current;
-    const bounds = boundingBox(points);
+    // プランのみ(記録点なし)の旅行でもチェックポイントが収まる範囲を表示する
+    const bounds = boundingBox([...points, ...checkpoints]);
     if (!container || !bounds) {
       return;
     }
@@ -82,14 +96,28 @@ export function TripMap({
       });
     });
 
-    const start = points[0];
-    new Marker({ color: "#16a34a" })
-      .setLngLat([start.longitude, start.latitude])
-      .addTo(map);
-    if (points.length >= 2) {
-      const end = points[points.length - 1];
-      new Marker({ color: "#dc2626" })
-        .setLngLat([end.longitude, end.latitude])
+    if (points.length > 0) {
+      const start = points[0];
+      new Marker({ color: "#16a34a" })
+        .setLngLat([start.longitude, start.latitude])
+        .addTo(map);
+      if (points.length >= 2) {
+        const end = points[points.length - 1];
+        new Marker({ color: "#dc2626" })
+          .setLngLat([end.longitude, end.latitude])
+          .addTo(map);
+      }
+    }
+
+    // プランのチェックポイント(種別ごとの色。クリックで名前を表示)
+    for (const checkpoint of checkpoints) {
+      new Marker({ color: CHECKPOINT_COLORS[checkpoint.type] })
+        .setLngLat([checkpoint.longitude, checkpoint.latitude])
+        .setPopup(
+          new Popup({ closeButton: false, offset: 24 }).setText(
+            `${CHECKPOINT_LABELS[checkpoint.type]}: ${checkpoint.name}`,
+          ),
+        )
         .addTo(map);
     }
 
@@ -119,7 +147,7 @@ export function TripMap({
     return () => {
       map.remove();
     };
-  }, [points, media]);
+  }, [points, media, checkpoints]);
 
   return (
     <div

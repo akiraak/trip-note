@@ -3,5 +3,5 @@
   - [x] Phase 2: プランのデータモデル（trip_days / checkpoints、iOS エンティティ・型）
   - [x] Phase 3: 双方向同期（/api/sync 拡張・/api/sync/pull 新設・LWW + tombstone）
   - [x] Phase 4: iOS プラン UI（旅行作成・日別リスト・チェックポイント CRUD・MapKit 検索）
-  - [ ] Phase 5: Web プラン UI（Server Actions・日別編集・Nominatim 検索）
+  - [x] Phase 5: Web プラン UI（Server Actions・日別編集・Nominatim 検索）
   - [ ] Phase 6: AI 提案・検索補助（/api/ai/plan・search-assist・Web 設定画面でモデル選択・デプロイ env 追従）

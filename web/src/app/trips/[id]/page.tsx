@@ -1,11 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Header } from "../../header";
+import { PlanSection, type PlanDay } from "./plan-section";
 import { TripMap } from "./trip-map";
+import { transportLabel } from "@/lib/checkpoint-style";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime } from "@/lib/format";
 import { formatDistance, totalDistance } from "@/lib/geo";
-import { tripStatus, type LocationPoint, type Media, type Trip } from "@/lib/types";
+import {
+  tripStatus,
+  type Checkpoint,
+  type LocationPoint,
+  type Media,
+  type Trip,
+  type TripDay,
+} from "@/lib/types";
 
 export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
   const { id } = await props.params;
@@ -41,6 +50,49 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       longitude: m.longitude as number,
     }));
 
+  // プラン(日別チェックポイント)。tombstone は表示しない
+  const days = db
+    .prepare(
+      "select * from trip_days where trip_id = ? and deleted_at is null order by date",
+    )
+    .all(id) as TripDay[];
+  const checkpoints = db
+    .prepare(
+      `select * from checkpoints where trip_id = ? and deleted_at is null
+       order by sort_order, created_at`,
+    )
+    .all(id) as Checkpoint[];
+  const checkpointsByDay = new Map<string, Checkpoint[]>();
+  for (const checkpoint of checkpoints) {
+    const list = checkpointsByDay.get(checkpoint.trip_day_id) ?? [];
+    list.push(checkpoint);
+    checkpointsByDay.set(checkpoint.trip_day_id, list);
+  }
+  const planDays: PlanDay[] = days.map((day) => ({
+    id: day.id,
+    date: day.date,
+    title: day.title,
+    note: day.note,
+    checkpoints: (checkpointsByDay.get(day.id) ?? []).map((c) => ({
+      id: c.id,
+      type: c.type,
+      name: c.name,
+      latitude: c.latitude,
+      longitude: c.longitude,
+      planned_time: c.planned_time,
+      note: c.note,
+    })),
+  }));
+  const checkpointMarkers = checkpoints
+    .filter((c) => c.latitude !== null && c.longitude !== null)
+    .map((c) => ({
+      id: c.id,
+      type: c.type,
+      name: c.name,
+      latitude: c.latitude as number,
+      longitude: c.longitude as number,
+    }));
+
   return (
     <>
       <Header />
@@ -64,7 +116,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             </span>
           )}
         </h1>
-        {points.length > 0 && (
+        {(points.length > 0 || checkpointMarkers.length > 0) && (
           <div className="mb-6">
             <TripMap
               points={points.map((p) => ({
@@ -73,6 +125,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
                 recorded_at: p.recorded_at,
               }))}
               media={mediaMarkers}
+              checkpoints={checkpointMarkers}
             />
           </div>
         )}
@@ -94,6 +147,10 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             </dd>
           </div>
           <div>
+            <dt className="text-zinc-500 dark:text-zinc-400">移動手段</dt>
+            <dd>{transportLabel(trip.transport) ?? "—"}</dd>
+          </div>
+          <div>
             <dt className="text-zinc-500 dark:text-zinc-400">地点数</dt>
             <dd>{points.length}</dd>
           </div>
@@ -102,6 +159,10 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             <dd>{formatDistance(distance)}</dd>
           </div>
         </dl>
+        <h2 className="mb-2 font-medium">プラン</h2>
+        <div className="mb-8">
+          <PlanSection tripId={trip.id} days={planDays} />
+        </div>
         {media.length > 0 && (
           <>
             <h2 className="mb-2 font-medium">メディア</h2>

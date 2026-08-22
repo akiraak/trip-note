@@ -1,0 +1,302 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type Database from "better-sqlite3";
+import { getDb } from "@/lib/db";
+import { guessCheckpointType } from "@/lib/nominatim";
+import {
+  addTripDay,
+  createCheckpoint,
+  deleteCheckpoint,
+  deleteTripDay,
+  moveCheckpoint,
+  nextDate,
+  updateCheckpoint,
+  updateTripDay,
+  type CheckpointInput,
+} from "@/lib/plan";
+import type { Checkpoint, TripDay } from "@/lib/types";
+
+// Web プラン編集(lib/plan.ts)の LWW 打刻 / tombstone / sort_order を
+// テスト毎に作る一時 DB ファイルで検証する(sync.test.ts と同じ方式)
+
+const OLD = "2026-08-01T00:00:00.000Z";
+
+let tempDir: string;
+
+beforeEach(() => {
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "trip-note-test-"));
+  process.env.TRIPNOTE_DB_PATH = path.join(tempDir, "test.db");
+});
+
+afterEach(() => {
+  const cache = globalThis as unknown as { __tripnoteDb?: Database.Database };
+  cache.__tripnoteDb?.close();
+  cache.__tripnoteDb = undefined;
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+function seedTrip(over: Record<string, unknown> = {}) {
+  getDb()
+    .prepare(
+      `insert into trips (id, title, started_at, deleted_at, updated_at)
+       values (@id, @title, @started_at, @deleted_at, @updated_at)`,
+    )
+    .run({
+      id: "trip-1",
+      title: "松本旅行",
+      started_at: null,
+      deleted_at: null,
+      updated_at: OLD,
+      ...over,
+    });
+}
+
+function seedDay(over: Record<string, unknown> = {}) {
+  getDb()
+    .prepare(
+      `insert into trip_days (id, trip_id, date, deleted_at, updated_at)
+       values (@id, @trip_id, @date, @deleted_at, @updated_at)`,
+    )
+    .run({
+      id: "day-1",
+      trip_id: "trip-1",
+      date: "2026-09-01",
+      deleted_at: null,
+      updated_at: OLD,
+      ...over,
+    });
+}
+
+function seedCheckpoint(over: Record<string, unknown> = {}) {
+  getDb()
+    .prepare(
+      `insert into checkpoints
+         (id, trip_id, trip_day_id, type, name, sort_order, deleted_at, updated_at)
+       values
+         (@id, @trip_id, @trip_day_id, @type, @name, @sort_order, @deleted_at, @updated_at)`,
+    )
+    .run({
+      id: "cp-1",
+      trip_id: "trip-1",
+      trip_day_id: "day-1",
+      type: "sightseeing",
+      name: "松本城",
+      sort_order: 0,
+      deleted_at: null,
+      updated_at: OLD,
+      ...over,
+    });
+}
+
+function getDayRow(id: string): TripDay {
+  return getDb().prepare("select * from trip_days where id = ?").get(id) as TripDay;
+}
+
+function getCheckpointRow(id: string): Checkpoint {
+  return getDb()
+    .prepare("select * from checkpoints where id = ?")
+    .get(id) as Checkpoint;
+}
+
+const input = (over: Partial<CheckpointInput> = {}): CheckpointInput => ({
+  type: "sightseeing",
+  name: "松本城",
+  latitude: null,
+  longitude: null,
+  planned_time: null,
+  note: null,
+  ...over,
+});
+
+describe("nextDate", () => {
+  it("翌日を返す(月末・年末をまたぐ)", () => {
+    expect(nextDate("2026-09-01")).toBe("2026-09-02");
+    expect(nextDate("2026-09-30")).toBe("2026-10-01");
+    expect(nextDate("2026-12-31")).toBe("2027-01-01");
+  });
+
+  it("YYYY-MM-DD 以外は拒否する", () => {
+    expect(() => nextDate("2026/09/01")).toThrow();
+  });
+});
+
+describe("addTripDay", () => {
+  it("日が無ければ started_at の日付(表示 TZ)で 1 日目を作る", () => {
+    // 2026-09-01T10:00Z は America/Los_Angeles では 09-01 03:00
+    seedTrip({ started_at: "2026-09-01T10:00:00.000Z" });
+    const day = addTripDay("trip-1");
+    expect(day.date).toBe("2026-09-01");
+    expect(day.trip_id).toBe("trip-1");
+  });
+
+  it("既存最終日の翌日を追加する(tombstone の日は無視)", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-03", deleted_at: OLD });
+    const day = addTripDay("trip-1");
+    expect(day.date).toBe("2026-09-02");
+  });
+
+  it("削除済み・存在しない旅行には追加できない", () => {
+    seedTrip({ deleted_at: OLD });
+    expect(() => addTripDay("trip-1")).toThrow();
+    expect(() => addTripDay("nope")).toThrow();
+  });
+});
+
+describe("updateTripDay", () => {
+  it("タイトル・メモを更新し updated_at を進める", () => {
+    seedTrip();
+    seedDay();
+    updateTripDay("day-1", { title: " 松本周辺 ", note: null });
+    const row = getDayRow("day-1");
+    expect(row.title).toBe("松本周辺");
+    expect(row.note).toBeNull();
+    expect(row.updated_at > OLD).toBe(true);
+  });
+});
+
+describe("deleteTripDay", () => {
+  it("日と生きているチェックポイントを tombstone にする", () => {
+    seedTrip();
+    seedDay();
+    seedCheckpoint({ id: "cp-1" });
+    seedCheckpoint({ id: "cp-2", sort_order: 1, deleted_at: OLD });
+    deleteTripDay("day-1");
+    const day = getDayRow("day-1");
+    expect(day.deleted_at).not.toBeNull();
+    expect(day.updated_at > OLD).toBe(true);
+    const cp1 = getCheckpointRow("cp-1");
+    expect(cp1.deleted_at).not.toBeNull();
+    expect(cp1.updated_at > OLD).toBe(true);
+    // 削除済みの行は触らない(updated_at を進めて LWW を乱さない)
+    const cp2 = getCheckpointRow("cp-2");
+    expect(cp2.deleted_at).toBe(OLD);
+    expect(cp2.updated_at).toBe(OLD);
+  });
+});
+
+describe("createCheckpoint", () => {
+  it("生きている行の末尾の sort_order を割り当てる", () => {
+    seedTrip();
+    seedDay();
+    seedCheckpoint({ id: "cp-1", sort_order: 0 });
+    seedCheckpoint({ id: "cp-9", sort_order: 9, deleted_at: OLD });
+    const created = createCheckpoint("day-1", input({ name: "旧開智学校" }));
+    expect(created.sort_order).toBe(1);
+    expect(created.trip_id).toBe("trip-1");
+  });
+
+  it("入力を検証・正規化する", () => {
+    seedTrip();
+    seedDay();
+    expect(() => createCheckpoint("day-1", input({ name: "  " }))).toThrow();
+    expect(() =>
+      createCheckpoint("day-1", input({ latitude: 36.2 })),
+    ).toThrow();
+    expect(() =>
+      createCheckpoint("day-1", input({ latitude: 120, longitude: 30 })),
+    ).toThrow();
+    expect(() =>
+      createCheckpoint(
+        "day-1",
+        input({ type: "bogus" as CheckpointInput["type"] }),
+      ),
+    ).toThrow();
+    const created = createCheckpoint(
+      "day-1",
+      input({ name: " 松本城 ", planned_time: "", note: "  " }),
+    );
+    expect(created.name).toBe("松本城");
+    expect(created.planned_time).toBeNull();
+    expect(created.note).toBeNull();
+  });
+
+  it("削除済みの日には追加できない", () => {
+    seedTrip();
+    seedDay({ deleted_at: OLD });
+    expect(() => createCheckpoint("day-1", input())).toThrow();
+  });
+});
+
+describe("updateCheckpoint / deleteCheckpoint", () => {
+  it("更新はフィールドと updated_at を書き換える", () => {
+    seedTrip();
+    seedDay();
+    seedCheckpoint();
+    updateCheckpoint(
+      "cp-1",
+      input({ type: "lodging", name: "浅間温泉の宿", latitude: 36.25, longitude: 137.98 }),
+    );
+    const row = getCheckpointRow("cp-1");
+    expect(row.type).toBe("lodging");
+    expect(row.latitude).toBe(36.25);
+    expect(row.updated_at > OLD).toBe(true);
+  });
+
+  it("削除は tombstone(物理削除しない)", () => {
+    seedTrip();
+    seedDay();
+    seedCheckpoint();
+    deleteCheckpoint("cp-1");
+    const row = getCheckpointRow("cp-1");
+    expect(row.deleted_at).not.toBeNull();
+    expect(() => updateCheckpoint("cp-1", input())).toThrow();
+  });
+});
+
+describe("moveCheckpoint", () => {
+  it("隣と入れ替え、位置が変わった行だけ updated_at を進める", () => {
+    seedTrip();
+    seedDay();
+    seedCheckpoint({ id: "cp-1", sort_order: 0 });
+    seedCheckpoint({ id: "cp-2", sort_order: 1 });
+    seedCheckpoint({ id: "cp-3", sort_order: 2 });
+    moveCheckpoint("cp-3", -1);
+    expect(getCheckpointRow("cp-1").sort_order).toBe(0);
+    expect(getCheckpointRow("cp-3").sort_order).toBe(1);
+    expect(getCheckpointRow("cp-2").sort_order).toBe(2);
+    expect(getCheckpointRow("cp-1").updated_at).toBe(OLD);
+    expect(getCheckpointRow("cp-2").updated_at > OLD).toBe(true);
+    expect(getCheckpointRow("cp-3").updated_at > OLD).toBe(true);
+  });
+
+  it("端では何もしない", () => {
+    seedTrip();
+    seedDay();
+    seedCheckpoint({ id: "cp-1", sort_order: 0 });
+    seedCheckpoint({ id: "cp-2", sort_order: 1 });
+    moveCheckpoint("cp-1", -1);
+    moveCheckpoint("cp-2", 1);
+    expect(getCheckpointRow("cp-1").sort_order).toBe(0);
+    expect(getCheckpointRow("cp-2").sort_order).toBe(1);
+    expect(getCheckpointRow("cp-1").updated_at).toBe(OLD);
+    expect(getCheckpointRow("cp-2").updated_at).toBe(OLD);
+  });
+
+  it("削除済みの行は並びに含めない", () => {
+    seedTrip();
+    seedDay();
+    seedCheckpoint({ id: "cp-1", sort_order: 0 });
+    seedCheckpoint({ id: "cp-x", sort_order: 1, deleted_at: OLD });
+    seedCheckpoint({ id: "cp-2", sort_order: 2 });
+    moveCheckpoint("cp-2", -1);
+    expect(getCheckpointRow("cp-2").sort_order).toBe(0);
+    expect(getCheckpointRow("cp-1").sort_order).toBe(1);
+    expect(getCheckpointRow("cp-x").sort_order).toBe(1); // 触らない
+    expect(getCheckpointRow("cp-x").updated_at).toBe(OLD);
+  });
+});
+
+describe("guessCheckpointType", () => {
+  it("Nominatim の category/type から種別を推測する", () => {
+    expect(guessCheckpointType("tourism", "hotel")).toBe("lodging");
+    expect(guessCheckpointType("tourism", "attraction")).toBe("sightseeing");
+    expect(guessCheckpointType("amenity", "cafe")).toBe("cafe");
+    expect(guessCheckpointType("amenity", "restaurant")).toBe("restaurant");
+    expect(guessCheckpointType("historic", "castle")).toBe("sightseeing");
+    expect(guessCheckpointType("shop", "supermarket")).toBe("other");
+  });
+});
