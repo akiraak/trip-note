@@ -4,7 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Database from "better-sqlite3";
 import { getDb } from "@/lib/db";
-import { fetchRouteLegs, legKey, parseRouteLegsBody } from "@/lib/routing";
+import {
+  fetchRouteLegs,
+  legKey,
+  parseRouteLegsBody,
+  readCachedLegs,
+} from "@/lib/routing";
 
 // OSRM プロキシ + レグキャッシュ(lib/routing.ts)を検証する。
 // 実 OSRM は呼ばず global fetch をモックする(nominatim と同方針の構成)
@@ -163,6 +168,35 @@ describe("fetchRouteLegs", () => {
         .prepare("select count(*) as n from route_legs where key = 'old-0000'")
         .get(),
     ).toEqual({ n: 0 });
+  });
+});
+
+// SSR のプリフィル用。キャッシュ済みのレグだけを返し OSRM は呼ばない
+describe("readCachedLegs", () => {
+  it("キャッシュ済みのキーだけを返す(未キャッシュは含めない)", async () => {
+    const geometry: [number, number][] = [
+      [137.9719, 36.2381],
+      [137.5502, 36.1451],
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(osrmOk(geometry));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchRouteLegs([{ from: FROM, to: TO }]);
+
+    const cached = readCachedLegs([legKey(FROM, TO), legKey(TO, FROM)]);
+    expect(cached).toEqual({
+      [legKey(FROM, TO)]: {
+        coordinates: geometry,
+        distanceM: 1234.5,
+        durationS: 678.9,
+      },
+    });
+    // 未キャッシュのレグを聞かれても OSRM は呼ばない
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("キーが空・全部未キャッシュなら空を返す", () => {
+    expect(readCachedLegs([])).toEqual({});
+    expect(readCachedLegs([legKey(FROM, TO)])).toEqual({});
   });
 });
 

@@ -1,13 +1,37 @@
 "use client";
 
-import { MapLibreMap, Marker, NavigationControl, Popup } from "maplibre-gl";
+import type { Feature, MultiLineString } from "geojson";
+import {
+  GeoJSONSource,
+  MapLibreMap,
+  Marker,
+  NavigationControl,
+  Popup,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouteLegs } from "./use-route-legs";
 import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { boundingBox, splitByTimeGap } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
 import { MAP_STYLE_URL } from "@/lib/maplibre-setup";
+import {
+  buildLegs,
+  legLines,
+  type ResolvedLeg,
+  type RoutePoint,
+} from "@/lib/route-legs";
 import type { CheckpointType } from "@/lib/types";
+
+const PLAN_SOURCE = "plan-route";
+
+function planFeature(lines: [number, number][][]): Feature<MultiLineString> {
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "MultiLineString", coordinates: lines },
+  };
+}
 
 type TrackPoint = {
   latitude: number;
@@ -34,12 +58,27 @@ export function TripMap({
   points,
   media = [],
   checkpoints = [],
+  planRoute = [],
+  cachedLegs,
 }: {
   points: TrackPoint[];
   media?: MediaMarker[];
   checkpoints?: CheckpointMarker[];
+  /** プランのルート座標列(日付順 → 日内 sort_order 順。checkpoints の並びとは別) */
+  planRoute?: RoutePoint[];
+  /** SSR 時点でキャッシュ済みだったレグ(page.tsx の readCachedLegs) */
+  cachedLegs?: Record<string, ResolvedLeg>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const [ready, setReady] = useState(false);
+
+  const planLegs = useMemo(() => buildLegs({ points: planRoute }), [planRoute]);
+  const resolved = useRouteLegs(planLegs, cachedLegs);
+  const planLines = useMemo(
+    () => legLines(planLegs, resolved),
+    [planLegs, resolved],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -56,11 +95,34 @@ export function TripMap({
       fitBoundsOptions: { padding: 48, maxZoom: 16 },
       attributionControl: { compact: true },
     });
+    mapRef.current = map;
     map.addControl(new NavigationControl({ showCompass: false }));
 
     map.on("error", (e) => console.error("[TripMap]", e.error ?? e));
 
-    map.on("load", () => {
+    // load はタイルが出そろうまで発火しないので、ソース/レイヤの追加は
+    // スタイルが使えるようになった時点(style.load)で行う
+    map.on("style.load", () => {
+      // これからのプラン(破線)。実績トラック(実線)より先に追加して下に敷く。
+      // レグごとに、解決済みなら道路形状・未解決なら端点を結ぶ直線を描く。
+      // 中身は下の effect が ready を見て入れる(planLines をこの effect の依存に
+      // 入れるとレグ解決のたびに地図ごと作り直してちらつく)
+      map.addSource(PLAN_SOURCE, {
+        type: "geojson",
+        data: planFeature([]),
+      });
+      map.addLayer({
+        id: "plan-route-line",
+        type: "line",
+        source: PLAN_SOURCE,
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": "#2563eb",
+          "line-width": 3,
+          "line-opacity": 0.55,
+          "line-dasharray": [2, 2],
+        },
+      });
       // GPS 切断・記録停止中を線で結ばないよう、時間ギャップで区間分けして描く
       map.addSource("route", {
         type: "geojson",
@@ -82,6 +144,7 @@ export function TripMap({
         layout: { "line-cap": "round", "line-join": "round" },
         paint: { "line-color": "#2563eb", "line-width": 4 },
       });
+      setReady(true);
     });
 
     if (points.length > 0) {
@@ -145,9 +208,20 @@ export function TripMap({
     }
 
     return () => {
+      setReady(false);
+      mapRef.current = null;
       map.remove();
     };
   }, [points, media, checkpoints]);
+
+  // 初回の流し込みと、レグが解決したときの差し替え(地図は作り直さない)
+  useEffect(() => {
+    if (!ready) return;
+    const source = mapRef.current?.getSource(PLAN_SOURCE);
+    if (source instanceof GeoJSONSource) {
+      source.setData(planFeature(planLines));
+    }
+  }, [ready, planLines]);
 
   return (
     <div

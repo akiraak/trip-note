@@ -10,6 +10,8 @@ import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime, TIME_ZONE } from "@/lib/format";
 import { dateStringOf, timeStringOf } from "@/lib/plan";
 import { formatDistance, totalDistance } from "@/lib/geo";
+import { buildLegs, legKey } from "@/lib/route-legs";
+import { readCachedLegs } from "@/lib/routing";
 import {
   tripStatus,
   type Checkpoint,
@@ -115,6 +117,21 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       latitude: c.latitude as number,
       longitude: c.longitude as number,
     }));
+  // プランのルート用の座標列。checkpointMarkers は trip 全体を sort_order で並べたもので
+  // 日をまたぐ順序が保証されないため、日付順 → 日内 sort_order 順で別に組む
+  const planRoute = planDays.flatMap((day) =>
+    day.checkpoints
+      .filter((c) => c.latitude !== null && c.longitude !== null)
+      .map((c) => ({
+        latitude: c.latitude as number,
+        longitude: c.longitude as number,
+      })),
+  );
+  // 日カードのレグ(前泊地起点 + その日の訪問順)は、この全体レグ列の部分集合になる。
+  // キャッシュ済みの分を初期値として渡し、初回描画から道路形状で描く(OSRM は呼ばない)
+  const cachedLegs = readCachedLegs(
+    buildLegs({ points: planRoute }).map((leg) => legKey(leg.from, leg.to)),
+  );
 
   return (
     <>
@@ -150,6 +167,8 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
               }))}
               media={mediaMarkers}
               checkpoints={checkpointMarkers}
+              planRoute={planRoute}
+              cachedLegs={cachedLegs}
             />
           </div>
         )}
@@ -201,6 +220,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             // 移動手段は車に固定(古い旅行の null も car として AI に渡す)
             transport={trip.transport ?? "car"}
             aiDefaults={aiDefaults}
+            cachedLegs={cachedLegs}
           />
         </div>
         <h2 className="mb-2 font-medium">メディア</h2>

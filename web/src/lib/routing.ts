@@ -1,5 +1,6 @@
 import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net";
 import { getDb } from "./db";
+import { legKey, type ResolvedLeg } from "./route-legs";
 
 // 欧州の OSRM / Nominatim への TCP 接続は RTT が Node 既定の happy-eyeballs
 // 試行タイムアウト(250ms)を超えることがあり、fetch が ETIMEDOUT
@@ -15,12 +16,12 @@ setDefaultAutoSelectFamilyAttemptTimeout(2500);
 
 export type LatLng = { latitude: number; longitude: number };
 
-export type RouteLeg = {
-  /** GeoJSON LineString の座標列 [[lon, lat], ...] */
-  coordinates: [number, number][];
-  distanceM: number;
-  durationS: number;
-};
+/** 解決済みレグ(lib/route-legs.ts の ResolvedLeg と同じ形。/api/route の応答もこれ) */
+export type RouteLeg = ResolvedLeg;
+
+// キー規約は lib/route-legs.ts が正本(クライアントからも使うため)。
+// 既存の import 元を変えずに済むようここから再エクスポートする
+export { legKey };
 
 const DEFAULT_ENDPOINT = "https://router.project-osrm.org";
 const USER_AGENT = "trip-note/0.1 (https://trip.chobi.me)";
@@ -109,13 +110,6 @@ export function parseRouteLegsBody(
   return parsed;
 }
 
-/// キャッシュキー。座標を小数 4 桁(約 10m 粒度)で丸めるので、チェックポイント id や
-/// 並び順に依存せず「同じ区間」なら並び替え・途中挿入後もキャッシュが効く
-export function legKey(from: LatLng, to: LatLng): string {
-  const r = (v: number) => v.toFixed(4);
-  return `${r(from.latitude)},${r(from.longitude)}>${r(to.latitude)},${r(to.longitude)}`;
-}
-
 type OsrmResponse = {
   code: string;
   routes?: {
@@ -166,6 +160,34 @@ function readCached(key: string): RouteLeg | null {
     distanceM: row.distance_m,
     durationS: row.duration_s,
   };
+}
+
+/// キャッシュ済みのレグだけをまとめて読む(**OSRM は呼ばない**)。
+/// SSR で初期表示ぶんを渡し、2 回目以降(および iOS で先に見た旅行)は
+/// 最初の描画から道路形状で描くために使う。未キャッシュのキーは結果に含まれない
+export function readCachedLegs(keys: string[]): Record<string, RouteLeg> {
+  const unique = [...new Set(keys)];
+  const found: Record<string, RouteLeg> = {};
+  const db = getDb();
+  // SQLite のバインド変数上限に掛からないよう分割して引く
+  const chunkSize = 500;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const rows = db
+      .prepare<string[], RouteLegRow & { key: string }>(
+        `select key, geometry, distance_m, duration_s from route_legs
+         where key in (${chunk.map(() => "?").join(",")})`,
+      )
+      .all(...chunk);
+    for (const row of rows) {
+      found[row.key] = {
+        coordinates: JSON.parse(row.geometry) as [number, number][],
+        distanceM: row.distance_m,
+        durationS: row.duration_s,
+      };
+    }
+  }
+  return found;
 }
 
 function saveCached(key: string, leg: RouteLeg) {

@@ -2,6 +2,18 @@
 
 ## 2026-08-23
 
+- Web の地図にプランのルート(道路形状)を表示する [plan](docs/plans/archive/web-plan-route.md)
+  - 道路ルーティング(OSRM プロキシ + `route_legs` キャッシュ)はサーバに実装済みだったが使っているのは iOS だけで、Web の地図にはプランのルート線が 1 本も無かった。iOS と同じレグ単位でルートを引き、日カードの距離も直線距離から道路距離へ差し替えた
+  - `lib/route-legs.ts` を新設して `legKey` / `buildLegs` / `totalLegMeters` / `legLines` を集約(`routing.ts` は `node:net` と better-sqlite3 依存でクライアントから import できないため)。**キー規約は iOS の `Domain/RouteLegs.swift` と同じ**なので `route_legs` キャッシュを iOS と共有する。`routing.ts` の `legKey` はここへ移設し再エクスポート
+  - **ブラウザから `/api/route` は叩かない**。Bearer は iOS 向けの契約なので、ページと同じ保護範囲(本番は Cloudflare Access)で動く Server Action `resolveRouteLegsAction` からサーバ内で `fetchRouteLegs()` を直接呼ぶ(`/api/*` の契約は不変)
+  - `use-route-legs.ts` が解決を一手に引き受ける。モジュールスコープのキャッシュ(遅延マウントの日別地図が再マウントで取り直さない)+ 未解決キーを 8 件ずつ順に投げるキューで、**同時に走るリクエストは常に 1 本**。Next.js はクライアントごとに Server Action を直列にディスパッチするので、地図の枚数だけ投げると編集操作が待たされる
+  - `readCachedLegs()`(**DB 参照のみ・OSRM を呼ばない**)で SSR 時点のキャッシュ済みレグを初期値として渡す。2 回目以降と iOS で先に見た旅行は最初の描画から道路形状になる
+  - トップ地図は**破線**(`#2563eb` / 幅 3 / opacity 0.55 / `dasharray [2,2]`)で実績トラックの実線(幅 4)と区別。ルート用座標列は `checkpointMarkers` ではなく `planDays` から**日付順 → 日内 `sort_order` 順**で組む(前者は日をまたぐ順序が保証されない)
+  - 日カードの走行距離は `dayDistanceMeters`(直線)を廃して `totalLegMeters`(解決済み = 道路距離 / 未解決 = 直線)に差し替え。混在の概算なので「約」は据え置き
+  - **バグ修正**: ソース/レイヤの追加を `load` から **`style.load`** に変えた。`load` は**タイルが出そろうまで発火しない**ため、追加したルートが出ないままになることがあった(実際に再現。実績トラックにも同じ問題があった)
+  - レグが解決しても地図は作り直さず `getSource(...).setData(...)` で差し替える(ちらつき防止)
+  - 検証: web vitest 180 件(`route-legs` 14 件 + `readCachedLegs` 2 件を追加)+ lint + build。dev サーバで 12 日ぶんの道路形状、チェックポイント並び替えで新レグが直線 → 道路へ差し替わること(約 79.67km → 約 94.65km)、戻すとキャッシュから即描かれることを確認
+
 - Web の日カードに距離と経由地を出す [plan](docs/plans/archive/web-day-distance-waypoints.md)
   - iOS の `TripDayRow` にある「🚗 約 N km」と「自宅 → 大涌谷 → 箱根湯本の宿」の 2 つが Web に無かった。表示情報を揃えたときに、経由地は「チェックポイント一覧があるので実質同等」と判断して見送り、距離は「レグ解決が要る」として先送りしていたが、どちらも日カードを見て分からないので出した
   - 距離は `lib/plan-map.ts` の `dayDistanceMeters`(前泊地起点 + 座標ありチェックポイントの**直線距離**)。iOS の `RouteLegDistance.totalMeters` は解決済みレグを道路距離・未解決レグを直線距離で足すので、**これは iOS がレグ解決前に表示するのと同じ値**。書式も iOS と同じ `%.2f km` で、常に「約」を付ける

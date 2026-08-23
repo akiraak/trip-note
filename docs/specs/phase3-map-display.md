@@ -44,6 +44,33 @@ trip 詳細画面で移動経路を地図上に可視化する。iOS は MapKit�
 - GeoJSON LineString + line レイヤで軌跡を描画し、開始(緑)/最新(赤)のマーカーを置く
 - `fitBounds` で軌跡全体にフィットさせる(バウンディングボックスは `src/lib/geo.ts` に実装)
 - 位置情報が 0 件の場合は地図を表示しない
+- ソース/レイヤの追加は `load` ではなく **`style.load`** で行う。`load` は
+  タイルが出そろうまで発火しないので、回線やタイルの状況次第でルートが遅れて出る
+
+### プランルート(道路形状)
+
+iOS と同じレグ(隣接チェックポイント間)単位で、プランのルートを道路形状で描く。
+
+- **スタイルは iOS と同じ**: トップ地図(`trip-map.tsx`)のプランルートは**破線**
+  (`#2563eb` / 幅 3 / opacity 0.55 / `line-dasharray [2,2]`)で、実績トラックの
+  **実線**(幅 4)と区別する。日カードのミニ地図(`day-map.tsx`)は実線(幅 3)
+- レグの組み立て・キー規約は `src/lib/route-legs.ts`(`legKey` / `buildLegs` /
+  `totalLegMeters` / `legLines`)。iOS の `Domain/RouteLegs.swift` と同じ規約なので
+  サーバの `route_legs` キャッシュを iOS と共有できる
+- **ブラウザから `/api/route` は叩かない**。`/api/route` は `API_SHARED_SECRET` の
+  Bearer が要る iOS 向けの契約で、閲覧 UI はそれを持たない。ページと同じ保護範囲
+  (本番は Cloudflare Access)で動く Server Action(`route-actions.ts` の
+  `resolveRouteLegsAction`)からサーバ内で `fetchRouteLegs()` を直接呼ぶ
+- 解決は `use-route-legs.ts` が一手に引き受ける。モジュールスコープのキャッシュ +
+  未解決キーを 8 件ずつ順に投げるキューで、地図の枚数だけリクエストが飛ばない
+  (Next.js はクライアントごとに Server Action を直列にディスパッチするため)
+- SSR 時点でキャッシュ済みのレグは `readCachedLegs()`(**DB 参照のみ・OSRM を呼ばない**)で
+  初期値として渡すので、2 回目以降と iOS で先に見た旅行は最初の描画から道路形状になる
+- **取得前・失敗時はそのレグだけ直線で描く**(iOS と同じ)。日カードの走行距離も
+  解決済みは道路距離・未解決は直線距離の混在なので、表示は常に「約 N km」
+- トップ地図のルート用座標列は `planDays` から**日付順 → 日内 `sort_order` 順**で組む
+  (`checkpointMarkers` は trip 全体を `sort_order` で並べたもので日をまたぐ順序が保証されない)
+- レグが解決しても地図は作り直さず、`getSource(...).setData(...)` でルートだけ差し替える
 
 ## テスト方針
 

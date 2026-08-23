@@ -16,11 +16,17 @@ import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
 import { DayMap } from "./day-map";
 import { PlaceLink } from "./place-link";
+import { useRouteLegs } from "./use-route-legs";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { formatDayWithWeekday } from "@/lib/format";
 import { formatDistance } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
-import { dayDistanceMeters, dayMapPoints, type DayMapData } from "@/lib/plan-map";
+import { dayMapPoints, type DayMapData } from "@/lib/plan-map";
+import {
+  buildLegs,
+  totalLegMeters,
+  type ResolvedLeg,
+} from "@/lib/route-legs";
 import type { CheckpointType } from "@/lib/types";
 
 // 旅行詳細のプラン(日別)表示・編集。データは server component (page.tsx) から
@@ -52,12 +58,15 @@ export function PlanSection({
   days,
   transport,
   aiDefaults,
+  cachedLegs,
 }: {
   tripId: string;
   days: PlanDay[];
   transport: string | null;
   /** AI 提案フォームの初期値(page.tsx で計算) */
   aiDefaults: { startDate: string; dayCount: number; departure: string };
+  /** SSR 時点でキャッシュ済みだったレグ(page.tsx の readCachedLegs) */
+  cachedLegs?: Record<string, ResolvedLeg>;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +106,7 @@ export function PlanSection({
           dayNumber={index + 1}
           isLast={index === days.length - 1}
           map={maps[index]}
+          cachedLegs={cachedLegs}
           pending={pending}
           run={run}
         />
@@ -144,6 +154,7 @@ function DayCard({
   dayNumber,
   isLast,
   map,
+  cachedLegs,
   pending,
   run,
 }: {
@@ -153,6 +164,7 @@ function DayCard({
   isLast: boolean;
   /** この日の地図データ(座標ありが 0 件なら地図は出さない) */
   map: DayMapData;
+  cachedLegs?: Record<string, ResolvedLeg>;
   pending: boolean;
   run: RunAction;
 }) {
@@ -164,8 +176,15 @@ function DayCard({
   const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(
     null,
   );
-  // 走行距離は直線距離ベースの概算なので常に「約」(iOS もレグ未解決のうちは同じ値)
-  const distanceMeters = dayDistanceMeters(map);
+  // 前泊地を起点にした、その日のレグ列。地図もヘッダの走行距離もこれを見る
+  const legs = useMemo(
+    () => buildLegs({ start: map.anchor, points: map.points }),
+    [map],
+  );
+  const resolved = useRouteLegs(legs, cachedLegs);
+  // 走行距離は解決済みレグが道路距離・未解決レグが直線距離の概算なので常に「約」
+  // (iOS の TripDayRow と同じ)
+  const distanceMeters = totalLegMeters(legs, resolved);
   // 経由地は座標の有無に関わらず訪問順に全部並べる(iOS の TripDayRow と同じ)
   const waypoints = day.checkpoints.map((c) => c.name).join(" → ");
 
@@ -239,7 +258,12 @@ function DayCard({
           </p>
         )}
         {map.points.length > 0 && (
-          <DayMap points={map.points} anchor={map.anchor} />
+          <DayMap
+            points={map.points}
+            anchor={map.anchor}
+            legs={legs}
+            resolved={resolved}
+          />
         )}
         {day.note && !confirmingDelete && mode !== "edit-day" && (
           <p className="text-sm whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">
