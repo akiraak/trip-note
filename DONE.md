@@ -2,6 +2,13 @@
 
 ## 2026-08-23
 
+- Web の日数・宿泊地候補にプレビュー地図を出す [plan](docs/plans/archive/web-outline-candidate-map.md)
+  - 候補が文字だけでどこを回るのか分かりにくかったので、iOS の `OutlineCandidateMap` と同じく出発地 → 各泊 → 目的地をマーカー + ポリラインで結んだ操作不可の地図を候補カードに出す
+  - 点列は `lib/outline-map.ts` の `outlineMapPoints`(純ロジック・テスト付き)。座標が無い点・片方だけの座標は飛ばす。出発地の座標は作成フォームで Google Maps のリンクから取れたときだけ付く
+  - 地図は `trip-map.tsx` と同じ OpenFreeMap のスタイル・ワーカー指定で、`interactive: false` + `maxZoom` 控えめ。WebGL コンテキストを候補ぶん張るので**描くのは先頭 3 候補まで**
+  - 途中で見つけた不具合を修正: `PlaceLink` が `<form>` を持っていたため、作成フォームやチェックポイント編集フォーム(どちらも `<form>`)の中に置くと **form の入れ子**になり、ブラウザが内側を落として「読み込む」で外側のフォームが送信 → ページがリロードされ入力が消えていた。`PlaceLink` を div + `onKeyDown` (Enter) に変更(チェックポイント編集側の同じ不具合も直る)
+  - 検証: web vitest 146 件(`outline-map` を新設)+ lint + build、dev サーバで候補 2 件の地図(東京駅 → 松本 → 上高地)とリンク入力・チェックポイント編集のリンク入力を確認
+
 - Web の旅行作成でも AI の日数・宿泊地候補ステップを出す [plan](docs/plans/archive/web-trip-outline.md)
   - Web で旅行を作っても 1 日目しかできず「作ったのに変化が見えない」状態だった(iOS は作成直後に trip_outline の候補ステップがある)
   - 採用処理 `adoptTripOutline` を `lib/plan.ts` に追加(Swift の `PlanEditor.adopt(_ candidate:into:)` の移植)。1 日目(既存の初日 ?? `departure_at` ?? 今日)から dayCount 分の日を揃え、最終日に目的地の到着チェックポイント、n 泊目を n 日目に宿泊チェックポイントとして末尾追記する。既存行の `updated_at` は進めない

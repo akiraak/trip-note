@@ -78,28 +78,31 @@ export function PlaceLink({
 
   return (
     <div className="flex flex-col gap-2">
-      <form
-        className="flex gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          resolve();
-        }}
-      >
+      {/* 編集フォームの中にも置くので form にはしない(form の入れ子は不正な HTML で、
+          ブラウザが内側を落として外側のフォームが送信されてしまう)。
+          Enter での実行は onKeyDown で拾う */}
+      <div className="flex gap-2">
         <input
           type="text"
           value={link}
           onChange={(event) => setLink(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            resolve();
+          }}
           placeholder="Google Maps のリンクを貼る"
           className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
         />
         <button
-          type="submit"
+          type="button"
+          onClick={resolve}
           disabled={loading || !link.trim()}
           className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
         >
           {loading ? "読み込み中…" : "読み込む"}
         </button>
-      </form>
+      </div>
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Google Maps で場所を開き「共有」→「リンクをコピー」したものを貼ると、その場所を追加できます
       </p>

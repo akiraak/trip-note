@@ -7,11 +7,13 @@ import {
   pollTripOutlineAction,
   startTripOutlineAction,
 } from "./actions";
+import { OutlineMap } from "./outline-map";
 import type {
   TripOutlineCandidate,
   TripOutlineInput,
   TripOutlineSuggestion,
 } from "@/lib/ai";
+import { outlineMapPoints } from "@/lib/outline-map";
 
 // 旅行を作成した直後の「日数と宿泊地の候補」ステップ(iOS の TripCreateView 後半と同じ)。
 // 旅行は作成済みなので、スキップしても旅行画面へ進める。
@@ -19,6 +21,9 @@ import type {
 // (ジョブの登録は作成ボタンの延長で 1 回だけ行い、ここでは結果を待つだけ)
 
 const POLL_INTERVAL_MS = 3000;
+
+/** 地図を描く候補の数(WebGL コンテキストを候補ぶん張るので上限を設ける) */
+const MAX_MAPS = 3;
 
 /** 例: 「2泊3日・泊: 松本 → 上高地」「1日間(日帰り)」(iOS の summary(of:) と同じ) */
 function summary(candidate: TripOutlineCandidate): string {
@@ -138,49 +143,69 @@ export function TripOutlineStep({
         </p>
       )}
 
-      {suggestion?.candidates.map((candidate, index) => (
-        <div
-          key={index}
-          className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
-        >
-          <div>
-            <p className="font-medium">{candidate.title}</p>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              {summary(candidate)}
-            </p>
+      {suggestion?.candidates.map((candidate, index) => {
+        // 出発地 → 各泊 → 目的地。座標が取れた点だけを地図に出す
+        const points =
+          index < MAX_MAPS
+            ? outlineMapPoints({
+                departure: {
+                  name: input.departure,
+                  latitude: input.departureLatitude,
+                  longitude: input.departureLongitude,
+                },
+                nights: candidate.nights,
+                destination: {
+                  name: input.destination,
+                  latitude: suggestion.destinationLatitude,
+                  longitude: suggestion.destinationLongitude,
+                },
+              })
+            : [];
+        return (
+          <div
+            key={index}
+            className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
+          >
+            <div>
+              <p className="font-medium">{candidate.title}</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                {summary(candidate)}
+              </p>
+            </div>
+            {points.length > 0 && <OutlineMap points={points} />}
+            {candidate.nights.length > 0 && (
+              <ul className="flex flex-col gap-0.5 text-sm">
+                {candidate.nights.map((night, i) => (
+                  <li key={i} className="flex items-baseline gap-1">
+                    <span aria-hidden>🛏</span>
+                    <span>
+                      {i + 1}泊目 {night.area}
+                    </span>
+                    <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                      {night.name}
+                      {night.note ? ` · ${night.note}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div>
+              <button
+                type="button"
+                disabled={adopting}
+                onClick={() => adopt(candidate)}
+                className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+              >
+                {adopting ? "追加中…" : "この候補を採用"}
+              </button>
+            </div>
           </div>
-          {candidate.nights.length > 0 && (
-            <ul className="flex flex-col gap-0.5 text-sm">
-              {candidate.nights.map((night, i) => (
-                <li key={i} className="flex items-baseline gap-1">
-                  <span aria-hidden>🛏</span>
-                  <span>
-                    {i + 1}泊目 {night.area}
-                  </span>
-                  <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-                    {night.name}
-                    {night.note ? ` · ${night.note}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div>
-            <button
-              type="button"
-              disabled={adopting}
-              onClick={() => adopt(candidate)}
-              className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
-            >
-              {adopting ? "追加中…" : "この候補を採用"}
-            </button>
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         旅行は作成済みです。スキップしても「日を追加」や AI
-        行程提案で後から日程を組めます。採用後は通常の編集で調整でき、宿の位置は
+        行程提案で後から日程を組めます。地図はおおよその位置で、採用後は通常の編集で調整でき、宿の位置は
         Google Maps のリンクで具体化できます
       </p>
     </div>
