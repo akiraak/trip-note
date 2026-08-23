@@ -1,7 +1,6 @@
-import type { Viewbox } from "./day-route";
-import type { CheckpointType } from "./types";
-
-// Nominatim (OSM) の地点検索をサーバ経由でプロキシする。
+// Nominatim (OSM) のジオコーディングをサーバ経由でプロキシする。
+// ユーザーが操作する「検索」は無く、Google Maps のリンク解決
+// (lib/google-maps-share.ts)が座標の無いリンクを補うためだけに使う。
 // 利用規約 (https://operations.osmfoundation.org/policies/nominatim/) に従い、
 //   - アプリを特定できる User-Agent を送る
 //   - リクエストは最大 1 req/s(プロセス内で直列化して間隔を空ける)
@@ -9,12 +8,8 @@ import type { CheckpointType } from "./types";
 // 単一ユーザー・単一プロセス運用なのでプロセス内での制御で足りる
 
 export type Place = {
-  name: string;
-  displayName: string;
   latitude: number;
   longitude: number;
-  /** Nominatim の category/type から推測したチェックポイント種別 */
-  guessedType: CheckpointType;
 };
 
 const ENDPOINT = "https://nominatim.openstreetmap.org/search";
@@ -65,65 +60,17 @@ function throttled<T>(task: () => Promise<T>): Promise<T> {
   return result;
 }
 
-const LODGING_TYPES = new Set([
-  "hotel",
-  "motel",
-  "hostel",
-  "guest_house",
-  "apartment",
-  "chalet",
-  "alpine_hut",
-  "camp_site",
-  "caravan_site",
-]);
-
-const RESTAURANT_TYPES = new Set([
-  "restaurant",
-  "fast_food",
-  "food_court",
-  "pub",
-  "bar",
-]);
-
-export function guessCheckpointType(
-  category: string,
-  type: string,
-): CheckpointType {
-  if (category === "tourism") {
-    return LODGING_TYPES.has(type) ? "lodging" : "sightseeing";
-  }
-  if (category === "amenity") {
-    if (type === "cafe") return "cafe";
-    if (RESTAURANT_TYPES.has(type)) return "restaurant";
-  }
-  if (category === "historic" || category === "leisure" || category === "natural") {
-    return "sightseeing";
-  }
-  return "other";
-}
-
 type NominatimRow = {
-  name?: string;
-  display_name: string;
   lat: string;
   lon: string;
-  category: string;
-  type: string;
 };
 
-async function fetchPlaces(
-  query: string,
-  viewbox: Viewbox | null,
-): Promise<Place[]> {
+async function fetchPlaces(query: string): Promise<Place[]> {
   const url = new URL(ENDPOINT);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", "8");
   url.searchParams.set("accept-language", "ja");
-  // bounded は付けない = 範囲内を優先するだけで、範囲外の結果も返る
-  if (viewbox) {
-    url.searchParams.set("viewbox", viewbox.join(","));
-  }
   const response = await fetch(url, {
     headers: { "User-Agent": USER_AGENT },
     cache: "no-store",
@@ -133,28 +80,22 @@ async function fetchPlaces(
   }
   const rows = (await response.json()) as NominatimRow[];
   return rows.map((row) => ({
-    name: row.name || row.display_name.split(",")[0].trim(),
-    displayName: row.display_name,
     latitude: Number(row.lat),
     longitude: Number(row.lon),
-    guessedType: guessCheckpointType(row.category, row.type),
   }));
 }
 
-/** viewbox はその日の経路の周辺(lib/day-route.ts の searchViewbox)。null なら全世界 */
-export async function searchPlaces(
-  query: string,
-  viewbox: Viewbox | null = null,
-): Promise<Place[]> {
+/** クエリ(「名前 + 市区町村」など)を座標に変換する */
+export async function searchPlaces(query: string): Promise<Place[]> {
   const q = query.trim();
   if (!q) return [];
   const s = state();
-  const key = viewbox ? `${q}|${viewbox.join(",")}` : q;
+  const key = q;
   const cached = s.cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.places;
   }
-  const places = await throttled(() => fetchPlaces(q, viewbox));
+  const places = await throttled(() => fetchPlaces(q));
   // 再挿入で挿入順を新しくし、あふれたら古いものから捨てる
   s.cache.delete(key);
   s.cache.set(key, { at: Date.now(), places });

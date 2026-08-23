@@ -1,6 +1,6 @@
 import Foundation
 
-/// AI 提案・検索補助(/api/ai/*)のリクエスト/応答 DTO。
+/// AI 提案(/api/ai/*)のリクエスト/応答 DTO。
 /// AI 呼び出しはサーバに集約されており、モデル選択も Web の設定画面で行う
 /// (iOS 側に API キーや AI 設定は持たない)。日付フィールドが無いので
 /// エンコード/デコードは素の JSONEncoder / JSONDecoder でよい
@@ -23,7 +23,7 @@ struct AISuggestedCheckpoint: Decodable, Hashable {
     let typeRawValue: String
     let name: String
     let note: String?
-    /// 概算座標(市レベル)。採用時に保存し、検索で具体化したら上書きする
+    /// 概算座標(市レベル)。採用時に保存し、Google Maps のリンクで具体化したら上書きする
     let latitude: Double?
     let longitude: Double?
 
@@ -42,7 +42,7 @@ struct AISuggestedDay: Decodable, Hashable {
     /// YYYY-MM-DD
     let date: String
     let title: String
-    /// 大まかな地域(検索補助の入力に使える。保存はしない)
+    /// 大まかな地域(その日の行程の目安。保存はしない)
     let area: String
     let checkpoints: [AISuggestedCheckpoint]
 }
@@ -103,7 +103,7 @@ struct AITripOutlineSuggestion: Decodable, Hashable {
 // ---- 生成ジョブ (/api/ai/jobs) ----
 // plan / trip-outline の生成は数十秒〜数分かかり、接続を張りっぱなしにすると
 // アプリ切替で iOS がソケットを切ってしまう。そのためジョブ登録 → ポーリングで
-// 結果を受け取る(search-assist は数秒で返るので従来の同期 POST のまま)
+// 結果を受け取る
 
 /// POST /api/ai/jobs のリクエスト。id はクライアント発行の UUID(再送冪等)
 struct AIJobCreateRequest<Input: Encodable>: Encodable {
@@ -126,45 +126,4 @@ struct AIJobStatusResponse<Output: Decodable>: Decodable {
     let status: String
     let result: Output?
     let error: String?
-}
-
-/// POST /api/ai/search-assist のリクエスト
-struct AISearchAssistRequest: Encodable {
-    /// 大まかな地域(例: 松本市周辺)。route があれば省略可(AI が経路から地域を読む)
-    let area: String?
-    /// CheckpointType.rawValue の種別ヒント(任意)
-    let type: String?
-    let request: String?
-    /// その日の経路(前泊地 + 訪問順のチェックポイント)。経路沿いの候補を優先させる
-    let route: [DayRoutePlace]?
-}
-
-struct AISuggestedPlace: Decodable, Hashable {
-    let typeRawValue: String
-    let name: String
-    let area: String
-    let note: String?
-    /// 概算座標(市レベル。旧サーバの応答に無ければ nil)。ワンタップ追加に使い、
-    /// 検索で具体化したら上書きされる
-    let latitude: Double?
-    let longitude: Double?
-
-    var type: CheckpointType { CheckpointType(rawValue: typeRawValue) ?? .other }
-
-    enum CodingKeys: String, CodingKey {
-        case typeRawValue = "type"
-        case name
-        case area
-        case note
-        case latitude
-        case longitude
-    }
-}
-
-/// POST /api/ai/search-assist の応答
-struct AISearchAssistSuggestion: Decodable, Hashable {
-    /// 地図検索にそのまま使えるクエリ候補
-    let queries: [String]
-    /// 具体的な地点候補
-    let places: [AISuggestedPlace]
 }

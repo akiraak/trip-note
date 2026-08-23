@@ -1,27 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import {
-  parsePlanInput,
-  parseSearchAssistInput,
-  searchAssist,
-  suggestPlan,
-  type PlanSuggestion,
-  type SearchAssistSuggestion,
-} from "@/lib/ai";
-import { isSearchCategory } from "@/lib/category-search";
-import { isViewbox, parseRouteInput } from "@/lib/day-route";
+import { parsePlanInput, suggestPlan, type PlanSuggestion } from "@/lib/ai";
 import {
   parseLinkInput,
   resolveGoogleMapsLink,
   type ResolvedGoogleMapsPlace,
 } from "@/lib/google-maps-share";
-import { searchPlaces, type Place } from "@/lib/nominatim";
-import {
-  fetchNearbyPlaces,
-  routeCoordinates,
-  type NearbyPlace,
-} from "@/lib/overpass";
 import * as plan from "@/lib/plan";
 import type { AdoptDay, CheckpointInput } from "@/lib/plan";
 
@@ -30,10 +15,6 @@ import type { AdoptDay, CheckpointInput } from "@/lib/plan";
 // 実処理は lib/plan.ts(ユニットテスト対象)に置き、ここでは結果整形と再検証のみ行う
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-export type SearchResult =
-  | { ok: true; places: Place[] }
-  | { ok: false; error: string };
 
 function failure(error: unknown): { ok: false; error: string } {
   return {
@@ -141,42 +122,6 @@ export async function moveCheckpointAction(
   }
 }
 
-/** viewbox はその日の経路の周辺(lib/day-route.ts)。不正な値は無視して全世界検索 */
-export async function searchPlacesAction(
-  query: string,
-  viewbox: unknown = null,
-): Promise<SearchResult> {
-  try {
-    return {
-      ok: true,
-      places: await searchPlaces(query, isViewbox(viewbox) ? viewbox : null),
-    };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
-export type NearbyResult =
-  | { ok: true; places: NearbyPlace[] }
-  | { ok: false; error: string };
-
-/** その日の経路の近くをカテゴリ(観光地など)で探す(/api/places/nearby と同じ処理) */
-export async function nearbyPlacesAction(
-  category: unknown,
-  route: unknown,
-): Promise<NearbyResult> {
-  try {
-    if (!isSearchCategory(category)) throw new Error("不正なカテゴリです");
-    const parsedRoute = parseRouteInput(route);
-    if (!parsedRoute || routeCoordinates(parsedRoute).length === 0) {
-      throw new Error("経路に座標がありません");
-    }
-    return { ok: true, places: await fetchNearbyPlaces(category, parsedRoute) };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
 export type ResolveLinkResult =
   | { ok: true; place: ResolvedGoogleMapsPlace }
   | { ok: false; error: string };
@@ -192,15 +137,11 @@ export async function resolveGoogleMapsLinkAction(
   }
 }
 
-// ---- AI 提案・検索補助 ----
+// ---- AI 提案 ----
 // AI 呼び出しの実処理は lib/ai.ts。入力は API route と同じ関数で再検証する
 
 export type PlanSuggestResult =
   | { ok: true; suggestion: PlanSuggestion }
-  | { ok: false; error: string };
-
-export type SearchAssistResult =
-  | { ok: true; suggestion: SearchAssistSuggestion }
   | { ok: false; error: string };
 
 export async function suggestPlanAction(
@@ -222,19 +163,6 @@ export async function adoptPlanAction(
     plan.adoptPlanSuggestion(tripId, days);
     revalidateTrip(tripId);
     return { ok: true };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
-export async function searchAssistAction(
-  input: unknown,
-): Promise<SearchAssistResult> {
-  try {
-    return {
-      ok: true,
-      suggestion: await searchAssist(parseSearchAssistInput(input)),
-    };
   } catch (error) {
     return failure(error);
   }

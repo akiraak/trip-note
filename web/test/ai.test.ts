@@ -7,20 +7,17 @@ import {
   AI_MODELS,
   DEFAULT_AI_MODEL_ID,
   buildPlanPrompt,
-  buildSearchAssistPrompt,
   buildTripOutlinePrompt,
   getAiModel,
   parsePlanInput,
   parsePlanSuggestion,
-  parseSearchAssistInput,
-  parseSearchAssistSuggestion,
   parseTripOutlineInput,
   parseTripOutlineSuggestion,
   setAiModel,
 } from "@/lib/ai";
 import { getDb } from "@/lib/db";
 
-// AI 提案・検索補助(lib/ai.ts)のうち、実 API 呼び出し以外を検証する:
+// AI 提案(lib/ai.ts)のうち、実 API 呼び出し以外を検証する:
 // モデル設定(app_settings)・入力バリデーション・応答パース・プロンプト生成。
 // 実 API の呼び出しは手動確認(プランのテスト方針)
 
@@ -170,80 +167,6 @@ describe("parseTripOutlineInput", () => {
     expect(() =>
       parseTripOutlineInput({ ...valid, departureTime: "25:00" }),
     ).toThrow(/HH:mm/);
-  });
-});
-
-describe("parseSearchAssistInput", () => {
-  it("正常な入力を受け付ける", () => {
-    expect(
-      parseSearchAssistInput({ area: "松本市周辺", type: "cafe", request: "" }),
-    ).toEqual({ area: "松本市周辺", type: "cafe", request: null, route: null });
-  });
-
-  it("地域が空・種別が不正なら拒否する", () => {
-    expect(() => parseSearchAssistInput({ area: "" })).toThrow(/地域/);
-    expect(() =>
-      parseSearchAssistInput({ area: "松本", type: "hotel" }),
-    ).toThrow(/種別/);
-  });
-
-  const route = [
-    { name: "宿 A", latitude: 36.23, longitude: 137.97 },
-    { name: "どこかの店", latitude: null, longitude: null },
-  ];
-
-  it("経路があれば地域は省略できる(名前は trim、座標なしも通る)", () => {
-    expect(
-      parseSearchAssistInput({ route: [{ ...route[0], name: " 宿 A " }, route[1]] }),
-    ).toEqual({ area: null, type: null, request: null, route });
-    // 空配列は経路なし扱い
-    expect(() => parseSearchAssistInput({ route: [] })).toThrow(/地域/);
-  });
-
-  it("不正な経路は拒否する", () => {
-    expect(() => parseSearchAssistInput({ route: "松本" })).toThrow(/経路/);
-    expect(() => parseSearchAssistInput({ route: [{ name: "" }] })).toThrow(/経路/);
-    expect(() =>
-      parseSearchAssistInput({ route: [{ name: "x", latitude: 36.2 }] }),
-    ).toThrow(/座標/);
-    expect(() =>
-      parseSearchAssistInput({
-        route: [{ name: "x", latitude: 36.2, longitude: 200 }],
-      }),
-    ).toThrow(/座標/);
-    expect(() =>
-      parseSearchAssistInput({
-        route: Array.from({ length: 31 }, () => ({ name: "x" })),
-      }),
-    ).toThrow(/経路/);
-  });
-});
-
-describe("buildSearchAssistPrompt", () => {
-  it("経路を順番・座標付きで列挙し、地域が無ければ推定を指示する", () => {
-    const { system, user } = buildSearchAssistPrompt({
-      area: null,
-      type: null,
-      request: "静かなカフェ",
-      route: [
-        { name: "宿 A", latitude: 36.23, longitude: 137.97 },
-        { name: "どこかの店", latitude: null, longitude: null },
-      ],
-    });
-    expect(system).toContain("経路沿い");
-    expect(user).toContain("地域: (指定なし。経路から推定)");
-    expect(user).toContain("この日の経路(順に):\n1. 宿 A (36.23, 137.97)\n2. どこかの店");
-  });
-
-  it("経路が無ければ従来どおり地域だけ", () => {
-    const { user } = buildSearchAssistPrompt({
-      area: "松本市周辺",
-      type: "cafe",
-      request: null,
-      route: null,
-    });
-    expect(user).toContain("地域: 松本市周辺");
-    expect(user).not.toContain("この日の経路");
   });
 });
 
@@ -398,58 +321,6 @@ describe("parseTripOutlineSuggestion", () => {
         candidates: [{ ...candidate, nights: [{ area: "松本", name: "" }] }],
       }),
     ).toThrow(/解釈/);
-  });
-});
-
-describe("parseSearchAssistSuggestion", () => {
-  it("正常な応答をパースする(概算座標付き)", () => {
-    const suggestion = parseSearchAssistSuggestion({
-      queries: [" 松本市 カフェ ", ""],
-      places: [
-        {
-          name: "珈琲まるも",
-          type: "cafe",
-          area: "松本市",
-          note: "",
-          latitude: 36.2328,
-          longitude: 137.9689,
-        },
-      ],
-    });
-    expect(suggestion.queries).toEqual(["松本市 カフェ"]);
-    expect(suggestion.places[0]).toEqual({
-      name: "珈琲まるも",
-      type: "cafe",
-      area: "松本市",
-      note: null,
-      latitude: 36.2328,
-      longitude: 137.9689,
-    });
-  });
-
-  it("座標が不正・欠落・片方だけなら null に寄せる", () => {
-    const place = { name: "珈琲まるも", type: "cafe", area: "松本市", note: "" };
-    const parse = (over: Record<string, unknown>) =>
-      parseSearchAssistSuggestion({ queries: [], places: [{ ...place, ...over }] })
-        .places[0];
-    // 範囲外
-    expect(parse({ latitude: 91, longitude: 137.9 })).toMatchObject({
-      latitude: null,
-      longitude: null,
-    });
-    // 旧応答(座標無し)
-    expect(parse({})).toMatchObject({ latitude: null, longitude: null });
-    // 片方だけなら両方捨てる
-    expect(parse({ latitude: 36.2 })).toMatchObject({
-      latitude: null,
-      longitude: null,
-    });
-  });
-
-  it("クエリも地点も無ければ throw する", () => {
-    expect(() =>
-      parseSearchAssistSuggestion({ queries: [], places: [] }),
-    ).toThrow(/候補/);
   });
 });
 

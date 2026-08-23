@@ -1,11 +1,11 @@
 import Foundation
 
-/// AI 提案・検索補助(/api/ai/*)の呼び出し。接続先・認証は同期と同じ
+/// AI 提案(/api/ai/*)の呼び出し。接続先・認証は同期と同じ
 /// (ServerConfig.plist の Bearer)なので SyncClient に相乗りする。
 /// plan / trip-outline の生成は数十秒〜数分かかり、接続を張りっぱなしにすると
 /// アプリ切替で iOS がソケットを切って "The network connection was lost" になる。
 /// そのためジョブ登録(POST /api/ai/jobs)→ ポーリング(GET /api/ai/jobs/[id])で
-/// 結果を受け取る。search-assist は数秒で返るので従来の同期 POST のまま
+/// 結果を受け取る
 extension SyncClient {
     /// サーバが {"error": "..."} で返す日本語メッセージをそのまま表示するためのエラー
     struct AIServerError: LocalizedError {
@@ -13,8 +13,6 @@ extension SyncClient {
         var errorDescription: String? { message }
     }
 
-    /// search-assist(同期 POST)は生成待ちを含むため既定(60 秒)より長くする
-    private static let aiTimeout: TimeInterval = 300
     /// ジョブ登録・ポーリングは即応答なので短くてよい
     private static let aiJobRequestTimeout: TimeInterval = 30
     private static let aiJobPollInterval: Duration = .seconds(3)
@@ -27,24 +25,6 @@ extension SyncClient {
 
     func suggestTripOutline(_ body: AITripOutlineRequest) async throws -> AITripOutlineSuggestion {
         try await runAIJob(kind: "trip_outline", input: body)
-    }
-
-    func searchAssist(_ body: AISearchAssistRequest) async throws -> AISearchAssistSuggestion {
-        try await postAI(path: "api/ai/search-assist", body: body, timeout: Self.aiTimeout)
-    }
-
-    /// Overpass の応答待ち(サーバ側は 25 秒でクエリを打ち切る)
-    private static let nearbyTimeout: TimeInterval = 60
-
-    /// その日の経路の近くをカテゴリ(観光地など)で探す(AI ではないが Bearer・
-    /// エラー形式が同じなので同じ送受信に相乗りする)
-    func nearbyPlaces(category: SearchCategory, route: [DayRoutePlace]) async throws -> [NearbyPlace] {
-        let response: NearbyPlacesResponse = try await postAI(
-            path: "api/places/nearby",
-            body: NearbyPlacesRequest(category: category.rawValue, route: route),
-            timeout: Self.nearbyTimeout
-        )
-        return response.places
     }
 
     /// 短縮リンクの展開はサーバ側で最大 10 秒 × 数ホップ

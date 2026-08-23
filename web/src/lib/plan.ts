@@ -264,7 +264,7 @@ export type AdoptDay = {
     type: CheckpointType;
     name: string;
     note: string | null;
-    /** AI の概算座標(任意)。保存して検索で具体化したら上書きする */
+    /** AI の概算座標(任意)。保存して Google Maps のリンクで具体化したら上書きする */
     latitude?: number | null;
     longitude?: number | null;
   }[];

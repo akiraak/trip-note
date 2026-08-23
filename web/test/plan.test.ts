@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { getDb } from "@/lib/db";
-import { guessCheckpointType } from "@/lib/nominatim";
 import {
   addTripDay,
   adoptPlanSuggestion,
@@ -462,16 +461,5 @@ describe("adoptPlanSuggestion", () => {
     expect(() => adoptPlanSuggestion("missing", suggestedDays)).toThrow(
       /旅行が見つかりません/,
     );
-  });
-});
-
-describe("guessCheckpointType", () => {
-  it("Nominatim の category/type から種別を推測する", () => {
-    expect(guessCheckpointType("tourism", "hotel")).toBe("lodging");
-    expect(guessCheckpointType("tourism", "attraction")).toBe("sightseeing");
-    expect(guessCheckpointType("amenity", "cafe")).toBe("cafe");
-    expect(guessCheckpointType("amenity", "restaurant")).toBe("restaurant");
-    expect(guessCheckpointType("historic", "castle")).toBe("sightseeing");
-    expect(guessCheckpointType("shop", "supermarket")).toBe("other");
   });
 });

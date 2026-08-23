@@ -175,7 +175,7 @@ enum PlanEditor {
     }
 
     /// その日の末尾に入れる新規チェックポイント(挿入・保存は呼び出し側)。
-    /// 検索結果・共有された場所など「名前 + 座標 + 種別」が決まっているときに使う
+    /// 共有された場所・リンクの結果など「名前 + 種別(+ 座標)」が決まっているときに使う
     static func makeCheckpoint(
         name: String,
         type: CheckpointType,
@@ -207,7 +207,7 @@ enum PlanEditor {
     /// AI 提案を旅行に採用する(挿入・保存は呼び出し側)。
     /// 同じ日付の日が既にあればそこへチェックポイントを末尾追記し(title は上書きしない)、
     /// 無ければ日を作る。チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
-    /// あとから検索で具体化したら上書きされる。
+    /// あとから Google Maps のリンクで具体化したら上書きされる。
     /// 戻り値は新規作成したエンティティ(呼び出し側で insert する)
     static func adopt(
         _ suggestion: AIPlanSuggestion,
@@ -266,7 +266,7 @@ enum PlanEditor {
     /// 揃え(既存の日付は再利用)、最終日に目的地の到着チェックポイント
     /// (trip.destination + 概算座標)を、n 泊目の宿泊チェックポイントを n 日目に
     /// 末尾追記する。チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
-    /// あとから検索で具体化したら上書きされる。
+    /// あとから Google Maps のリンクで具体化したら上書きされる。
     /// 既存行の updatedAt は進めない(LWW で他方の編集を潰さないため)
     static func adopt(
         _ candidate: AITripOutlineCandidate,

@@ -15,7 +15,7 @@ trip-note サーバ(`web/`)を g3plus(自宅サーバ)で動かすための契�
   - `API_SHARED_SECRET` — iOS の `/api/sync` を守る共有シークレット(`openssl rand -hex 32`)。
     iOS の `ServerConfig.plist` の API_KEY と揃える
   - `TRIPNOTE_DB_PATH=/app/data/trip-note.db`
-- **任意 env**(AI 提案・検索補助 `/api/ai/*`。使うプロバイダの分だけ設定):
+- **任意 env**(AI 提案 `/api/ai/*`。使うプロバイダの分だけ設定):
   - `ANTHROPIC_API_KEY` — Claude(Opus 5 / Sonnet 5)用
   - `OPENAI_API_KEY` — ChatGPT(GPT-5.6 Sol / Terra)用
   - 未設定でも他機能は動く(AI 呼び出し時にエラーメッセージを返すだけ)。

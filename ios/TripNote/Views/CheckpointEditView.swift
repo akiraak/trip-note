@@ -20,7 +20,7 @@ struct CheckpointEditView: View {
     @State private var plannedTime: Date
     @State private var latitude: Double?
     @State private var longitude: Double?
-    @State private var showsSearch = false
+    @State private var showsLinkInput = false
 
     init(day: TripDayEntity, checkpoint: CheckpointEntity? = nil) {
         self.day = day
@@ -80,13 +80,11 @@ struct CheckpointEditView: View {
                         .disabled(trimmedName.isEmpty)
                 }
             }
-            .sheet(isPresented: $showsSearch) {
-                CheckpointSearchView(
-                    region: CheckpointSearchView.regionHint(for: day.trip),
-                    route: DayRoute.places(for: day)
-                ) { place in
-                    // 名前・種別も常に検索結果で置き換える(目的地 CP をホテル検索で
-                    // 宿泊にまとめて差し替える動線)。保存するまで確定しないので
+            .sheet(isPresented: $showsLinkInput) {
+                // 座標の無いリンクは位置設定に使えないので選べない
+                GoogleMapsLinkView { place in
+                    // 名前・種別も常にリンクの結果で置き換える(目的地 CP をホテルの
+                    // リンクで宿泊にまとめて差し替える動線)。保存するまで確定しないので
                     // 意図しない置き換えはキャンセルで戻せる
                     name = place.name
                     type = place.suggestedType
@@ -118,7 +116,7 @@ struct CheckpointEditView: View {
             .frame(height: 160)
             .allowsHitTesting(false)
             .listRowInsets(EdgeInsets())
-            // 検索で座標が変わったら initialPosition を作り直す
+            // リンクで座標が変わったら initialPosition を作り直す
             .id("\(latitude),\(longitude)")
             Text(String(format: "%.5f, %.5f", latitude, longitude))
                 .font(.caption)
@@ -137,9 +135,9 @@ struct CheckpointEditView: View {
                 .foregroundStyle(.secondary)
         }
         Button {
-            showsSearch = true
+            showsLinkInput = true
         } label: {
-            Label("検索して位置を設定", systemImage: "magnifyingglass")
+            Label("Google Maps のリンクで位置を設定", systemImage: "link")
         }
     }
 

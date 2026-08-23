@@ -129,7 +129,7 @@ struct AIPlanSuggestView: View {
                 errorMessage = nil
             }
         } footer: {
-            Text("採用後は通常の編集で調整できます。地点の位置は未定のため、検索で具体化してください。")
+            Text("採用後は通常の編集で調整できます。地点の位置は概算のため、Google Maps のリンクで具体化してください。")
         }
     }
 

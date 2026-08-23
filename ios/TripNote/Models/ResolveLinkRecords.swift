@@ -27,7 +27,7 @@ struct ResolvedGoogleMapsPlace: Decodable, Hashable {
         case "geocoded":
             return "住所から推定した位置です(\(geocodedQuery ?? "")。ピンとずれることがあります)"
         case "area":
-            return "住所「\(geocodedQuery ?? "")」のおおよその位置です。「検索で探し直す」で正確な位置にできます"
+            return "住所「\(geocodedQuery ?? "")」のおおよその位置です。編集で Google Maps のリンクを貼り直すと直せます"
         default:
             return nil
         }

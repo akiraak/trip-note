@@ -13,9 +13,8 @@ import {
 } from "./actions";
 import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
-import { PlaceSearch } from "./place-search";
+import { PlaceLink } from "./place-link";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
-import { dayRoute, type DayRoutePlace } from "@/lib/day-route";
 import { formatDay } from "@/lib/format";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
 import type { CheckpointType } from "@/lib/types";
@@ -88,7 +87,6 @@ export function PlanSection({
           key={day.id}
           day={day}
           dayNumber={index + 1}
-          route={dayRoute(days, index)}
           pending={pending}
           run={run}
         />
@@ -133,20 +131,17 @@ type RunAction = (
 function DayCard({
   day,
   dayNumber,
-  route,
   pending,
   run,
 }: {
   day: PlanDay;
   dayNumber: number;
-  /** この日の経路(前泊地 + 訪問順 CP)。地点検索の範囲と AI 補助の文脈に使う */
-  route: DayRoutePlace[];
   pending: boolean;
   run: RunAction;
 }) {
   // 同時に開くフォームは日ごとに 1 つ
   const [mode, setMode] = useState<
-    null | "edit-day" | "add-search" | "add-manual"
+    null | "edit-day" | "add-link" | "add-manual"
   >(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(
@@ -232,7 +227,6 @@ function DayCard({
                 <li key={checkpoint.id}>
                   <CheckpointForm
                     initial={checkpoint}
-                    route={route}
                     pending={pending}
                     submitLabel="保存"
                     onSubmit={(input) =>
@@ -258,15 +252,15 @@ function DayCard({
             )}
           </ol>
         )}
-        {mode === "add-search" && (
-          <PlaceSearch
+        {mode === "add-link" && (
+          <PlaceLink
             selectLabel="追加"
-            route={route}
+            allowsMissingCoordinate
             disabled={pending}
             onSelect={(place) =>
               run(() =>
                 addCheckpointAction(day.id, {
-                  type: place.guessedType,
+                  type: "sightseeing",
                   name: place.name,
                   latitude: place.latitude,
                   longitude: place.longitude,
@@ -280,7 +274,6 @@ function DayCard({
         {mode === "add-manual" && (
           <CheckpointForm
             initial={null}
-            route={route}
             pending={pending}
             submitLabel="追加"
             onSubmit={(input) =>
@@ -292,10 +285,12 @@ function DayCard({
         <div className="flex gap-2 text-xs">
           <button
             type="button"
-            onClick={() => setMode(mode === "add-search" ? null : "add-search")}
+            onClick={() => setMode(mode === "add-link" ? null : "add-link")}
             className="underline"
           >
-            {mode === "add-search" ? "検索を閉じる" : "+ 検索して追加"}
+            {mode === "add-link"
+              ? "リンク入力を閉じる"
+              : "+ Google Maps のリンクから追加"}
           </button>
           <button
             type="button"

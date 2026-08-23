@@ -4,7 +4,7 @@ import SwiftUI
 
 /// 共有シート(Share Extension)で受け取った Google Maps の場所を、旅行 / 日を選んで
 /// チェックポイントとして追加するシート。座標はサーバでリンクを展開して取り、
-/// 取れなければ名前で検索(CheckpointSearchView)に回す
+/// 取れなければ座標未設定のまま追加する(位置はあとから編集でリンクを貼って設定する)
 struct SharedPlaceImportView: View {
     let share: PendingShare
     /// ContentView の一覧と同じ並び(先頭が既定の旅行)
@@ -24,7 +24,6 @@ struct SharedPlaceImportView: View {
     @State private var selectedDayID: UUID?
     @State private var isResolving = true
     @State private var resolveMessage: String?
-    @State private var showsSearch = false
 
     private var selectedTrip: TripEntity? {
         trips.first { $0.id == selectedTripID }
@@ -57,20 +56,6 @@ struct SharedPlaceImportView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("追加", action: add)
                         .disabled(!canAdd)
-                }
-            }
-            .sheet(isPresented: $showsSearch) {
-                CheckpointSearchView(
-                    region: CheckpointSearchView.regionHint(for: selectedTrip),
-                    route: selectedDay.map(DayRoute.places(for:)) ?? [],
-                    initialQuery: trimmedName
-                ) { place in
-                    name = place.name
-                    type = place.suggestedType
-                    latitude = place.latitude
-                    longitude = place.longitude
-                    approximationNote = nil
-                    resolveMessage = nil
                 }
             }
             .task {
@@ -131,14 +116,6 @@ struct SharedPlaceImportView: View {
                 Text(resolveMessage ?? "座標未設定")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-            if !isResolving {
-                Button {
-                    showsSearch = true
-                } label: {
-                    Label(latitude == nil ? "検索で位置を決める" : "検索で探し直す",
-                          systemImage: "magnifyingglass")
-                }
             }
         } header: {
             Text("場所")
@@ -202,7 +179,7 @@ struct SharedPlaceImportView: View {
             return
         }
         guard let client = SyncClient.fromBundle() else {
-            resolveMessage = "サーバが未設定のため座標を取れません。「検索で位置を決める」で探してください"
+            resolveMessage = "サーバが未設定のため座標を取れません。座標未設定のまま追加できます(位置はあとから編集でリンクを貼って設定できます)"
             return
         }
         do {
@@ -212,7 +189,7 @@ struct SharedPlaceImportView: View {
             longitude = place.longitude
             approximationNote = place.approximationNote
             if !place.hasCoordinate {
-                resolveMessage = "リンクから座標が取れませんでした。「検索で位置を決める」で探してください"
+                resolveMessage = "リンクから座標が取れませんでした。座標未設定のまま追加できます(位置はあとから編集でリンクを貼って設定できます)"
             }
         } catch {
             resolveMessage = "リンクを解決できませんでした: \(error.localizedDescription)"

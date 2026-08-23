@@ -200,7 +200,7 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 - `type` は checkpoints と同じ 7 種(サーバが許可リスト外を other に寄せる)。
   `latitude` / `longitude` は概算座標(市レベル。不正・片方だけは null)。
   採用時にチェックポイントへ保存して地図・ルート表示に使い、
-  検索で具体化したら上書きされる
+  Google Maps のリンクで位置を設定したら上書きされる
 - `401` / `400 {"error":"<バリデーションメッセージ>"}` /
   `500 {"error":"AI (...) の呼び出しに失敗しました: ..."}`(キー未設定・API エラー。
   502/504 だと Cloudflare がボディを差し替えてメッセージが届かないため 500 を使う)
@@ -247,92 +247,10 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 - `nights` は泊数分(通常 `dayCount - 1`)。n 番目 = n+1 泊目。
   `latitude` / `longitude` は地域の概算座標(不正な値は null)。
   候補プレビュー地図に使い、**採用時は宿泊チェックポイントへ概算座標として保存**して
-  地図・ルート表示に使う(検索で具体化したら上書きされる)。
+  地図・ルート表示に使う(Google Maps のリンクで位置を設定したら上書きされる)。
   `destinationLatitude` / `destinationLongitude` は目的地の概算座標(候補共通)で、
   採用時に**最終日の destination チェックポイント**(名前 = 旅行の目的地)を作るのに使う。
   `dayCount` が 1〜30 の範囲外の候補はサーバ側で落とす
-
-## POST /api/ai/search-assist
-
-AI 検索補助。大まかな地域 + 種別 + 自由記述(+ その日の経路)から、地図検索
-(MapKit / Nominatim)のクエリ候補と具体的な地点候補を返す。モデル・認証・エラーは
-/api/ai/plan と同じ。
-
-リクエスト:
-
-```json
-{
-  "area": "松本市周辺|null(route があれば省略可)",
-  "type": "cafe|null(省略可)",
-  "request": "静かなカフェ|null(省略可)",
-  "route": [
-    { "name": "宿 A", "latitude": 36.23, "longitude": 137.97 },
-    { "name": "どこかの店", "latitude": null, "longitude": null }
-  ]
-}
-```
-
-- `route`(省略可、最大 30 件)はその日の経路 = 前泊地(前日までの最後の座標あり
-  チェックポイント)+ その日の訪問順チェックポイント。`name` 必須、座標は両方 number か
-  両方 null(座標なし CP も名前だけ渡す)。与えると経路沿いの候補を優先し、経路に
-  既にある地点は候補に出さない。`area` と `route` の両方が無ければ 400
-
-レスポンス:
-
-```json
-{
-  "queries": ["松本市 カフェ"],
-  "places": [ { "name": "珈琲まるも", "type": "cafe", "area": "松本市", "note": "…|null",
-    "latitude": 36.2328, "longitude": 137.9689 } ]
-}
-```
-
-- クライアントは候補を選ぶとそのクエリで通常の地図検索を実行する
-  (座標の確定は地図検索に任せる)。`latitude` / `longitude` は概算座標
-  (市レベル。不正・片方だけは null)で、候補のワンタップ追加に使う。
-  概算のまま追加しても、あとから検索で具体化したら上書きされる
-
-## POST /api/places/nearby
-
-その日の経路の近くをカテゴリで探す(検索欄に「観光地」と入れたときの検索)。実体は
-OSM Overpass API のプロキシ(`web/src/lib/overpass.ts`)で、経路(座標あり地点を結んだ
-折れ線)から**半径 15km** 以内を対象タグで検索し、**有名どころ(`wikipedia` / `wikidata`
-タグあり)→ 種類の重み → 経路から近い順**に並べて最大 30 件返す。認証は Bearer、
-Web は同じ処理を Server Action(`nearbyPlacesAction`)で呼ぶ。
-
-リクエスト:
-
-```json
-{ "category": "sightseeing", "route": [ { "name": "宿 A", "latitude": 36.23, "longitude": 137.97 } ] }
-```
-
-- `category` は現状 `sightseeing` のみ(カテゴリ語の判定表は `lib/category-search.ts`)
-- `route` は search-assist と同じ形(最大 30 件)。座標ありの地点が 1 つも無ければ 400
-
-レスポンス:
-
-```json
-{
-  "places": [ {
-    "id": "way/300077872", "name": "松本城", "kind": "castle", "kindLabel": "城",
-    "latitude": 36.2387, "longitude": 137.9689,
-    "distanceM": 1200, "nearestRouteName": "宿 A",
-    "wikipediaUrl": "https://ja.wikipedia.org/wiki/%E6%9D%BE%E6%9C%AC%E5%9F%8E", "website": null
-  } ]
-}
-```
-
-- `distanceM` / `nearestRouteName` は経路上の最寄り地点(直線距離)。チェックポイントの
-  種別はクライアント側で一律 `sightseeing`
-- 対象タグ: `tourism`=attraction / museum / gallery / viewpoint / zoo / aquarium / theme_park、
-  `historic`=castle / monument / memorial / ruins / archaeological_site、
-  `amenity=place_of_worship` と `natural`=waterfall / hot_spring は `wikipedia` タグありのみ
-  (定義は `lib/overpass.ts` の `SELECTORS`)
-- Overpass 公開サーバ(`overpass-api.de`。env `OVERPASS_ENDPOINT` で差し替え可)の作法は
-  Nominatim と同じ(User-Agent・直列 + 最小間隔 1 秒)。同じ条件(カテゴリ + 経路座標を
-  小数 3 桁で丸めたキー)は 24 時間キャッシュ。応答は数秒かかることがある
-- Overpass のタイムアウト等は HTTP 200 のまま `remark` に入るため、`remark` にエラーが
-  あれば 500 として返す
 
 ## POST /api/places/resolve-link
 
@@ -370,8 +288,9 @@ iOS もこの API を使う)。認証は Bearer、Web は同じ処理を Server 
   `geocoded`(下記の Nominatim 補完で名前が当たった位置)/ `area`(名前では当たらず住所の
   町丁目までで引いたおおよその位置)/ null(座標が取れなかった)。`geocodedQuery` は
   geocoded / area のとき Nominatim に投げて当たった文字列(それ以外は null)。
-  座標が無くても名前が取れれば 200 で返し、クライアントは名前で通常の検索に
-  フォールバックする。名前も座標も取れなければ 500
+  座標が無くても名前が取れれば 200 で返し、クライアントは**座標未設定のまま**
+  チェックポイントを追加できる(位置はあとから編集でリンクを貼り直して設定する)。
+  名前も座標も取れなければ 500
 - **iOS アプリの共有(`?g_st=ic` / `ig` / `com.google.maps.preview.copy`)の展開先は
   `https://www.google.com/maps?q=<名前, 住所>&ftid=0x…:0x…` で座標が無い**(2026-08-23 に
   実物で確認。ページ本文にも無い)。この場合は `q` の「名前 + 住所」と共有テキストの
@@ -449,7 +368,7 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
 - AI(/api/ai/*)は `Services/AIClient.swift`(SyncClient の extension)、
   DTO は `Models/AIRecords.swift`(camelCase)、提案の採用は `Domain/PlanEditor.adopt`。
   plan / trip-outline はジョブ方式(POST /api/ai/jobs → 3 秒間隔で
-  GET /api/ai/jobs/[id]、全体 10 分で打ち切り)。search-assist のみ同期 POST
+  GET /api/ai/jobs/[id]、全体 10 分で打ち切り)
 - 道路ルート(/api/route)は `Services/RouteClient.swift`(SyncClient の extension)、
   DTO は `Models/RouteRecords.swift`、レグ組み立ては `Domain/RouteLegs.swift`。
   アプリ内メモリキャッシュ(`RouteLegCache`、レグキー → 座標列)を挟み、

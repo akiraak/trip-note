@@ -2,6 +2,14 @@
 
 ## 2026-08-23
 
+- チェックポイントの追加を Google Maps の共有とリンクの直接入力だけにする(他の検索機能を全て削除) [plan](docs/plans/archive/checkpoint-add-link-only.md)
+  - 背景: 追加の入口が 4 つ(自由語検索・AI 検索補助・カテゴリ検索・Google Maps のリンク)に増えていたが、実際に使うのは Google Maps 経由だけだったので 3 つを UI・API・ライブラリ・テスト・ドキュメントごと削除した
+  - Web: `/api/places/nearby`・`/api/ai/search-assist` と `lib/overpass.ts` / `lib/category-search.ts` / `lib/day-route.ts` / `search-assist.tsx` を削除、`actions.ts` の `searchPlacesAction` / `nearbyPlacesAction` / `searchAssistAction` と `lib/ai.ts` の search-assist 一式・`lib/format.ts` の `formatDistance` も削除。`place-search.tsx` → `place-link.tsx`(`PlaceLink`)にリネームしてリンク専用入力欄(「読み込む」→ 1 件の結果行 →「追加」)に。`lib/nominatim.ts` は resolve-link 用のジオコーダ(`searchPlaces(query)` → 座標)に縮小
+  - iOS: `Domain/CategorySearch.swift` / `Models/NearbyPlaceRecords.swift` と `AIClient.searchAssist` / `nearbyPlaces`・search-assist DTO を削除。`DayRoute` は経路描画が使う `anchor` だけ残す。`CheckpointSearchView.swift` → `GoogleMapsLinkView.swift`(MapKit 検索・AI 欄・カテゴリ検索を全廃、`PlaceSelection` の座標を optional 化)。取り込みシートの「検索で位置を決める」を削除
+  - 座標が取れないリンクは**日詳細の追加だけ座標未設定で追加できる**(`allowsMissingCoordinate`)。CP 編集・取り込みシートは注記のみで、位置はあとからリンクを貼り直して設定する
+  - `docs/specs/server-api.md`(search-assist / nearby の節削除、resolve-link のフォールバック記述を「座標未設定のまま追加」に)・`deploy-g3plus.md`・g3plus-ops の運用ドキュメント(外向き通信先から `overpass-api.de` を削除)を更新
+  - 検証: web vitest 116 件 + lint + build、iOS ユニットテスト 136 件 + シミュレータビルド、Chrome でローカル dev の E2E(リンク入力欄の表示 / 非 Google 文字列で「Google Maps のリンクを貼ってください」/ 場所 URL → 松本城 1 件 → 追加 / CP 編集が「Google Maps のリンクで設定」)
+
 - Google Maps で場所を検索したあとの共有から受け取れるように(+ Web 版 Google Maps の URL をチェックポイントに追加できるように) [plan](docs/plans/archive/google-maps-share-import.md)
   - 方式: リンクの解決は サーバ `POST /api/places/resolve-link`(Bearer)+ Server Action に 1 本化(`lib/google-maps-share.ts`。短縮リンク `maps.app.goo.gl` の転送を許可ホスト限定で最大 5 ホップ追い、展開後 URL の `!3d!4d`(ピン)→ `q=lat,lng` → `@lat,lng`(表示中心)の順で座標、`/maps/place/<名前>` から名前。座標が取れなければ名前だけ返し、クライアントが名前検索にフォールバック。同じリンクは 24 時間キャッシュ)。**ページ本文の座標(og:image の staticmap center)は接続元 IP の既定の地図中心(シアトル)で場所と無関係と判明したので使わない**
   - Web: 検索欄(`PlaceSearch`)に Google Maps のリンクを貼ると 1 件の結果(「Google Maps のリンク(ピンの位置)」)として出て「追加」できる。プレースホルダと検索欄直下の補足文で貼れることを明記

@@ -12,7 +12,7 @@ struct TripDayDetailView: View {
     @Environment(SyncEngine.self) private var sync
 
     @State private var showsDayEdit = false
-    @State private var showsSearch = false
+    @State private var showsLinkAdd = false
     @State private var showsManualAdd = false
     @State private var editingCheckpoint: CheckpointEntity?
     @State private var showsDeleteConfirmation = false
@@ -105,9 +105,9 @@ struct TripDayDetailView: View {
                     Task { await sync.syncNow() }
                 }
                 Button {
-                    showsSearch = true
+                    showsLinkAdd = true
                 } label: {
-                    Label("検索して追加", systemImage: "magnifyingglass")
+                    Label("Google Maps のリンクから追加", systemImage: "link")
                 }
                 Button {
                     showsManualAdd = true
@@ -136,11 +136,8 @@ struct TripDayDetailView: View {
         .sheet(isPresented: $showsDayEdit) {
             TripDayEditView(day: day)
         }
-        .sheet(isPresented: $showsSearch) {
-            CheckpointSearchView(
-                region: CheckpointSearchView.regionHint(for: day.trip),
-                route: DayRoute.places(for: day)
-            ) { place in
+        .sheet(isPresented: $showsLinkAdd) {
+            GoogleMapsLinkView(allowsMissingCoordinate: true) { place in
                 addCheckpoint(from: place)
             }
         }
@@ -166,7 +163,8 @@ struct TripDayDetailView: View {
         }
     }
 
-    /// 検索結果はそのまま追加する(種別は POI カテゴリから推測。行タップで直せる)
+    /// リンクの結果はそのまま追加する(種別は一律 sightseeing。行タップで直せる)。
+    /// 座標が取れなかったリンクは座標未設定のまま追加する(あとから編集で設定できる)
     private func addCheckpoint(from place: PlaceSelection) {
         let checkpoint = PlanEditor.makeCheckpoint(
             name: place.name,

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TripNote
 
-/// AI 提案・検索補助 DTO(Models/AIRecords.swift)のエンコード/デコードを検証する
+/// AI 提案 DTO(Models/AIRecords.swift)のエンコード/デコードを検証する
 struct AIRecordsTests {
     @Test func プラン提案の応答をデコードし未知の種別はotherに寄せる() throws {
         let json = """
@@ -34,29 +34,6 @@ struct AIRecordsTests {
         #expect(day.checkpoints[0].latitude == 35.681)
         #expect(day.checkpoints[0].longitude == 139.767)
         #expect(day.checkpoints[1].latitude == nil)
-    }
-
-    @Test func 検索補助の応答をデコードする() throws {
-        let json = """
-        {
-          "queries": ["松本市 カフェ"],
-          "places": [
-            { "type": "cafe", "name": "珈琲まるも", "area": "松本市", "note": null,
-              "latitude": 36.2328, "longitude": 137.9689 },
-            { "type": "sightseeing", "name": "松本城", "area": "松本市", "note": "旧応答" }
-          ]
-        }
-        """
-        let suggestion = try JSONDecoder().decode(
-            AISearchAssistSuggestion.self, from: Data(json.utf8)
-        )
-        #expect(suggestion.queries == ["松本市 カフェ"])
-        #expect(suggestion.places.map(\.type) == [.cafe, .sightseeing])
-        #expect(suggestion.places[0].note == nil)
-        // ワンタップ追加用の概算座標(旧サーバの応答に無ければ nil)
-        #expect(suggestion.places[0].latitude == 36.2328)
-        #expect(suggestion.places[0].longitude == 137.9689)
-        #expect(suggestion.places[1].latitude == nil)
     }
 
     @Test func 日数宿泊地候補の応答をデコードする() throws {
@@ -115,28 +92,6 @@ struct AIRecordsTests {
         #expect(object?["departureLatitude"] as? Double == 47.6062)
         #expect(object?["departureLongitude"] as? Double == -122.3321)
         #expect(object?["transport"] as? String == "car")
-    }
-
-    @Test func 検索補助リクエストは経路を名前と座標で送り地域は省略できる() throws {
-        let body = AISearchAssistRequest(
-            area: nil,
-            type: nil,
-            request: "静かなカフェ",
-            route: [
-                DayRoutePlace(name: "宿 A", latitude: 36.23, longitude: 137.97),
-                DayRoutePlace(name: "どこかの店", latitude: nil, longitude: nil),
-            ]
-        )
-        let data = try JSONEncoder().encode(body)
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        #expect(object?["area"] == nil)
-        #expect(object?["request"] as? String == "静かなカフェ")
-        let route = try #require(object?["route"] as? [[String: Any]])
-        #expect(route.count == 2)
-        #expect(route[0]["name"] as? String == "宿 A")
-        #expect(route[0]["latitude"] as? Double == 36.23)
-        #expect(route[1]["name"] as? String == "どこかの店")
-        #expect(route[1]["latitude"] == nil)
     }
 
     @Test func 生成ジョブの登録リクエストは入力をネストして送る() throws {
