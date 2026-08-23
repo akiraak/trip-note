@@ -23,6 +23,9 @@ struct CheckpointSearchView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var results: [MKMapItem] = []
+    /// カテゴリ検索(「観光地」など)の結果。地名検索の結果とは排他
+    @State private var nearbyResults: [NearbyPlace] = []
+    @State private var nearbyCategory: SearchCategory?
     @State private var isSearching = false
     @State private var message: String?
     @State private var showsAssist = false
@@ -37,7 +40,10 @@ struct CheckpointSearchView: View {
             List {
                 Section {
                     HStack {
-                        TextField("場所を検索(例: 松本城)", text: $query)
+                        TextField(
+                            canSearchNearby ? "場所を検索(例: 松本城、観光地)" : "場所を検索(例: 松本城)",
+                            text: $query
+                        )
                             .submitLabel(.search)
                             .onSubmit { Task { await search() } }
                         if isSearching {
@@ -50,6 +56,35 @@ struct CheckpointSearchView: View {
                     if let message {
                         Text(message)
                             .foregroundStyle(.secondary)
+                    }
+                    ForEach(nearbyResults) { place in
+                        HStack(spacing: 12) {
+                            Button {
+                                selectNearby(place)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(place.name)
+                                        Text(place.kindLabel)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text("\(place.nearestRouteName) から \(ContentView.formatDistance(place.distanceM))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if let wikipedia = place.wikipediaUrl.flatMap(URL.init(string:)) {
+                                Link(destination: wikipedia) {
+                                    Image(systemName: "book")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Wikipedia")
+                            }
+                        }
                     }
                     ForEach(results, id: \.self) { item in
                         Button {
@@ -214,12 +249,23 @@ struct CheckpointSearchView: View {
         dismiss()
     }
 
+    /// カテゴリ検索は経路に座標が 1 つは必要(無ければカテゴリ語でも MapKit に投げる)
+    private var canSearchNearby: Bool {
+        DayRoute.searchRegion(for: route) != nil
+    }
+
     private func search() async {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         isSearching = true
         message = nil
         defer { isSearching = false }
+        if let category = SearchCategory.match(trimmed), canSearchNearby {
+            results = []
+            await searchNearby(category)
+            return
+        }
+        nearbyResults = []
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
         if let region = searchRegion {
@@ -235,6 +281,36 @@ struct CheckpointSearchView: View {
             results = []
             message = "検索に失敗しました: \(error.localizedDescription)"
         }
+    }
+
+    /// その日の経路の近くをサーバ(Overpass プロキシ)でカテゴリ検索する
+    private func searchNearby(_ category: SearchCategory) async {
+        guard let client = SyncClient.fromBundle() else {
+            message = "サーバが未設定です(ServerConfig.plist を確認してください)"
+            return
+        }
+        nearbyCategory = category
+        do {
+            nearbyResults = try await client.nearbyPlaces(category: category, route: route)
+            if nearbyResults.isEmpty {
+                message = "この日の経路の近くに\(category.label)が見つかりませんでした"
+            }
+        } catch {
+            nearbyResults = []
+            message = "検索に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    private func selectNearby(_ place: NearbyPlace) {
+        onSelect(
+            PlaceSelection(
+                name: place.name,
+                latitude: place.latitude,
+                longitude: place.longitude,
+                suggestedType: nearbyCategory?.checkpointType ?? .sightseeing
+            )
+        )
+        dismiss()
     }
 
     private func select(_ item: MKMapItem) {

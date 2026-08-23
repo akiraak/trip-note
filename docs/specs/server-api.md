@@ -292,6 +292,48 @@ AI 検索補助。大まかな地域 + 種別 + 自由記述(+ その日の経�
   (市レベル。不正・片方だけは null)で、候補のワンタップ追加に使う。
   概算のまま追加しても、あとから検索で具体化したら上書きされる
 
+## POST /api/places/nearby
+
+その日の経路の近くをカテゴリで探す(検索欄に「観光地」と入れたときの検索)。実体は
+OSM Overpass API のプロキシ(`web/src/lib/overpass.ts`)で、経路(座標あり地点を結んだ
+折れ線)から**半径 15km** 以内を対象タグで検索し、**有名どころ(`wikipedia` / `wikidata`
+タグあり)→ 種類の重み → 経路から近い順**に並べて最大 30 件返す。認証は Bearer、
+Web は同じ処理を Server Action(`nearbyPlacesAction`)で呼ぶ。
+
+リクエスト:
+
+```json
+{ "category": "sightseeing", "route": [ { "name": "宿 A", "latitude": 36.23, "longitude": 137.97 } ] }
+```
+
+- `category` は現状 `sightseeing` のみ(カテゴリ語の判定表は `lib/category-search.ts`)
+- `route` は search-assist と同じ形(最大 30 件)。座標ありの地点が 1 つも無ければ 400
+
+レスポンス:
+
+```json
+{
+  "places": [ {
+    "id": "way/300077872", "name": "松本城", "kind": "castle", "kindLabel": "城",
+    "latitude": 36.2387, "longitude": 137.9689,
+    "distanceM": 1200, "nearestRouteName": "宿 A",
+    "wikipediaUrl": "https://ja.wikipedia.org/wiki/%E6%9D%BE%E6%9C%AC%E5%9F%8E", "website": null
+  } ]
+}
+```
+
+- `distanceM` / `nearestRouteName` は経路上の最寄り地点(直線距離)。チェックポイントの
+  種別はクライアント側で一律 `sightseeing`
+- 対象タグ: `tourism`=attraction / museum / gallery / viewpoint / zoo / aquarium / theme_park、
+  `historic`=castle / monument / memorial / ruins / archaeological_site、
+  `amenity=place_of_worship` と `natural`=waterfall / hot_spring は `wikipedia` タグありのみ
+  (定義は `lib/overpass.ts` の `SELECTORS`)
+- Overpass 公開サーバ(`overpass-api.de`。env `OVERPASS_ENDPOINT` で差し替え可)の作法は
+  Nominatim と同じ(User-Agent・直列 + 最小間隔 1 秒)。同じ条件(カテゴリ + 経路座標を
+  小数 3 桁で丸めたキー)は 24 時間キャッシュ。応答は数秒かかることがある
+- Overpass のタイムアウト等は HTTP 200 のまま `remark` に入るため、`remark` にエラーが
+  あれば 500 として返す
+
 ## POST /api/route
 
 道路ルート解決。プランのルートを「隣接チェックポイント間のレグ(区間)」の集合として

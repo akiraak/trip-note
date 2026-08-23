@@ -9,8 +9,14 @@ import {
   type PlanSuggestion,
   type SearchAssistSuggestion,
 } from "@/lib/ai";
-import { isViewbox } from "@/lib/day-route";
+import { isSearchCategory } from "@/lib/category-search";
+import { isViewbox, parseRouteInput } from "@/lib/day-route";
 import { searchPlaces, type Place } from "@/lib/nominatim";
+import {
+  fetchNearbyPlaces,
+  routeCoordinates,
+  type NearbyPlace,
+} from "@/lib/overpass";
 import * as plan from "@/lib/plan";
 import type { AdoptDay, CheckpointInput } from "@/lib/plan";
 
@@ -140,6 +146,27 @@ export async function searchPlacesAction(
       ok: true,
       places: await searchPlaces(query, isViewbox(viewbox) ? viewbox : null),
     };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export type NearbyResult =
+  | { ok: true; places: NearbyPlace[] }
+  | { ok: false; error: string };
+
+/** その日の経路の近くをカテゴリ(観光地など)で探す(/api/places/nearby と同じ処理) */
+export async function nearbyPlacesAction(
+  category: unknown,
+  route: unknown,
+): Promise<NearbyResult> {
+  try {
+    if (!isSearchCategory(category)) throw new Error("不正なカテゴリです");
+    const parsedRoute = parseRouteInput(route);
+    if (!parsedRoute || routeCoordinates(parsedRoute).length === 0) {
+      throw new Error("経路に座標がありません");
+    }
+    return { ok: true, places: await fetchNearbyPlaces(category, parsedRoute) };
   } catch (error) {
     return failure(error);
   }

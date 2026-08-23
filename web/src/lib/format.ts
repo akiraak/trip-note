@@ -28,6 +28,12 @@ export function formatDateTime(iso: string): string {
   return dateTimeFormat.format(new Date(iso));
 }
 
+/** 距離の表示(1km 未満は m、以上は小数 1 桁の km) */
+export function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
 /** YYYY-MM-DD → 例: 9/1(火) */
 export function formatDay(dateString: string): string {
   return dayFormat.format(new Date(`${dateString}T00:00:00Z`));

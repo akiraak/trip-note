@@ -1,16 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { searchPlacesAction } from "./actions";
+import { nearbyPlacesAction, searchPlacesAction } from "./actions";
 import { SearchAssist } from "./search-assist";
+import { searchCategory } from "@/lib/category-search";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { searchViewbox, type DayRoutePlace } from "@/lib/day-route";
+import { formatDistance } from "@/lib/format";
 import type { Place } from "@/lib/nominatim";
+import type { NearbyPlace } from "@/lib/overpass";
 
 // Nominatim(サーバ経由プロキシ)の地点検索。結果の選択で onSelect を呼ぶ。
 // チェックポイントの即時追加(plan-section)と、編集フォームでの位置設定の両方で使う。
 // AI 検索補助(SearchAssist)の候補を選ぶと、そのクエリでこの検索を実行する。
-// route(その日の経路)があれば、その周辺を優先して検索し AI 補助にも渡す
+// route(その日の経路)があれば、その周辺を優先して検索し AI 補助にも渡す。
+// 入力が「観光地」などのカテゴリ語なら、地名検索の代わりに経路の近くをカテゴリで探す
+// (Overpass。結果の「追加」は通常の検索結果と同じ onSelect に流す)
 export function PlaceSearch({
   onSelect,
   selectLabel,
@@ -24,6 +29,7 @@ export function PlaceSearch({
 }) {
   const [query, setQuery] = useState("");
   const [places, setPlaces] = useState<Place[] | null>(null);
+  const [nearby, setNearby] = useState<NearbyPlace[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const viewbox = useMemo(() => searchViewbox(route), [route]);
@@ -31,8 +37,28 @@ export function PlaceSearch({
   async function searchWith(rawQuery: string) {
     const q = rawQuery.trim();
     if (!q || searching) return;
-    setSearching(true);
     setError(null);
+    const category = searchCategory(q);
+    if (category) {
+      setPlaces(null);
+      // viewbox が無い = 経路に座標が 1 つも無い
+      if (!viewbox) {
+        setNearby(null);
+        setError("この日の経路に座標がないため、近くの観光地を探せません");
+        return;
+      }
+      setSearching(true);
+      const result = await nearbyPlacesAction(category, route);
+      setSearching(false);
+      if (result.ok) {
+        setNearby(result.places);
+      } else {
+        setError(result.error);
+      }
+      return;
+    }
+    setNearby(null);
+    setSearching(true);
     const result = await searchPlacesAction(q, viewbox);
     setSearching(false);
     if (result.ok) {
@@ -40,6 +66,16 @@ export function PlaceSearch({
     } else {
       setError(result.error);
     }
+  }
+
+  function selectNearby(place: NearbyPlace) {
+    onSelect({
+      name: place.name,
+      displayName: `${place.kindLabel} · ${place.nearestRouteName} から ${formatDistance(place.distanceM)}`,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      guessedType: "sightseeing",
+    });
   }
 
   function search() {
@@ -59,7 +95,11 @@ export function PlaceSearch({
           type="text"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="場所名・住所で検索"
+          placeholder={
+            viewbox
+              ? "場所名・住所で検索(「観光地」で経路の近くを探す)"
+              : "場所名・住所で検索"
+          }
           className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
         />
         <button
@@ -79,6 +119,65 @@ export function PlaceSearch({
         }}
       />
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {nearby && nearby.length === 0 && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          この日の経路の近くに観光地が見つかりませんでした
+        </p>
+      )}
+      {nearby && nearby.length > 0 && (
+        <ul className="divide-y divide-zinc-200 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          {nearby.map((place) => (
+            <li key={place.id} className="flex items-center gap-2 p-2">
+              <span aria-hidden>{CHECKPOINT_ICONS.sightseeing}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm">
+                  {place.name}
+                  <span className="ml-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    {place.kindLabel}
+                  </span>
+                </span>
+                <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+                  {place.nearestRouteName} から {formatDistance(place.distanceM)}
+                  {place.wikipediaUrl && (
+                    <>
+                      {" · "}
+                      <a
+                        href={place.wikipediaUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline"
+                      >
+                        Wikipedia
+                      </a>
+                    </>
+                  )}
+                  {place.website && (
+                    <>
+                      {" · "}
+                      <a
+                        href={place.website}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline"
+                      >
+                        公式サイト
+                      </a>
+                    </>
+                  )}
+                </span>
+              </span>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => selectNearby(place)}
+                className="shrink-0 rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                {selectLabel}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {places && places.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           見つかりませんでした

@@ -33,6 +33,20 @@ extension SyncClient {
         try await postAI(path: "api/ai/search-assist", body: body, timeout: Self.aiTimeout)
     }
 
+    /// Overpass の応答待ち(サーバ側は 25 秒でクエリを打ち切る)
+    private static let nearbyTimeout: TimeInterval = 60
+
+    /// その日の経路の近くをカテゴリ(観光地など)で探す(AI ではないが Bearer・
+    /// エラー形式が同じなので同じ送受信に相乗りする)
+    func nearbyPlaces(category: SearchCategory, route: [DayRoutePlace]) async throws -> [NearbyPlace] {
+        let response: NearbyPlacesResponse = try await postAI(
+            path: "api/places/nearby",
+            body: NearbyPlacesRequest(category: category.rawValue, route: route),
+            timeout: Self.nearbyTimeout
+        )
+        return response.places
+    }
+
     /// ジョブを登録して完了までポーリングする。アプリ切替の瞬間などの一時的な
     /// 通信エラーは無視して続行し(登録は id 冪等なので再送も安全)、サーバが
     /// 明示的にエラーを返したとき(バリデーション・生成失敗など)だけ即失敗する

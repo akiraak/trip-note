@@ -73,6 +73,46 @@ export function searchViewbox(places: DayRoutePlace[]): Viewbox | null {
   ];
 }
 
+export const MAX_ROUTE_PLACES = 30;
+
+function coordinateOrNull(value: unknown, limit: number): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > limit) {
+    throw new Error("不正な座標です");
+  }
+  return value;
+}
+
+/**
+ * API / Server Action が受け取る経路(search-assist・places/nearby 共用)の検証。
+ * 省略・null・空配列は null。name 必須、座標は両方 number か両方 null
+ */
+export function parseRouteInput(value: unknown): DayRoutePlace[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length > MAX_ROUTE_PLACES) {
+    throw new Error("不正な経路です");
+  }
+  const route = value.map((item): DayRoutePlace => {
+    if (
+      typeof item !== "object" ||
+      item === null ||
+      Array.isArray(item) ||
+      typeof (item as Record<string, unknown>).name !== "string" ||
+      !((item as Record<string, unknown>).name as string).trim()
+    ) {
+      throw new Error("不正な経路です");
+    }
+    const record = item as Record<string, unknown>;
+    const latitude = coordinateOrNull(record.latitude, 90);
+    const longitude = coordinateOrNull(record.longitude, 180);
+    if ((latitude === null) !== (longitude === null)) {
+      throw new Error("不正な座標です");
+    }
+    return { name: (record.name as string).trim(), latitude, longitude };
+  });
+  return route.length > 0 ? route : null;
+}
+
 export function isViewbox(value: unknown): value is Viewbox {
   return (
     Array.isArray(value) &&

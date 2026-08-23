@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import type { DayRoutePlace } from "./day-route";
+import { parseRouteInput, type DayRoutePlace } from "./day-route";
 import { getDb } from "./db";
 import { CHECKPOINT_TYPES, type CheckpointType } from "./types";
 
@@ -183,8 +183,6 @@ export type SearchAssistInput = {
   route: DayRoutePlace[] | null;
 };
 
-const MAX_ROUTE_PLACES = 30;
-
 export type SuggestedPlace = {
   name: string;
   type: CheckpointType;
@@ -283,25 +281,6 @@ export function parseTripOutlineInput(value: unknown): TripOutlineInput {
     transport: optionalText(value.transport),
     request: optionalText(value.request),
   };
-}
-
-function parseRouteInput(value: unknown): DayRoutePlace[] | null {
-  if (value === undefined || value === null) return null;
-  if (!Array.isArray(value) || value.length > MAX_ROUTE_PLACES) {
-    throw new Error("不正な経路です");
-  }
-  const route = value.map((item): DayRoutePlace => {
-    if (!isRecord(item) || typeof item.name !== "string" || !item.name.trim()) {
-      throw new Error("不正な経路です");
-    }
-    const latitude = optionalCoordinate(item.latitude, 90);
-    const longitude = optionalCoordinate(item.longitude, 180);
-    if ((latitude === null) !== (longitude === null)) {
-      throw new Error("不正な座標です");
-    }
-    return { name: item.name.trim(), latitude, longitude };
-  });
-  return route.length > 0 ? route : null;
 }
 
 export function parseSearchAssistInput(value: unknown): SearchAssistInput {

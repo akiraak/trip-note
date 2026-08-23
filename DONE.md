@@ -1,5 +1,13 @@
 # DONE - 完了済みタスク
 
+## 2026-08-23
+
+- プランの日毎の検索に「観光地」と入れると、その日の経路の近くの観光地の情報が出てくるようにする [plan](docs/plans/archive/checkpoint-nearby-sightseeing.md)
+  - 方式: OSM Overpass API をサーバでプロキシ(`lib/overpass.ts`)し iOS / Web 共通の `POST /api/places/nearby`(Bearer)+ Server Action に。経路(座標あり地点の折れ線)から半径 15km を `around:` で検索、設定行の `[bbox:]` で全体を絞る(bbox 無しだと relation の around で 16 秒タイムアウト → bbox ありで 2〜3 秒)。有名どころ(wikipedia / wikidata タグ)→ 種類の重み(城・主要スポット > 博物館・寺社 > 記念碑)→ 経路から近い順に最大 30 件。寺社・滝・温泉は wikipedia 付きのみ、山頂(`natural=peak`)は北アルプスで埋まるため対象外
+  - 検索欄の「観光地 / 観光 / 観光スポット / 名所」(完全一致)でカテゴリ検索に切り替え(判定表は `lib/category-search.ts` / `Domain/CategorySearch.swift`)。結果は種類ラベル・最寄り経路地点からの距離・Wikipedia / 公式サイトのリンク付きで、追加操作は従来の一覧選択のまま。経路に座標が無い日は Web はメッセージ、iOS は MapKit 検索にフォールバック
+  - 経路入力のパースを `lib/day-route.ts` の `parseRouteInput` に共通化(search-assist と共用)。`docs/specs/server-api.md` と g3plus-ops の運用ドキュメント(外向き通信先に `overpass-api.de` 追加)を更新
+  - 検証: web vitest 115 件(overpass 9 件・category-search 2 件新規)+ lint + build、ローカル dev サーバ + 実 Overpass の E2E(松本 → 上高地で上高地・河童橋・松本城・林城跡…の 30 件が 2.3 秒、401 / 400 確認)、iOS ユニットテスト 130 件(CategorySearch 2 件 + DTO 2 件新規)+ シミュレータビルド
+
 ## 2026-08-22
 
 - チェックポイント検索にその日の経路を渡す(地図検索の範囲を経路に寄せる + AI 補助に経路を文脈として渡す) [plan](docs/plans/archive/checkpoint-search-day-route.md)
