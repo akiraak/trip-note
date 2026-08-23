@@ -248,6 +248,164 @@ struct PlanEditorTests {
         #expect(alreadyDeleted.deletedAt == deletedBefore)
     }
 
+    // MARK: - 途中の日の追加・削除(日付シフト)
+
+    /// 日付シフトの検証用に「同期済み(needsSync = false)の日」を並べた旅行を作る。
+    /// unmanaged では inverse relationship が張られないため両方向を明示的に繋ぐ
+    private func makeTripWithDays(_ dates: [String], updatedAt: Date) -> (
+        trip: TripEntity, days: [TripDayEntity]
+    ) {
+        let trip = TripEntity(title: "t", updatedAt: updatedAt)
+        let days = dates.map { date -> TripDayEntity in
+            let day = TripDayEntity(date: date, updatedAt: updatedAt, trip: trip)
+            day.needsSync = false
+            return day
+        }
+        trip.days = days
+        return (trip, days)
+    }
+
+    private func makeCheckpoint(
+        plannedTime: Date?,
+        in day: TripDayEntity,
+        updatedAt: Date
+    ) -> CheckpointEntity {
+        let checkpoint = CheckpointEntity(
+            type: .lodging,
+            name: "宿",
+            plannedTime: plannedTime,
+            updatedAt: updatedAt,
+            tripDay: day
+        )
+        checkpoint.needsSync = false
+        day.checkpoints.append(checkpoint)
+        return checkpoint
+    }
+
+    @Test func insertedDayは翌日を差し込み後続の日とplannedTimeを1日ずらす() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (_, days) = makeTripWithDays(
+            ["2026-09-01", "2026-09-02", "2026-09-03"], updatedAt: old
+        )
+        let lodging = makeCheckpoint(
+            plannedTime: date("2026-09-02T17:00:00+09:00"), in: days[1], updatedAt: old
+        )
+
+        let inserted = PlanEditor.insertedDay(after: days[0], calendar: calendar, now: now)
+
+        #expect(inserted?.date == "2026-09-02")
+        #expect(inserted?.trip === days[0].trip)
+        #expect(inserted?.updatedAt == now)
+        // 起点の日は動かさない(updatedAt を進めて LWW を乱さない)
+        #expect(days[0].date == "2026-09-01")
+        #expect(days[0].updatedAt == old)
+        #expect(!days[0].needsSync)
+        #expect(days[1].date == "2026-09-03")
+        #expect(days[1].updatedAt == now)
+        #expect(days[1].needsSync)
+        #expect(days[2].date == "2026-09-04")
+        #expect(lodging.plannedTime == date("2026-09-03T17:00:00+09:00"))
+        #expect(lodging.updatedAt == now)
+        #expect(lodging.needsSync)
+    }
+
+    @Test func insertedDayは最終日ではずらす対象が無い() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (_, days) = makeTripWithDays(["2026-09-01", "2026-09-02"], updatedAt: old)
+
+        let inserted = PlanEditor.insertedDay(after: days[1], calendar: calendar, now: now)
+
+        #expect(inserted?.date == "2026-09-03")
+        #expect(days.allSatisfy { $0.updatedAt == old })
+        #expect(days.allSatisfy { !$0.needsSync })
+    }
+
+    @Test func insertedDayは削除済みの日とチェックポイントをずらさない() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (_, days) = makeTripWithDays(
+            ["2026-09-01", "2026-09-02", "2026-09-03"], updatedAt: old
+        )
+        days[1].deletedAt = old
+        let plannedTime = date("2026-09-03T17:00:00+09:00")
+        let deletedCheckpoint = makeCheckpoint(
+            plannedTime: plannedTime, in: days[2], updatedAt: old
+        )
+        deletedCheckpoint.deletedAt = old
+
+        _ = PlanEditor.insertedDay(after: days[0], calendar: calendar, now: now)
+
+        #expect(days[1].date == "2026-09-02")
+        #expect(days[1].updatedAt == old)
+        #expect(days[2].date == "2026-09-04")
+        #expect(deletedCheckpoint.plannedTime == plannedTime)
+        #expect(deletedCheckpoint.updatedAt == old)
+    }
+
+    @Test func insertedDayはplannedTimeの無いチェックポイントを触らない() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (_, days) = makeTripWithDays(["2026-09-01", "2026-09-02"], updatedAt: old)
+        let checkpoint = makeCheckpoint(plannedTime: nil, in: days[1], updatedAt: old)
+
+        _ = PlanEditor.insertedDay(after: days[0], calendar: calendar, now: now)
+
+        #expect(checkpoint.updatedAt == old)
+        #expect(!checkpoint.needsSync)
+    }
+
+    @Test func deleteShiftingFollowingは後続の日とplannedTimeを1日前に詰める() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (_, days) = makeTripWithDays(
+            ["2026-09-01", "2026-09-02", "2026-09-03"], updatedAt: old
+        )
+        let lodging = makeCheckpoint(
+            plannedTime: date("2026-09-03T17:00:00+09:00"), in: days[2], updatedAt: old
+        )
+        let deletedCheckpoint = makeCheckpoint(
+            plannedTime: date("2026-09-02T18:00:00+09:00"), in: days[1], updatedAt: old
+        )
+
+        PlanEditor.deleteShiftingFollowing(days[1], calendar: calendar, now: now)
+
+        #expect(days[1].deletedAt == now)
+        #expect(deletedCheckpoint.deletedAt == now)
+        // 消した日自身の日付は動かさない(tombstone なので表示されない)
+        #expect(days[1].date == "2026-09-02")
+        #expect(days[0].date == "2026-09-01")
+        #expect(days[0].updatedAt == old)
+        #expect(days[2].date == "2026-09-02")
+        #expect(lodging.plannedTime == date("2026-09-02T17:00:00+09:00"))
+        #expect(lodging.needsSync)
+    }
+
+    @Test func deleteShiftingFollowingは最終日ではずらさない() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (_, days) = makeTripWithDays(["2026-09-01", "2026-09-02"], updatedAt: old)
+
+        PlanEditor.deleteShiftingFollowing(days[1], calendar: calendar, now: now)
+
+        #expect(days[0].date == "2026-09-01")
+        #expect(days[0].updatedAt == old)
+        #expect(!days[0].needsSync)
+    }
+
+    @Test func deleteShiftingFollowingは1日目を消しても先頭の日付を保つ() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (trip, days) = makeTripWithDays(
+            ["2026-09-01", "2026-09-02", "2026-09-03"], updatedAt: old
+        )
+
+        PlanEditor.deleteShiftingFollowing(days[0], calendar: calendar, now: now)
+
+        #expect(trip.sortedDays.map(\.date) == ["2026-09-01", "2026-09-02"])
+    }
+
     // MARK: - 並び順
 
     @Test func nextSortOrderは削除済みを除いた最大の次を返す() {

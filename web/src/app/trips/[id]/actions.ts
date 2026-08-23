@@ -48,6 +48,19 @@ export async function addDayAction(tripId: string): Promise<ActionResult> {
   }
 }
 
+/** 指定した日の翌日に空の日を差し込む(以降の日は 1 日ずつ後ろへずれる) */
+export async function insertDayAfterAction(
+  dayId: string,
+): Promise<ActionResult> {
+  try {
+    const day = plan.insertTripDayAfter(dayId);
+    revalidateTrip(day.trip_id);
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 export async function updateDayAction(
   dayId: string,
   fields: { title: string | null; note: string | null },

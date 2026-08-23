@@ -6,6 +6,7 @@ import {
   addDayAction,
   deleteCheckpointAction,
   deleteDayAction,
+  insertDayAfterAction,
   moveCheckpointAction,
   updateCheckpointAction,
   updateDayAction,
@@ -87,6 +88,7 @@ export function PlanSection({
           key={day.id}
           day={day}
           dayNumber={index + 1}
+          isLast={index === days.length - 1}
           pending={pending}
           run={run}
         />
@@ -131,11 +133,14 @@ type RunAction = (
 function DayCard({
   day,
   dayNumber,
+  isLast,
   pending,
   run,
 }: {
   day: PlanDay;
   dayNumber: number;
+  /** 最終日(削除・日の差し込みで後続がずれない)か */
+  isLast: boolean;
   pending: boolean;
   run: RunAction;
 }) {
@@ -208,6 +213,7 @@ function DayCard({
         {confirmingDelete && (
           <p className="text-sm text-red-600">
             この日とチェックポイント {day.checkpoints.length} 件を削除します
+            {!isLast && "。以降の日は 1 日前にずれます"}
           </p>
         )}
         {mode === "edit-day" && (
@@ -298,6 +304,19 @@ function DayCard({
             className="underline"
           >
             {mode === "add-manual" ? "テキスト入力を閉じる" : "+ テキストを追加"}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => insertDayAfterAction(day.id))}
+            className="ml-auto underline disabled:opacity-50"
+            title={
+              isLast
+                ? "末尾に日を追加します"
+                : "以降の日は 1 日ずつ後ろへずれます"
+            }
+          >
+            + この日の後に日を追加
           </button>
         </div>
       </div>

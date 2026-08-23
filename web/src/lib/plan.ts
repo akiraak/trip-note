@@ -52,6 +52,49 @@ export function dateStringOf(date: Date): string {
   return dateStringFormat.format(date);
 }
 
+// 表示タイムゾーンでの日時の各要素(UTC オフセットの算出用)
+const tzPartsFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** その瞬間の表示タイムゾーンの UTC オフセット(ミリ秒) */
+function tzOffsetMs(date: Date): number {
+  const parts = Object.fromEntries(
+    tzPartsFormat.formatToParts(date).map((part) => [part.type, part.value]),
+  );
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return asUtc - (date.getTime() - date.getUTCMilliseconds());
+}
+
+/** ISO8601 の日時を offsetDays 日ずらす。
+ *  単純な 24 時間加算だと DST を跨いだときに壁時計が 1 時間ずれるため、
+ *  表示タイムゾーンのオフセット差分で打ち消す(9:00 発は動かした先でも 9:00 発) */
+export function shiftIsoByDays(iso: string, offsetDays: number): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`不正な日時です: ${iso}`);
+  }
+  const naive = new Date(date.getTime() + offsetDays * 86_400_000);
+  const corrected = new Date(
+    naive.getTime() + (tzOffsetMs(date) - tzOffsetMs(naive)),
+  );
+  return corrected.toISOString();
+}
+
 function getTrip(tripId: string): Trip {
   const trip = getDb()
     .prepare("select * from trips where id = ? and deleted_at is null")
@@ -121,6 +164,75 @@ export function addTripDay(tripId: string): TripDay {
   return getDay(id);
 }
 
+/** afterDate より後の日を offsetDays 日ずらす(その日のチェックポイントの
+ *  planned_time も同じだけずらす)。呼び出し側のトランザクションの中で使う。
+ *  ずらした行だけ updated_at を進める(変わらない行の updated_at を進めて
+ *  LWW で他方の編集を潰さないため) */
+function shiftDaysAfter(
+  tripId: string,
+  afterDate: string,
+  offsetDays: 1 | -1,
+  now: string,
+): void {
+  const db = getDb();
+  const days = db
+    .prepare(
+      `select id from trip_days
+       where trip_id = ? and date > ? and deleted_at is null`,
+    )
+    .all(tripId, afterDate) as { id: string }[];
+  if (days.length === 0) return;
+  const modifier = offsetDays > 0 ? `+${offsetDays} day` : `${offsetDays} day`;
+  const shiftDay = db.prepare(
+    "update trip_days set date = date(date, @modifier), updated_at = @now where id = @id",
+  );
+  const plannedTimes = db.prepare(
+    `select id, planned_time from checkpoints
+     where trip_day_id = ? and deleted_at is null and planned_time is not null`,
+  );
+  const shiftCheckpoint = db.prepare(
+    `update checkpoints set planned_time = @planned_time, updated_at = @now
+     where id = @id`,
+  );
+  for (const day of days) {
+    shiftDay.run({ id: day.id, modifier, now });
+    const checkpoints = plannedTimes.all(day.id) as {
+      id: string;
+      planned_time: string;
+    }[];
+    for (const checkpoint of checkpoints) {
+      shiftCheckpoint.run({
+        id: checkpoint.id,
+        planned_time: shiftIsoByDays(checkpoint.planned_time, offsetDays),
+        now,
+      });
+    }
+  }
+}
+
+/** 指定した日の翌日に空の日を差し込む。後続の日は 1 日ずつ後ろへずらすので、
+ *  1 日目で実行すれば新しい日が 2 日目になる(日付の重複は起きない)。
+ *  最終日で実行した場合はずらす対象が無く、末尾に 1 日増えるだけ */
+export function insertTripDayAfter(dayId: string): TripDay {
+  const day = getDay(dayId);
+  const db = getDb();
+  const now = nowIso();
+  const id = randomUUID();
+  db.transaction(() => {
+    shiftDaysAfter(day.trip_id, day.date, 1, now);
+    db.prepare(
+      `insert into trip_days (id, trip_id, date, updated_at)
+       values (@id, @trip_id, @date, @updated_at)`,
+    ).run({
+      id,
+      trip_id: day.trip_id,
+      date: nextDate(day.date),
+      updated_at: now,
+    });
+  })();
+  return getDay(id);
+}
+
 export function updateTripDay(
   dayId: string,
   fields: {
@@ -177,7 +289,9 @@ export function deleteTrip(tripId: string): Trip {
   return trip;
 }
 
-/** 日を削除する(tombstone)。ぶら下がるチェックポイントも道連れにする */
+/** 日を削除する(tombstone)。ぶら下がるチェックポイントも道連れにし、
+ *  後続の日は 1 日前へ詰める(途中の日を消しても日程が連続したままになる)。
+ *  最終日ならずらす対象が無い */
 export function deleteTripDay(dayId: string): TripDay {
   const day = getDay(dayId);
   const db = getDb();
@@ -190,6 +304,7 @@ export function deleteTripDay(dayId: string): TripDay {
     db.prepare(
       "update trip_days set deleted_at = @now, updated_at = @now where id = @id",
     ).run({ id: dayId, now });
+    shiftDaysAfter(day.trip_id, day.date, -1, now);
   })();
   return day;
 }

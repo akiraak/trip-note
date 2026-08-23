@@ -11,8 +11,10 @@ import {
   deleteCheckpoint,
   deleteTrip,
   deleteTripDay,
+  insertTripDayAfter,
   moveCheckpoint,
   nextDate,
+  shiftIsoByDays,
   updateCheckpoint,
   updateTripDay,
   type CheckpointInput,
@@ -74,9 +76,11 @@ function seedCheckpoint(over: Record<string, unknown> = {}) {
   getDb()
     .prepare(
       `insert into checkpoints
-         (id, trip_id, trip_day_id, type, name, sort_order, deleted_at, updated_at)
+         (id, trip_id, trip_day_id, type, name, planned_time, sort_order,
+          deleted_at, updated_at)
        values
-         (@id, @trip_id, @trip_day_id, @type, @name, @sort_order, @deleted_at, @updated_at)`,
+         (@id, @trip_id, @trip_day_id, @type, @name, @planned_time, @sort_order,
+          @deleted_at, @updated_at)`,
     )
     .run({
       id: "cp-1",
@@ -84,6 +88,7 @@ function seedCheckpoint(over: Record<string, unknown> = {}) {
       trip_day_id: "day-1",
       type: "sightseeing",
       name: "松本城",
+      planned_time: null,
       sort_order: 0,
       deleted_at: null,
       updated_at: OLD,
@@ -148,6 +153,103 @@ describe("addTripDay", () => {
     seedTrip({ deleted_at: OLD });
     expect(() => addTripDay("trip-1")).toThrow();
     expect(() => addTripDay("nope")).toThrow();
+  });
+});
+
+describe("shiftIsoByDays", () => {
+  it("表示 TZ の壁時計を保ったままずらす(DST の切り替わりを跨いでも)", () => {
+    // 2026-10-31 09:00 PDT(-07:00) → 2026-11-01 09:00 PST(-08:00)
+    expect(shiftIsoByDays("2026-10-31T16:00:00.000Z", 1)).toBe(
+      "2026-11-01T17:00:00.000Z",
+    );
+    expect(shiftIsoByDays("2026-11-01T17:00:00.000Z", -1)).toBe(
+      "2026-10-31T16:00:00.000Z",
+    );
+  });
+
+  it("DST を跨がなければ 24 時間ずらす", () => {
+    expect(shiftIsoByDays("2026-09-02T17:00:00.000Z", 1)).toBe(
+      "2026-09-03T17:00:00.000Z",
+    );
+    expect(shiftIsoByDays("2026-09-02T17:00:00.000Z", -1)).toBe(
+      "2026-09-01T17:00:00.000Z",
+    );
+  });
+
+  it("不正な日時は拒否する", () => {
+    expect(() => shiftIsoByDays("壊れた値", 1)).toThrow(/不正な日時/);
+  });
+});
+
+describe("insertTripDayAfter", () => {
+  it("翌日に日を差し込み、後続の日と planned_time を 1 日後ろへずらす", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    seedDay({ id: "day-3", date: "2026-09-03" });
+    seedCheckpoint({
+      id: "cp-2",
+      trip_day_id: "day-2",
+      planned_time: "2026-09-02T17:00:00.000Z",
+    });
+    const inserted = insertTripDayAfter("day-1");
+
+    expect(inserted.date).toBe("2026-09-02");
+    // 起点の日は動かさない(updated_at も進めない)
+    expect(getDayRow("day-1").date).toBe("2026-09-01");
+    expect(getDayRow("day-1").updated_at).toBe(OLD);
+    expect(getDayRow("day-2").date).toBe("2026-09-03");
+    expect(getDayRow("day-2").updated_at > OLD).toBe(true);
+    expect(getDayRow("day-3").date).toBe("2026-09-04");
+    const cp2 = getCheckpointRow("cp-2");
+    expect(cp2.planned_time).toBe("2026-09-03T17:00:00.000Z");
+    expect(cp2.updated_at > OLD).toBe(true);
+  });
+
+  it("最終日の後ではずらす対象が無く末尾に 1 日増える", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    const inserted = insertTripDayAfter("day-2");
+    expect(inserted.date).toBe("2026-09-03");
+    expect(getDayRow("day-1").updated_at).toBe(OLD);
+    expect(getDayRow("day-2").updated_at).toBe(OLD);
+  });
+
+  it("削除済みの日・チェックポイントはずらさない", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02", deleted_at: OLD });
+    seedDay({ id: "day-3", date: "2026-09-03" });
+    seedCheckpoint({
+      id: "cp-3",
+      trip_day_id: "day-3",
+      planned_time: "2026-09-03T17:00:00.000Z",
+      deleted_at: OLD,
+    });
+    insertTripDayAfter("day-1");
+    expect(getDayRow("day-2").date).toBe("2026-09-02");
+    expect(getDayRow("day-2").updated_at).toBe(OLD);
+    expect(getDayRow("day-3").date).toBe("2026-09-04");
+    const cp3 = getCheckpointRow("cp-3");
+    expect(cp3.planned_time).toBe("2026-09-03T17:00:00.000Z");
+    expect(cp3.updated_at).toBe(OLD);
+  });
+
+  it("planned_time の無いチェックポイントの updated_at は進めない", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    seedCheckpoint({ id: "cp-2", trip_day_id: "day-2" });
+    insertTripDayAfter("day-1");
+    expect(getCheckpointRow("cp-2").updated_at).toBe(OLD);
+  });
+
+  it("削除済み・存在しない日は拒否する", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01", deleted_at: OLD });
+    expect(() => insertTripDayAfter("day-1")).toThrow(/見つかりません/);
+    expect(() => insertTripDayAfter("nope")).toThrow(/見つかりません/);
   });
 });
 
@@ -228,6 +330,47 @@ describe("deleteTripDay", () => {
     const cp2 = getCheckpointRow("cp-2");
     expect(cp2.deleted_at).toBe(OLD);
     expect(cp2.updated_at).toBe(OLD);
+  });
+
+  it("後続の日と planned_time を 1 日前へ詰める", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    seedDay({ id: "day-3", date: "2026-09-03" });
+    seedCheckpoint({
+      id: "cp-3",
+      trip_day_id: "day-3",
+      planned_time: "2026-09-03T17:00:00.000Z",
+    });
+    deleteTripDay("day-2");
+
+    expect(getDayRow("day-1").date).toBe("2026-09-01");
+    expect(getDayRow("day-1").updated_at).toBe(OLD);
+    // 消した日自身は日付を動かさない(tombstone なので表示されない)
+    expect(getDayRow("day-2").date).toBe("2026-09-02");
+    expect(getDayRow("day-3").date).toBe("2026-09-02");
+    expect(getCheckpointRow("cp-3").planned_time).toBe(
+      "2026-09-02T17:00:00.000Z",
+    );
+  });
+
+  it("最終日の削除ではずらさない", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    deleteTripDay("day-2");
+    expect(getDayRow("day-1").date).toBe("2026-09-01");
+    expect(getDayRow("day-1").updated_at).toBe(OLD);
+  });
+
+  it("1 日目を削除しても残った先頭の日付は元の 1 日目のまま", () => {
+    seedTrip();
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    seedDay({ id: "day-3", date: "2026-09-03" });
+    deleteTripDay("day-1");
+    expect(getDayRow("day-2").date).toBe("2026-09-01");
+    expect(getDayRow("day-3").date).toBe("2026-09-02");
   });
 });
 

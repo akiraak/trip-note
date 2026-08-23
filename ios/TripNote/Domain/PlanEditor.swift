@@ -119,6 +119,53 @@ enum PlanEditor {
         return TripDayEntity(date: date, updatedAt: now, trip: trip)
     }
 
+    /// day より後の日を offsetDays 日ずらす(その日のチェックポイントの plannedTime も
+    /// 同じだけずらす。日付だけの date と絶対時刻の plannedTime がずれないように)。
+    /// ずらした行だけ updatedAt を進め needsSync を立てる
+    /// (変わらない行の updatedAt を進めて LWW で他方の編集を潰さないため)
+    static func shiftDays(
+        after day: TripDayEntity,
+        by offsetDays: Int,
+        calendar: Calendar = .current,
+        now: Date = Date()
+    ) {
+        guard offsetDays != 0, let trip = day.trip else { return }
+        // date は YYYY-MM-DD なので文字列比較で日付順になる
+        for following in trip.sortedDays where following.date > day.date {
+            guard
+                let date = parseDate(following.date, calendar: calendar),
+                let shifted = calendar.date(byAdding: .day, value: offsetDays, to: date)
+            else { continue }
+            following.date = dateString(shifted, calendar: calendar)
+            following.updatedAt = now
+            following.needsSync = true
+            for checkpoint in following.sortedCheckpoints {
+                guard
+                    let plannedTime = checkpoint.plannedTime,
+                    let shiftedTime = calendar.date(
+                        byAdding: .day, value: offsetDays, to: plannedTime
+                    )
+                else { continue }
+                checkpoint.plannedTime = shiftedTime
+                checkpoint.updatedAt = now
+                checkpoint.needsSync = true
+            }
+        }
+    }
+
+    /// day の翌日に空の日を差し込む(挿入は呼び出し側)。後続の日は 1 日ずつ後ろへ
+    /// ずらすので、1 日目で実行すれば新しい日が 2 日目になる(日付の重複は起きない)。
+    /// 最終日で実行した場合はずらす対象が無く、末尾に 1 日増えるだけ
+    static func insertedDay(
+        after day: TripDayEntity,
+        calendar: Calendar = .current,
+        now: Date = Date()
+    ) -> TripDayEntity? {
+        guard let date = nextDate(after: day.date, calendar: calendar) else { return nil }
+        shiftDays(after: day, by: 1, calendar: calendar, now: now)
+        return TripDayEntity(date: date, updatedAt: now, trip: day.trip)
+    }
+
     /// 今日以降(当日を含む)のプラン日。すべて過去日なら全日を返す
     /// (終了した旅行・過去の旅行でトップ地図が空にならないためのフォールバック)
     static func upcomingDays(
@@ -159,6 +206,18 @@ enum PlanEditor {
         day.deletedAt = now
         day.updatedAt = now
         day.needsSync = true
+    }
+
+    /// 日を削除し(tombstone)、後続の日を 1 日前へ詰める
+    /// (途中の日を消しても日程が連続したままになる)。最終日ならずらす対象が無い。
+    /// 旅行ごと削除するとき(delete(_ trip:))は全日を消すため詰めない
+    static func deleteShiftingFollowing(
+        _ day: TripDayEntity,
+        calendar: Calendar = .current,
+        now: Date = Date()
+    ) {
+        delete(day, now: now)
+        shiftDays(after: day, by: -1, calendar: calendar, now: now)
     }
 
     /// チェックポイントを削除する(tombstone)

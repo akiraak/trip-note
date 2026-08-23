@@ -18,6 +18,8 @@ struct TripDetailView: View {
     @State private var showsCamera = false
     @State private var showsEndConfirmation = false
     @State private var showsDeleteConfirmation = false
+    /// スワイプで削除しようとしているプラン日(確認ダイアログの対象)
+    @State private var dayPendingDeletion: TripDayEntity?
     @State private var showsTripEdit = false
     @State private var showsAIPlanSuggest = false
     @Environment(\.dismiss) private var dismiss
@@ -56,6 +58,22 @@ struct TripDetailView: View {
                             day: day,
                             routeStart: Self.routeAnchor(before: index, in: days)
                         )
+                    }
+                    // 途中への差し込み・途中の削除(どちらも以降の日の日付がずれる)
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            insertDay(after: day)
+                        } label: {
+                            Label("次の日を追加", systemImage: "calendar.badge.plus")
+                        }
+                        .tint(.blue)
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            dayPendingDeletion = day
+                        } label: {
+                            Label("削除", systemImage: "trash")
+                        }
                     }
                 }
                 Button(action: addDay) {
@@ -199,6 +217,26 @@ struct TripDetailView: View {
         } message: {
             Text("プラン・記録・メディアごと削除され、Web にも同期されます。")
         }
+        .confirmationDialog(
+            "この日を削除しますか?",
+            isPresented: Binding(
+                get: { dayPendingDeletion != nil },
+                set: { if !$0 { dayPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: dayPendingDeletion
+        ) { day in
+            Button("削除", role: .destructive) { deleteDay(day) }
+        } message: { day in
+            Text(Self.deleteDayMessage(for: day))
+        }
+    }
+
+    /// 日の削除確認の文言。最終日以外は後続の日付がずれることを明示する
+    static func deleteDayMessage(for day: TripDayEntity) -> String {
+        let isLast = day.trip?.sortedDays.last?.id == day.id
+        let base = "この日のチェックポイントも削除されます。"
+        return isLast ? base : base + "以降の日は 1 日前にずれます。"
     }
 
     /// この旅行への記録の開始/停止と記録中の撮影(記録はこの旅行に対して行う)
@@ -285,6 +323,22 @@ struct TripDetailView: View {
     private func addDay() {
         guard let day = PlanEditor.addedDay(to: trip) else { return }
         modelContext.insert(day)
+        try? modelContext.save()
+        Task { await sync.syncNow() }
+    }
+
+    /// この日の翌日に空の日を差し込む(以降の日は 1 日ずつ後ろへずれる)
+    private func insertDay(after day: TripDayEntity) {
+        guard let inserted = PlanEditor.insertedDay(after: day) else { return }
+        modelContext.insert(inserted)
+        try? modelContext.save()
+        Task { await sync.syncNow() }
+    }
+
+    /// この日を削除する(以降の日は 1 日前へ詰める)
+    private func deleteDay(_ day: TripDayEntity) {
+        PlanEditor.deleteShiftingFollowing(day)
+        dayPendingDeletion = nil
         try? modelContext.save()
         Task { await sync.syncNow() }
     }

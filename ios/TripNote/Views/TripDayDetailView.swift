@@ -153,13 +153,13 @@ struct TripDayDetailView: View {
             titleVisibility: .visible
         ) {
             Button("削除", role: .destructive) {
-                PlanEditor.delete(day)
+                PlanEditor.deleteShiftingFollowing(day)
                 try? modelContext.save()
                 dismiss()
                 Task { await sync.syncNow() }
             }
         } message: {
-            Text("この日のチェックポイントも削除されます。")
+            Text(TripDetailView.deleteDayMessage(for: day))
         }
     }
 

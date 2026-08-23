@@ -2,6 +2,15 @@
 
 ## 2026-08-23
 
+- プランの途中の日を追加できる / 特定の日を削除すると後続が 1 日前にずれる [plan](docs/plans/archive/plan-day-insert-delete.md)
+  - 日の順序は `trip_days.date` だけで決まる(順序カラム無し・「N日目」は並び順の index)ので、途中への差し込み・途中の削除は**後続の日の date を ±1 日ずらす**実装にした。`checkpoints.planned_time` は日付込みの絶対時刻なので同じ日数だけ一緒にずらす(`departure_time` は "HH:MM" なので触らない)
+  - 共通ロジック: iOS `PlanEditor.shiftDays(after:by:)` / `insertedDay(after:)` / `deleteShiftingFollowing(_:)`、Web `lib/plan.ts` の `shiftDaysAfter` / `insertTripDayAfter` / `deleteTripDay`(削除に -1 日シフトを追加)。ずらした行だけ `updated_at` を進める(変わらない行を進めて LWW で他方の編集を潰さないため)
+  - DST 対策: Web は `shiftIsoByDays`(24 時間加算した後に表示 TZ のオフセット差分で打ち消す)、iOS は `Calendar` の日加算。どちらも壁時計時刻(9:00 発)が保たれる
+  - `trips.departure_at` は変更不要。「この日の後に追加」なので 1 日目より前に日が入らず、1 日目を削除した場合は後続が詰まって**新しい 1 日目が元の 1 日目の日付を引き継ぐ**
+  - UI: Web は日カードのフッタに「+ この日の後に日を追加」、削除の確認文を「…以降の日は 1 日前にずれます」に(最終日では出さない)。iOS はプラン一覧の行にスワイプ操作(左: 次の日を追加 / 右: 削除 + 確認ダイアログ)を追加し、日詳細の「この日を削除」もシフト版に切り替え
+  - スキーマ・`/api/sync`・API 仕様は変更なし(`date` / `planned_time` とも LWW upsert 済み)
+  - 検証: web vitest 127 件(日付シフト・DST・tombstone の 12 件を追加)+ lint + build、iOS ユニットテスト 143 件(PlanEditor に 7 件追加)+ シミュレータビルド、Chrome でローカル dev の手動確認(1 日目の後に差し込み → 全 4 日にずれる / 2 日目を削除 → 連続した 3 日に戻る)。**iOS のスワイプ操作の実機・シミュレータ手動確認は未実施**
+
 - 「手入力で追加」が意味不明なので「テキストを追加」に変更する [plan](docs/plans/archive/rename-manual-add-label.md)
   - 追加ボタンが「Google Maps のリンクから追加」と 2 つ並んだとき「手入力」が何を指すか分かりにくかった(リンクを手で貼るのも手入力に読める)ので、実際にやること = 名前などをテキストで打ち込む、に合わせて言い換えた
   - Web `plan-section.tsx`: 「+ 手入力で追加」→「+ テキストを追加」、開いているときは「テキスト入力を閉じる」(隣の「リンク入力を閉じる」と対称)。iOS `TripDayDetailView`: 「手入力で追加」→「テキストを追加」
