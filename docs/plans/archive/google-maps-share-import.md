@@ -222,6 +222,14 @@ MapKit 検索にフォールバックできるようにする。
 - XcodeGen が生成する Extension の `Info.plist` と両ターゲットの `.entitlements` は本体の `Info.plist` と同様に gitignore(正本は `project.yml`)
 - シミュレータでの取り込みシートの確認は、`xcrun simctl get_app_container <udid> com.akiraak.TripNote groups` で App Group のコンテナを探し、`Library/Preferences/group.com.akiraak.TripNote.plist` の `pendingShares`(JSON の Data)に共有を書いて再起動すればよい(Extension を操作しなくても本体側の流れを試せる)
 - 同名の旅行が複数あるとき、取り込みシートの旅行 Picker はタイトル表示のため見分けにくい(日付で区別できるよう将来改善の余地)
+- **実機の共有で「座標が取れませんでした」(2026-08-23 同日)**: iOS アプリの共有リンク
+  (`maps.app.goo.gl/…?g_st=ig`)の展開先は `https://www.google.com/maps?q=<名前, 住所>&ftid=0x…:0x…`
+  で座標が無い(ユーザー提供の実物 "Hotel Ruby | Spokane" と、Web 検索で拾った `g_st=ic` /
+  `preview.copy` の実物で確認)。デスクトップ UA だと 302 ではなく JS だけの
+  DurableDeepLink ページ(200)が返り、`cid` / `output=embed` のページも接続元の既定中心しか
+  含まない → Google のページから座標を取るのは不可。対策として `q` の「名前 + 住所」と
+  共有テキストの名前を Nominatim で引く補完を入れた(欧米形式は全文で、日本形式は
+  「名前 市区町村」で正確に当たり、当たらなければ町丁目で近似 = `precision: area`)
 
 ## テスト方針
 

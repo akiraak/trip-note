@@ -73,9 +73,8 @@ struct CheckpointSearchView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(linkName(linkResult))
                                 Text(
-                                    linkResult.isCenterOnly
-                                        ? "Google Maps のリンク(地図の中心の位置。ピンとずれることがあります)"
-                                        : "Google Maps のリンク(ピンの位置)"
+                                    linkResult.approximationNote.map { "Google Maps のリンク: \($0)" }
+                                        ?? "Google Maps のリンク(ピンの位置)"
                                 )
                                 .font(.caption)
                                 .foregroundStyle(.secondary)

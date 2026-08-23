@@ -10,12 +10,28 @@ struct ResolvedGoogleMapsPlace: Decodable, Hashable {
     let name: String?
     let latitude: Double?
     let longitude: Double?
-    /// "pin"(ピンの座標)/ "center"(地図の表示中心。ピンとずれることがある)/ nil
+    /// "pin"(ピンの座標)/ "center"(地図の表示中心)/ "geocoded"(名前 + 住所から推定)/
+    /// "area"(住所の町丁目までのおおよその位置)/ nil(座標なし)
     let precision: String?
     let resolvedUrl: String
+    /// geocoded / area のとき、推定に使った文字列
+    let geocodedQuery: String?
 
     var hasCoordinate: Bool { latitude != nil && longitude != nil }
-    var isCenterOnly: Bool { precision == "center" }
+
+    /// ピンの座標ではないときの注記(UI にそのまま出す)。ピン・座標なしは nil
+    var approximationNote: String? {
+        switch precision {
+        case "center":
+            return "リンクの地図の中心の位置です(ピンとずれることがあります)"
+        case "geocoded":
+            return "住所から推定した位置です(\(geocodedQuery ?? "")。ピンとずれることがあります)"
+        case "area":
+            return "住所「\(geocodedQuery ?? "")」のおおよその位置です。「検索で探し直す」で正確な位置にできます"
+        default:
+            return nil
+        }
+    }
 }
 
 struct ResolveLinkResponse: Decodable {

@@ -9,6 +9,8 @@
 //     data=!3m1!4b1!4m6!3m5!1s0x601d0e850a9a5999:0x902d0e20fabcf654!8m2!3d36.238653!4d137.9688674!16zL20vMDM5cXE2?hl=ja
 //   → `/maps/place/<名前>` が名前、`!3d<lat>!4d<lng>` がピンの座標、`@<lat>,<lng>` は表示中心
 
+import { searchPlaces } from "./nominatim";
+
 /** 共有リンクとして受け付けるホスト(短縮リンクの転送先もこの中に限る = SSRF 対策) */
 export const GOOGLE_MAPS_HOSTS: ReadonlySet<string> = new Set([
   "maps.app.goo.gl",
@@ -29,8 +31,12 @@ const SHORT_LINK_HOSTS: ReadonlySet<string> = new Set([
   "share.google",
 ]);
 
-/** pin = ピンの座標、center = 地図の表示中心(ピンが無い共有ではこれが場所の位置) */
-export type LinkPrecision = "pin" | "center";
+/**
+ * pin = ピンの座標、center = 地図の表示中心(ピンが無い共有ではこれが場所の位置)、
+ * geocoded = URL に座標が無く「名前 + 住所」を Nominatim で引いた位置、
+ * area = 名前では当たらず住所(町丁目まで)で引いたおおよその位置
+ */
+export type LinkPrecision = "pin" | "center" | "geocoded" | "area";
 
 export type ParsedGoogleMapsLink = {
   name: string | null;
@@ -42,6 +48,19 @@ export type ParsedGoogleMapsLink = {
 export type ResolvedGoogleMapsPlace = ParsedGoogleMapsLink & {
   /** 展開後(最終)の URL */
   resolvedUrl: string;
+  /** geocoded / area のとき、Nominatim に投げて当たった文字列 */
+  geocodedQuery: string | null;
+};
+
+/** 展開後 URL の q(「名前, 住所」)の分解結果 */
+export type QueryText = {
+  /** 名前(欧米形式は先頭の区切り、日本形式は住所の後ろ) */
+  name: string | null;
+  /** 市区町村(日本形式)/ 市名(欧米形式) */
+  locality: string | null;
+  /** 町丁目までの住所(日本形式のみ。番地を落としたもの) */
+  townAddress: string | null;
+  full: string;
 };
 
 const USER_AGENT = "trip-note/0.1 (https://trip.chobi.me)";
@@ -208,7 +227,107 @@ export function parseGoogleMapsUrl(value: string): ParsedGoogleMapsLink {
 // 注意: 展開後の URL に座標が無いとき、ページ本文(og:image の staticmap center など)から
 // 座標を拾うのは**やらない**。名前だけの場所ページ・検索ページの本文に出る座標は
 // 接続元 IP から推定した既定の地図中心(g3plus だとシアトル)で、場所とは無関係
-// (2026-08-23 に確認)。座標が取れないリンクは名前だけ返し、クライアントが名前で検索する
+// (2026-08-23 に確認。デスクトップ UA でも短縮リンクは JS だけのページを返す)。
+//
+// iOS アプリの共有(g_st=ic / ig / preview.copy)は
+//   https://www.google.com/maps?q=Hotel+Ruby+|+Spokane,+901+W+1st+Ave,+Spokane,+WA+99201&ftid=0x…:0x…
+//   https://www.google.com/maps?q=日本、〒390-0873 長野県松本市丸の内４−１ 松本城&ftid=0x…:0x…
+// のように「名前 + 住所」だけが q に入る形に展開される(実物で確認)。この場合は
+// Nominatim(lib/nominatim.ts のプロキシ)でジオコーディングして座標を補う
+
+/**
+ * 共有テキスト(「松本城\nhttps://maps.app.goo.gl/…」「Hotel Ruby | Spokane https://…」)の
+ * 場所名。URL を除いた最初の行の、URL より前の部分
+ */
+export function shareNameHint(text: string): string | null {
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/https?:\/\/\S+/g, " ").trim();
+    if (line) return line;
+  }
+  return null;
+}
+
+const JP_POSTAL = /〒?\s*\d{3}[-‐−–]\d{4}/;
+// 都道府県は 2〜3 文字 + 接尾辞(「京都府」を「京都」+「府京都市」に割らないよう長さを限定)
+const JP_LOCALITY = /^(?:.{2,3}[都道府県])?(.+?(?:[市区町村]|郡.+?[町村]))/;
+
+/** 展開後 URL の q(「名前, 住所」)を名前・市区町村・町丁目住所に分ける */
+export function parseQueryText(raw: string): QueryText {
+  const full = raw.replace(/\s+/g, " ").trim();
+  const isJapanese = JP_POSTAL.test(full) || /[都道府県].*[市区町村]/.test(full);
+  if (isJapanese) {
+    // 「日本、〒390-0873 長野県松本市丸の内４−１ 松本城」
+    //  → 住所 = 〒 の次の語、名前 = その後ろ(建物名が混ざることもある)
+    const withoutCountry = full.replace(/^日本[、,]?\s*/, "");
+    const afterPostal = withoutCountry.replace(JP_POSTAL, "").trim();
+    const [addressToken, ...rest] = afterPostal.split(" ");
+    const address = addressToken ?? "";
+    const locality = address.match(JP_LOCALITY)?.[1] ?? null;
+    // 番地(「４−１」「７−１２」「1-2-3」)を落として町丁目まで
+    const townAddress =
+      address.replace(/[０-９0-9]+(?:[-‐−–][０-９0-9]+)*$/u, "").trim() || null;
+    const name = rest.join(" ").trim() || null;
+    return { name, locality, townAddress, full };
+  }
+  // 「Hotel Ruby | Spokane, 901 W 1st Ave Ste. B, Spokane, WA 99201」
+  const segments = full.split(/\s*,\s*/).filter(Boolean);
+  const name = segments[0] ?? null;
+  // 末尾は「WA 99201」(州 + 郵便番号)なので、その手前を市名とみなす
+  const locality = segments.length >= 3 ? (segments[segments.length - 2] ?? null) : null;
+  return { name, locality, townAddress: null, full };
+}
+
+/** Nominatim へ投げる候補(当たったものを採用する順)。area 用の候補は分けて返す */
+export function geocodeCandidates(
+  query: QueryText,
+  nameHint: string | null,
+): { exact: string[]; area: string[] } {
+  const name = nameHint?.trim() || query.name;
+  const exact: string[] = [];
+  const area: string[] = [];
+  if (query.townAddress) {
+    // 日本形式: 全文は当たらないので「名前 + 市区町村」→ 名前 → 町丁目
+    if (name && query.locality) exact.push(`${name} ${query.locality}`);
+    if (name) exact.push(name);
+    area.push(query.townAddress);
+  } else {
+    // 欧米形式: 全文(名前 + 住所)がそのまま当たることが多い
+    exact.push(query.full);
+    if (name && query.locality) exact.push(`${name}, ${query.locality}`);
+    if (name && name !== query.full) exact.push(name);
+  }
+  const seen = new Set<string>();
+  const unique = (list: string[]) =>
+    list.filter((item) => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return { exact: unique(exact), area: unique(area) };
+}
+
+export type Geocoder = (query: string) => Promise<GeocodedPlace[]>;
+export type GeocodedPlace = { latitude: number; longitude: number };
+
+async function geocode(
+  candidates: { exact: string[]; area: string[] },
+  geocoder: Geocoder,
+): Promise<{ latitude: number; longitude: number; precision: LinkPrecision; query: string } | null> {
+  for (const [list, precision] of [
+    [candidates.exact, "geocoded"],
+    [candidates.area, "area"],
+  ] as const) {
+    for (const query of list) {
+      const hits = await geocoder(query);
+      const hit = hits[0];
+      if (hit) {
+        return { latitude: hit.latitude, longitude: hit.longitude, precision, query };
+      }
+    }
+  }
+  return null;
+}
 
 function hasCoordinate(parsed: ParsedGoogleMapsLink): boolean {
   return parsed.latitude !== null && parsed.longitude !== null;
@@ -247,20 +366,28 @@ async function expandLink(start: string, fetchImpl: typeof fetch): Promise<strin
   throw new Error("リンクの転送が多すぎます");
 }
 
+function defaultGeocoder(query: string): Promise<GeocodedPlace[]> {
+  return searchPlaces(query);
+}
+
 /**
  * 共有テキスト / URL から場所を解決する。長い URL に座標があれば取得せずに済ませ、
- * 短縮リンクは転送を追って展開する。同じリンクは 24 時間キャッシュ
+ * 短縮リンクは転送を追って展開する。展開後の URL に座標が無ければ q の「名前 + 住所」
+ * (と共有テキストの名前)を Nominatim で引いて補う。同じリンク + 名前は 24 時間キャッシュ
  */
 export async function resolveGoogleMapsLink(
   input: string,
   fetchImpl: typeof fetch = fetch,
+  geocoder: Geocoder = defaultGeocoder,
 ): Promise<ResolvedGoogleMapsPlace> {
   const url = extractGoogleMapsUrl(input);
   if (!url) {
     throw new Error("Google Maps のリンクが見つかりません");
   }
+  const nameHint = shareNameHint(input.replace(url, " "));
   const s = state();
-  const cached = s.cache.get(url);
+  const cacheKey = `${url}|${nameHint ?? ""}`;
+  const cached = s.cache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.place;
   }
@@ -269,17 +396,33 @@ export async function resolveGoogleMapsLink(
   const direct = parseGoogleMapsUrl(url);
   const host = hostOf(url) ?? "";
   if (hasCoordinate(direct) && !SHORT_LINK_HOSTS.has(host)) {
-    place = { ...direct, resolvedUrl: url };
+    place = { ...direct, resolvedUrl: url, geocodedQuery: null };
   } else {
     const resolvedUrl = await expandLink(url, fetchImpl);
-    place = { ...parseGoogleMapsUrl(resolvedUrl), resolvedUrl };
+    place = { ...parseGoogleMapsUrl(resolvedUrl), resolvedUrl, geocodedQuery: null };
+  }
+  if (!hasCoordinate(place)) {
+    // 座標が無い形(iOS アプリの共有など)。q の「名前, 住所」をジオコーディングする
+    const queryText = parseQueryText(place.name ?? nameHint ?? "");
+    const hit = await geocode(geocodeCandidates(queryText, nameHint), geocoder);
+    // 表示名は共有テキストの名前 → q から切り出した名前 → q 全体
+    place = {
+      ...place,
+      name: nameHint ?? queryText.name ?? place.name,
+      latitude: hit?.latitude ?? null,
+      longitude: hit?.longitude ?? null,
+      precision: hit?.precision ?? null,
+      geocodedQuery: hit?.query ?? null,
+    };
+  } else if (!place.name && nameHint) {
+    place = { ...place, name: nameHint };
   }
   if (!place.name && !hasCoordinate(place)) {
     throw new Error("リンクから場所を特定できませんでした");
   }
 
-  s.cache.delete(url);
-  s.cache.set(url, { at: Date.now(), place });
+  s.cache.delete(cacheKey);
+  s.cache.set(cacheKey, { at: Date.now(), place });
   while (s.cache.size > CACHE_MAX_ENTRIES) {
     const oldest = s.cache.keys().next().value;
     if (oldest === undefined) break;

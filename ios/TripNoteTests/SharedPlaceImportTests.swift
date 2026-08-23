@@ -45,11 +45,12 @@ struct SharedPlaceImportTests {
         let share = PendingShare(text: "松本城\nhttps://maps.app.goo.gl/a", url: nil)
         let resolved = ResolvedGoogleMapsPlace(
             name: "Matsumoto Castle", latitude: 36.2, longitude: 137.9,
-            precision: "pin", resolvedUrl: "https://www.google.com/maps/place/x"
+            precision: "pin", resolvedUrl: "https://www.google.com/maps/place/x", geocodedQuery: nil
         )
         #expect(SharedPlaceImport.placeName(resolved: resolved, share: share) == "Matsumoto Castle")
         let unnamed = ResolvedGoogleMapsPlace(
-            name: nil, latitude: 36.2, longitude: 137.9, precision: "pin", resolvedUrl: "u"
+            name: nil, latitude: 36.2, longitude: 137.9, precision: "pin", resolvedUrl: "u",
+            geocodedQuery: nil
         )
         #expect(SharedPlaceImport.placeName(resolved: unnamed, share: share) == "松本城")
         #expect(SharedPlaceImport.placeName(resolved: nil, share: share) == "松本城")

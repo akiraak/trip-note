@@ -18,8 +18,8 @@ struct SharedPlaceImportView: View {
     @State private var type: CheckpointType = .sightseeing
     @State private var latitude: Double?
     @State private var longitude: Double?
-    /// 座標がピンではなく地図の表示中心(ずれている可能性がある)
-    @State private var isCenterOnly = false
+    /// 座標がピンではない(地図の中心・住所からの推定)ときの注記
+    @State private var approximationNote: String?
     @State private var selectedTripID: UUID?
     @State private var selectedDayID: UUID?
     @State private var isResolving = true
@@ -69,7 +69,7 @@ struct SharedPlaceImportView: View {
                     type = place.suggestedType
                     latitude = place.latitude
                     longitude = place.longitude
-                    isCenterOnly = false
+                    approximationNote = nil
                     resolveMessage = nil
                 }
             }
@@ -122,8 +122,8 @@ struct SharedPlaceImportView: View {
                 .allowsHitTesting(false)
                 .listRowInsets(EdgeInsets())
                 .id("\(latitude),\(longitude)")
-                if isCenterOnly {
-                    Text("リンクの地図の中心の位置です(ピンとずれることがあります)")
+                if let approximationNote {
+                    Text(approximationNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -210,7 +210,7 @@ struct SharedPlaceImportView: View {
             name = SharedPlaceImport.placeName(resolved: place, share: share)
             latitude = place.latitude
             longitude = place.longitude
-            isCenterOnly = place.isCenterOnly
+            approximationNote = place.approximationNote
             if !place.hasCoordinate {
                 resolveMessage = "リンクから座標が取れませんでした。「検索で位置を決める」で探してください"
             }

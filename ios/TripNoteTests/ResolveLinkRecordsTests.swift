@@ -19,7 +19,24 @@ struct ResolveLinkRecordsTests {
         #expect(response.place.name == "松本城")
         #expect(response.place.latitude == 36.238653)
         #expect(response.place.hasCoordinate)
-        #expect(!response.place.isCenterOnly)
+        #expect(response.place.approximationNote == nil)
+        // geocodedQuery が無い古い応答でもデコードできる
+        #expect(response.place.geocodedQuery == nil)
+    }
+
+    @Test func 住所からの推定には注記が付く() throws {
+        let json = """
+        {"place":{"name":"Hotel Ruby | Spokane","latitude":47.65,"longitude":-117.42,"precision":"geocoded",
+        "resolvedUrl":"u","geocodedQuery":"Hotel Ruby | Spokane, 901 W 1st Ave, Spokane, WA 99201"}}
+        """
+        let place = try JSONDecoder().decode(ResolveLinkResponse.self, from: Data(json.utf8)).place
+        #expect(place.approximationNote?.contains("住所から推定") == true)
+        #expect(place.approximationNote?.contains("901 W 1st Ave") == true)
+        let area = """
+        {"place":{"name":"x","latitude":36.2,"longitude":137.9,"precision":"area","resolvedUrl":"u","geocodedQuery":"長野県松本市丸の内"}}
+        """
+        let areaPlace = try JSONDecoder().decode(ResolveLinkResponse.self, from: Data(area.utf8)).place
+        #expect(areaPlace.approximationNote?.contains("おおよその位置") == true)
     }
 
     @Test func 座標なし応答と中心のみ応答() throws {
@@ -34,6 +51,6 @@ struct ResolveLinkRecordsTests {
         """
         let centerPlace = try JSONDecoder().decode(ResolveLinkResponse.self, from: Data(center.utf8)).place
         #expect(centerPlace.name == nil)
-        #expect(centerPlace.isCenterOnly)
+        #expect(centerPlace.approximationNote?.contains("地図の中心") == true)
     }
 }

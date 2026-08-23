@@ -9,7 +9,7 @@
   - iOS Share Extension: 新ターゲット `TripNoteShare`(共有シートの「旅ログ」。URL / テキストを受信箱に入れて「旅ログを開く」= responder chain の `openURL:` 回避策)。`project.yml` に URL スキーム・App Group entitlements・Extension 埋め込みを追加、生成物(Info.plist / entitlements)は gitignore。`run-ios-device.sh` に `-allowProvisioningUpdates`
   - `docs/specs/server-api.md` と g3plus-ops の運用ドキュメント(外向き通信先に Google のホスト追加)を更新
   - 検証: web vitest 136 件(google-maps-share 21 件新規)+ lint + build、ローカル dev サーバの E2E(実物の場所ページ URL → 松本城 36.238653,137.9688674 / 名前だけの `?q=` → 名前のみ / 経路リンク・非 Google・未認証のエラー)、Chrome で Web の検索欄にリンク貼り付け → 1 件表示、iOS ユニットテスト 146 件(新規 16 件)+ Share Extension 込みのシミュレータビルド、シミュレータの App Group に共有を仕込んで起動 → 取り込みシートが開くことを確認
-  - **未検証**: 実機の Google Maps アプリからの共有(短縮リンクの実際の展開先・共有シートに「旅ログ」が出ること・「旅ログを開く」の回避策が効くこと)。App Group の capability 登録で初回は Xcode から実機ビルドした方が確実
+  - 実機検証(同日): 共有シートの「旅ログ」→ 本体の取り込みシートまで動作。ただし iOS アプリの共有リンクの展開先は `…/maps?q=<名前, 住所>&ftid=…` で座標が無く「座標が取れませんでした」になったため、`q` の名前 + 住所と共有テキストの名前を Nominatim で引く補完を追加(`precision: geocoded` / `area`、UI に注記)。実物 3 件で確認(Hotel Ruby 正確 / 松本城 正確 / 品川の店は町丁目近似)
 
 - プランの日毎の検索に「観光地」と入れると、その日の経路の近くの観光地の情報が出てくるようにする [plan](docs/plans/archive/checkpoint-nearby-sightseeing.md)
   - 方式: OSM Overpass API をサーバでプロキシ(`lib/overpass.ts`)し iOS / Web 共通の `POST /api/places/nearby`(Bearer)+ Server Action に。経路(座標あり地点の折れ線)から半径 15km を `around:` で検索、設定行の `[bbox:]` で全体を絞る(bbox 無しだと relation の around で 16 秒タイムアウト → bbox ありで 2〜3 秒)。有名どころ(wikipedia / wikidata タグ)→ 種類の重み(城・主要スポット > 博物館・寺社 > 記念碑)→ 経路から近い順に最大 30 件。寺社・滝・温泉は wikipedia 付きのみ、山頂(`natural=peak`)は北アルプスで埋まるため対象外

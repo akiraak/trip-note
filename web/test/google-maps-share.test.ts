@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractGoogleMapsUrl,
+  geocodeCandidates,
   isGoogleMapsUrl,
   parseGoogleMapsUrl,
   parseLinkInput,
+  parseQueryText,
   resolveGoogleMapsLink,
+  shareNameHint,
 } from "@/lib/google-maps-share";
+
+// ジオコーダ(Nominatim)は呼ばずにモックする。既定は「何も当たらない」
+const noHit = vi.fn(async () => []);
 
 afterEach(() => {
   (
@@ -166,6 +172,91 @@ describe("parseGoogleMapsUrl", () => {
   });
 });
 
+// iOS アプリの共有(g_st=ig)の展開先。実物(2026-08-23)。座標は無く q に「名前, 住所」
+const APP_SHARE_URL =
+  "https://www.google.com/maps?q=Hotel+Ruby+%7C+Spokane,+901+W+1st+Ave+Ste.+B,+Spokane,+WA+99201&ftid=0x549e1866de33ec49:0x963bd390f6ecd017&entry=gps&g_st=ig";
+const APP_SHARE_URL_JP =
+  "https://www.google.com/maps?q=%E6%97%A5%E6%9C%AC%E3%80%81%E3%80%92390-0873+%E9%95%B7%E9%87%8E%E7%9C%8C%E6%9D%BE%E6%9C%AC%E5%B8%82%E4%B8%B8%E3%81%AE%E5%86%85%EF%BC%94%E2%88%92%EF%BC%91+%E6%9D%BE%E6%9C%AC%E5%9F%8E&ftid=0x601d0e850a9a5999:0x902d0e20fabcf654&entry=gps";
+
+describe("shareNameHint / parseQueryText / geocodeCandidates", () => {
+  it("共有テキストの名前は URL を除いた最初の行", () => {
+    expect(shareNameHint(`Hotel Ruby | Spokane ${SHORT_URL}`)).toBe("Hotel Ruby | Spokane");
+    expect(shareNameHint(`松本城\n${SHORT_URL}`)).toBe("松本城");
+    expect(shareNameHint(`\n\n${SHORT_URL}\n上高地`)).toBe("上高地");
+    expect(shareNameHint(SHORT_URL)).toBeNull();
+  });
+
+  it("欧米形式の q は先頭が名前、末尾の手前が市名", () => {
+    expect(
+      parseQueryText("Hotel Ruby | Spokane, 901 W 1st Ave Ste. B, Spokane, WA 99201"),
+    ).toEqual({
+      name: "Hotel Ruby | Spokane",
+      locality: "Spokane",
+      townAddress: null,
+      full: "Hotel Ruby | Spokane, 901 W 1st Ave Ste. B, Spokane, WA 99201",
+    });
+  });
+
+  it("日本形式の q は 〒 の次が住所、その後ろが名前。市区町村と町丁目を切り出す", () => {
+    expect(parseQueryText("日本、〒390-0873 長野県松本市丸の内４−１ 松本城")).toEqual({
+      name: "松本城",
+      locality: "松本市",
+      townAddress: "長野県松本市丸の内",
+      full: "日本、〒390-0873 長野県松本市丸の内４−１ 松本城",
+    });
+    expect(
+      parseQueryText("〒142-0062 東京都品川区小山３丁目７−１２ サンハイツ 102 Gelateria Italiana Ciao"),
+    ).toMatchObject({
+      name: "サンハイツ 102 Gelateria Italiana Ciao",
+      locality: "品川区",
+      townAddress: "東京都品川区小山３丁目",
+    });
+    expect(parseQueryText("〒600-8216 京都府京都市下京区東塩小路町 京都駅")).toMatchObject({
+      name: "京都駅",
+      locality: "京都市",
+      townAddress: "京都府京都市下京区東塩小路町",
+    });
+    expect(parseQueryText("〒904-0117 沖縄県中頭郡北谷町北前１−２ 店")).toMatchObject({
+      locality: "中頭郡北谷町",
+      townAddress: "沖縄県中頭郡北谷町北前",
+    });
+  });
+
+  it("候補: 日本形式は「名前 市区町村」→ 名前 → 町丁目(area)、欧米形式は全文 → 名前, 市 → 名前", () => {
+    expect(
+      geocodeCandidates(parseQueryText("日本、〒390-0873 長野県松本市丸の内４−１ 松本城"), "松本城"),
+    ).toEqual({ exact: ["松本城 松本市", "松本城"], area: ["長野県松本市丸の内"] });
+    // 共有テキストの名前(ヒント)があれば q から切り出した名前より優先
+    expect(
+      geocodeCandidates(
+        parseQueryText("〒142-0062 東京都品川区小山３丁目７−１２ サンハイツ 102 Gelateria Italiana Ciao"),
+        "Gelateria Italiana Ciao",
+      ),
+    ).toEqual({
+      exact: ["Gelateria Italiana Ciao 品川区", "Gelateria Italiana Ciao"],
+      area: ["東京都品川区小山３丁目"],
+    });
+    expect(
+      geocodeCandidates(
+        parseQueryText("Hotel Ruby | Spokane, 901 W 1st Ave Ste. B, Spokane, WA 99201"),
+        null,
+      ),
+    ).toEqual({
+      exact: [
+        "Hotel Ruby | Spokane, 901 W 1st Ave Ste. B, Spokane, WA 99201",
+        "Hotel Ruby | Spokane, Spokane",
+        "Hotel Ruby | Spokane",
+      ],
+      area: [],
+    });
+    // 名前だけ(住所なし)は重複を除いて 1 候補
+    expect(geocodeCandidates(parseQueryText("松本城"), null)).toEqual({
+      exact: ["松本城"],
+      area: [],
+    });
+  });
+});
+
 function redirect(location: string): Response {
   return new Response(null, { status: 302, headers: { location } });
 }
@@ -187,45 +278,114 @@ describe("resolveGoogleMapsLink", () => {
     const fetchMock = vi.fn(async () => redirect(PLACE_URL));
     // 展開先は長い URL なので 1 ホップで座標が取れる(本文は不要)
     fetchMock.mockResolvedValueOnce(redirect(PLACE_URL)).mockResolvedValueOnce(okHtml());
-    const place = await resolveGoogleMapsLink(`松本城\n${SHORT_URL}`, fetchMock as typeof fetch);
+    const place = await resolveGoogleMapsLink(
+      `松本城\n${SHORT_URL}`,
+      fetchMock as typeof fetch,
+      noHit,
+    );
     expect(place).toEqual({
       name: "松本城",
       latitude: 36.238653,
       longitude: 137.9688674,
       precision: "pin",
       resolvedUrl: PLACE_URL,
+      geocodedQuery: null,
     });
+    expect(noHit).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [firstUrl, firstInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(firstUrl).toBe(SHORT_URL);
     expect(firstInit.redirect).toBe("manual");
     expect((firstInit.headers as Record<string, string>)["User-Agent"]).toContain("trip-note");
 
-    const again = await resolveGoogleMapsLink(SHORT_URL, fetchMock as typeof fetch);
+    const again = await resolveGoogleMapsLink(`松本城\n${SHORT_URL}`, fetchMock as typeof fetch, noHit);
     expect(again).toEqual(place);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("座標入りの長い URL は取得せずに返す", async () => {
     const fetchMock = vi.fn();
-    const place = await resolveGoogleMapsLink(PLACE_URL, fetchMock as typeof fetch);
+    const place = await resolveGoogleMapsLink(PLACE_URL, fetchMock as typeof fetch, noHit);
     expect(place.name).toBe("松本城");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("展開後の URL に座標が無ければ名前だけ返す(本文の既定の地図中心は使わない)", async () => {
+  it("iOS アプリの共有(q に名前 + 住所、座標なし)は Nominatim で引いて geocoded にする", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(redirect(APP_SHARE_URL)).mockResolvedValueOnce(okHtml());
+    const geocoder = vi.fn(async (query: string) =>
+      query.startsWith("Hotel Ruby | Spokane, 901") ? [{ latitude: 47.6562163, longitude: -117.4252411 }] : [],
+    );
+    const place = await resolveGoogleMapsLink(
+      `Hotel Ruby | Spokane ${SHORT_URL}`,
+      fetchMock as typeof fetch,
+      geocoder,
+    );
+    expect(place).toEqual({
+      name: "Hotel Ruby | Spokane",
+      latitude: 47.6562163,
+      longitude: -117.4252411,
+      precision: "geocoded",
+      resolvedUrl: APP_SHARE_URL,
+      geocodedQuery: "Hotel Ruby | Spokane, 901 W 1st Ave Ste. B, Spokane, WA 99201",
+    });
+    expect(geocoder).toHaveBeenCalledTimes(1);
+  });
+
+  it("日本の住所は「名前 市区町村」で当て、名前は共有テキストのもの", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(redirect(APP_SHARE_URL_JP)).mockResolvedValueOnce(okHtml());
+    const geocoder = vi.fn(async (query: string) =>
+      query === "松本城 松本市" ? [{ latitude: 36.2386353, longitude: 137.9688709 }] : [],
+    );
+    const place = await resolveGoogleMapsLink(`松本城\n${SHORT_URL}`, fetchMock as typeof fetch, geocoder);
+    expect(place).toMatchObject({
+      name: "松本城",
+      latitude: 36.2386353,
+      precision: "geocoded",
+      geocodedQuery: "松本城 松本市",
+    });
+    expect(geocoder).toHaveBeenCalledTimes(1);
+  });
+
+  it("名前で当たらなければ町丁目で引いて area、それも無ければ名前だけ返す", async () => {
+    const fetchMock = vi.fn(async () => redirect(APP_SHARE_URL_JP));
+    fetchMock.mockResolvedValueOnce(redirect(APP_SHARE_URL_JP)).mockResolvedValueOnce(okHtml());
+    const areaOnly = vi.fn(async (query: string) =>
+      query === "長野県松本市丸の内" ? [{ latitude: 36.23835, longitude: 137.9699 }] : [],
+    );
+    const place = await resolveGoogleMapsLink(SHORT_URL, fetchMock as typeof fetch, areaOnly);
+    expect(place).toMatchObject({
+      name: "松本城",
+      latitude: 36.23835,
+      precision: "area",
+      geocodedQuery: "長野県松本市丸の内",
+    });
+    // 名前 市 → 名前 → 町丁目 の 3 回
+    expect(areaOnly).toHaveBeenCalledTimes(3);
+
+    fetchMock.mockResolvedValueOnce(redirect(APP_SHARE_URL_JP)).mockResolvedValueOnce(okHtml());
+    const none = await resolveGoogleMapsLink(
+      `上高地\n${SHORT_URL}`,  // 名前が違えばキャッシュキーも別
+      fetchMock as typeof fetch,
+      noHit,
+    );
+    expect(none).toMatchObject({ name: "上高地", latitude: null, precision: null, geocodedQuery: null });
+  });
+
+  it("展開後の URL に座標が無く、名前だけのときも本文の既定の地図中心は使わない", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(redirect("https://www.google.com/maps/place/%E6%9D%BE%E6%9C%AC%E5%9F%8E"))
       .mockResolvedValueOnce(okHtml());
-    const place = await resolveGoogleMapsLink(SHORT_URL, fetchMock as typeof fetch);
+    const place = await resolveGoogleMapsLink(SHORT_URL, fetchMock as typeof fetch, noHit);
     expect(place).toEqual({
       name: "松本城",
       latitude: null,
       longitude: null,
       precision: null,
       resolvedUrl: "https://www.google.com/maps/place/%E6%9D%BE%E6%9C%AC%E5%9F%8E",
+      geocodedQuery: null,
     });
+    expect(noHit).toHaveBeenCalledWith("松本城");
   });
 
   it("名前も座標も取れなければ失敗する", async () => {
@@ -233,29 +393,29 @@ describe("resolveGoogleMapsLink", () => {
       .fn()
       .mockResolvedValueOnce(redirect("https://www.google.com/maps/"))
       .mockResolvedValueOnce(okHtml());
-    await expect(resolveGoogleMapsLink(SHORT_URL, fetchMock as typeof fetch)).rejects.toThrow(
-      "場所を特定できませんでした",
-    );
+    await expect(
+      resolveGoogleMapsLink(SHORT_URL, fetchMock as typeof fetch, noHit),
+    ).rejects.toThrow("場所を特定できませんでした");
   });
 
   it("許可外ホストへの転送・転送過多・エラー応答は失敗する", async () => {
     const toEvil = vi.fn().mockResolvedValueOnce(redirect("https://evil.example/x"));
-    await expect(resolveGoogleMapsLink(SHORT_URL, toEvil as typeof fetch)).rejects.toThrow(
+    await expect(resolveGoogleMapsLink(SHORT_URL, toEvil as typeof fetch, noHit)).rejects.toThrow(
       "Google Maps ではない",
     );
     const toHttp = vi.fn().mockResolvedValueOnce(redirect("http://www.google.com/maps/place/x"));
     await expect(
-      resolveGoogleMapsLink("https://goo.gl/maps/x1", toHttp as typeof fetch),
+      resolveGoogleMapsLink("https://goo.gl/maps/x1", toHttp as typeof fetch, noHit),
     ).rejects.toThrow("Google Maps ではない");
 
     const loop = vi.fn(async () => redirect("/maps/loop"));
     await expect(
-      resolveGoogleMapsLink("https://maps.app.goo.gl/loop", loop as typeof fetch),
+      resolveGoogleMapsLink("https://maps.app.goo.gl/loop", loop as typeof fetch, noHit),
     ).rejects.toThrow("転送が多すぎます");
 
     const notFound = vi.fn(async () => new Response("", { status: 404 }));
     await expect(
-      resolveGoogleMapsLink("https://maps.app.goo.gl/nf", notFound as typeof fetch),
+      resolveGoogleMapsLink("https://maps.app.goo.gl/nf", notFound as typeof fetch, noHit),
     ).rejects.toThrow("(404)");
   });
 
@@ -267,15 +427,16 @@ describe("resolveGoogleMapsLink", () => {
     const place = await resolveGoogleMapsLink(
       "https://www.google.com/maps?cid=123",
       fetchMock as typeof fetch,
+      noHit,
     );
     expect(place.resolvedUrl).toBe("https://www.google.com/maps/place/x/@36.2,137.9,15z");
     expect(place).toMatchObject({ latitude: 36.2, precision: "center" });
   });
 
   it("Google Maps のリンクが無い入力は失敗する", async () => {
-    await expect(resolveGoogleMapsLink("松本城", vi.fn() as typeof fetch)).rejects.toThrow(
-      "リンクが見つかりません",
-    );
+    await expect(
+      resolveGoogleMapsLink("松本城", vi.fn() as typeof fetch, noHit),
+    ).rejects.toThrow("リンクが見つかりません");
   });
 });
 

@@ -11,7 +11,10 @@ import { searchCategory } from "@/lib/category-search";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { searchViewbox, type DayRoutePlace } from "@/lib/day-route";
 import { formatDistance } from "@/lib/format";
-import { extractGoogleMapsUrl } from "@/lib/google-maps-share";
+import {
+  extractGoogleMapsUrl,
+  type ResolvedGoogleMapsPlace,
+} from "@/lib/google-maps-share";
 import type { Place } from "@/lib/nominatim";
 import type { NearbyPlace } from "@/lib/overpass";
 
@@ -23,6 +26,22 @@ import type { NearbyPlace } from "@/lib/overpass";
 // (Overpass。結果の「追加」は通常の検索結果と同じ onSelect に流す)。
 // 入力に Google Maps の共有リンクが含まれていれば、サーバでリンクを展開してその場所を
 // 1 件の結果として出す(座標が取れなければ名前で通常検索に切り替える)
+/** リンクから得た位置の精度の説明(結果行の 2 行目) */
+function linkPrecisionLabel(place: ResolvedGoogleMapsPlace): string {
+  switch (place.precision) {
+    case "pin":
+      return "Google Maps のリンク(ピンの位置)";
+    case "center":
+      return "Google Maps のリンク(地図の中心の位置。ピンとずれることがあります)";
+    case "geocoded":
+      return `Google Maps のリンク(住所から推定した位置: ${place.geocodedQuery ?? ""}。ピンとずれることがあります)`;
+    case "area":
+      return `Google Maps のリンク(住所「${place.geocodedQuery ?? ""}」のおおよその位置。編集で位置を直せます)`;
+    default:
+      return "Google Maps のリンク";
+  }
+}
+
 export function PlaceSearch({
   onSelect,
   selectLabel,
@@ -58,10 +77,7 @@ export function PlaceSearch({
       setPlaces([
         {
           name: place.name ?? "Google Maps の場所",
-          displayName:
-            place.precision === "pin"
-              ? "Google Maps のリンク(ピンの位置)"
-              : "Google Maps のリンク(地図の中心の位置。ピンとずれることがあります)",
+          displayName: linkPrecisionLabel(place),
           latitude: place.latitude,
           longitude: place.longitude,
           guessedType: "sightseeing",
