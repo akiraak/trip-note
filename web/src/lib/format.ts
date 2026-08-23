@@ -24,6 +24,13 @@ const dayFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
+// 曜日だけを日本語で。iOS は日詳細で「2026年9月1日(火)」と曜日まで出しているが、
+// Web には日詳細が無いので日カードの「Sep 1」に曜日を足して同じ情報にする
+const weekdayFormat = new Intl.DateTimeFormat("ja-JP", {
+  weekday: "short",
+  timeZone: "UTC",
+});
+
 export function formatDateTime(iso: string): string {
   return dateTimeFormat.format(new Date(iso));
 }
@@ -31,6 +38,12 @@ export function formatDateTime(iso: string): string {
 /** YYYY-MM-DD → 例: Sep 1 */
 export function formatDay(dateString: string): string {
   return dayFormat.format(new Date(`${dateString}T00:00:00Z`));
+}
+
+/** YYYY-MM-DD → 例: Sep 1 (火) */
+export function formatDayWithWeekday(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  return `${dayFormat.format(date)} (${weekdayFormat.format(date)})`;
 }
 
 export function formatPointTime(iso: string): string {

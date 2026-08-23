@@ -74,6 +74,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
     date: day.date,
     title: day.title,
     note: day.note,
+    departure_time: day.departure_time,
     checkpoints: (checkpointsByDay.get(day.id) ?? []).map((c) => ({
       id: c.id,
       type: c.type,
@@ -189,44 +190,46 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             aiDefaults={aiDefaults}
           />
         </div>
-        {media.length > 0 && (
-          <>
-            <h2 className="mb-2 font-medium">メディア</h2>
-            <ul className="mb-8 grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {media.map((m) => (
-                <li key={m.id}>
-                  {m.type === "photo" ? (
-                    <a
-                      href={`/media/${m.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block"
-                    >
-                      {/* 認証付き動的配信のため next/image は使わない */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`/media/${m.id}`}
-                        alt=""
-                        loading="lazy"
-                        className="aspect-square w-full rounded-md object-cover"
-                      />
-                    </a>
-                  ) : (
-                    <video
+        <h2 className="mb-2 font-medium">メディア</h2>
+        {media.length === 0 ? (
+          <p className="mb-8 text-zinc-500 dark:text-zinc-400">
+            写真・動画がありません
+          </p>
+        ) : (
+          <ul className="mb-8 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {media.map((m) => (
+              <li key={m.id}>
+                {m.type === "photo" ? (
+                  <a
+                    href={`/media/${m.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block"
+                  >
+                    {/* 認証付き動的配信のため next/image は使わない */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
                       src={`/media/${m.id}`}
-                      controls
-                      preload="metadata"
-                      playsInline
-                      className="aspect-square w-full rounded-md bg-black object-cover"
+                      alt=""
+                      loading="lazy"
+                      className="aspect-square w-full rounded-md object-cover"
                     />
-                  )}
-                  <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                    {formatPointTime(m.taken_at)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </>
+                  </a>
+                ) : (
+                  <video
+                    src={`/media/${m.id}`}
+                    controls
+                    preload="metadata"
+                    playsInline
+                    className="aspect-square w-full rounded-md bg-black object-cover"
+                  />
+                )}
+                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  {formatPointTime(m.taken_at)}
+                </p>
+              </li>
+            ))}
+          </ul>
         )}
         <h2 className="mb-2 font-medium">タイムライン</h2>
         {points.length === 0 ? (

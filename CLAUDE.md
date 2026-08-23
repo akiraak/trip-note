@@ -18,6 +18,18 @@ trip-note は旅行のサポートをするアプリで、モバイルと Web �
 - 接続設定: Web は `web/.env.local`（`API_SHARED_SECRET`）、iOS は `ios/TripNote/Resources/ServerConfig.plist`（どちらも gitignore 済み。雛形は `web/.env.example` / `ServerConfig.example.plist`。plist 追加後は `xcodegen generate` を再実行）
 - Swift 側のドメインモデルは `ios/TripNote/Models/`、ロジックは `ios/TripNote/Domain/`
 
+### iOS と Web で表示情報を揃える
+
+iOS と Web は同じデータを見るので、**片方の画面にしか無い情報を作らない**。旅行画面（旅行詳細）とプランは特に、
+**iOS に出ている情報は Web にも出す（逆も同じ）**。片方に情報を足す変更をしたら、もう片方も同じコミットで揃える。
+
+- **画面の対応**: Web には日詳細ページが無く、プランは旅行詳細に一体で表示している。そのため
+  iOS の日詳細（`TripDayDetailView`）に出ている情報は、Web では**旅行詳細の日カード**（`plan-section.tsx` の `DayCard`）に集約する
+- **文言も揃える**（例: 座標が無いチェックポイントは iOS・Web とも「座標未設定」）
+- **空状態も情報のうち**（「チェックポイントなし」「写真・動画がありません」など、片方だけ黙って消さない）
+- **揃えるのは表示情報で、操作は別**。GPS 記録・撮影は iOS 固有、編集導線の差はプラットフォーム都合で許容する
+- 突き合わせの記録は `docs/plans/archive/web-ios-info-parity.md`（iOS 側の出どころと Web の対応箇所の対照表）
+
 ### 実装上の注意
 
 - Next.js 16 は書き方が学習データと異なる可能性があるので `web/node_modules/next/dist/docs/` を参照する

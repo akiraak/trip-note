@@ -17,7 +17,7 @@ import { CheckpointForm } from "./checkpoint-form";
 import { DayMap } from "./day-map";
 import { PlaceLink } from "./place-link";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
-import { formatDay } from "@/lib/format";
+import { formatDayWithWeekday } from "@/lib/format";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
 import { dayMapPoints, type DayMapData } from "@/lib/plan-map";
 import type { CheckpointType } from "@/lib/types";
@@ -41,6 +41,8 @@ export type PlanDay = {
   date: string;
   title: string | null;
   note: string | null;
+  /** 前泊地を出発する時刻 "HH:MM"(iOS で設定して同期されてくる) */
+  departure_time: string | null;
   checkpoints: PlanCheckpoint[];
 };
 
@@ -168,9 +170,15 @@ function DayCard({
         <span className="font-medium">
           {dayNumber}日目{" "}
           <span className="text-sm font-normal text-zinc-500 dark:text-zinc-400">
-            {formatDay(day.date)}
+            {formatDayWithWeekday(day.date)}
           </span>
         </span>
+        {/* 前泊地を出発する時刻(iOS の日詳細「出発時刻」) */}
+        {day.departure_time && (
+          <span className="shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+            出発 {day.departure_time}
+          </span>
+        )}
         {day.title && <span className="truncate text-sm">{day.title}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-2 text-xs">
           <button
@@ -237,6 +245,11 @@ function DayCard({
             }
             onCancel={() => setMode(null)}
           />
+        )}
+        {day.checkpoints.length === 0 && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            チェックポイントなし
+          </p>
         )}
         {day.checkpoints.length > 0 && (
           <ol className="flex flex-col gap-1">
@@ -409,29 +422,22 @@ function CheckpointRow({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   return (
     <li className="flex items-center gap-2 rounded-md px-1 py-1 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900">
-      <span aria-hidden title={CHECKPOINT_LABELS[checkpoint.type]}>
-        {CHECKPOINT_ICONS[checkpoint.type]}
-      </span>
+      <span aria-hidden>{CHECKPOINT_ICONS[checkpoint.type]}</span>
+      {/* 名前の下に「種別 · 予定時刻 · 座標未設定」を並べる(iOS の CheckpointRow と同じ) */}
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2">
-          <span className="truncate">{checkpoint.name}</span>
+        <span className="block truncate">{checkpoint.name}</span>
+        <span className="flex flex-wrap items-baseline gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+          <span>{CHECKPOINT_LABELS[checkpoint.type]}</span>
           {checkpoint.planned_time && (
             // 予定時刻はブラウザのローカル TZ で表示する(SSR とはずれ得るので警告を抑止)
-            <span
-              suppressHydrationWarning
-              className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400"
-            >
+            <span suppressHydrationWarning>
               {new Date(checkpoint.planned_time).toLocaleTimeString("ja-JP", {
                 hour: "2-digit",
                 minute: "2-digit",
               })}
             </span>
           )}
-          {checkpoint.latitude === null && (
-            <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">
-              位置未定
-            </span>
-          )}
+          {checkpoint.latitude === null && <span>座標未設定</span>}
         </span>
         {checkpoint.note && (
           <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
