@@ -214,6 +214,9 @@ function DayCard({
         </span>
       </header>
       <div className="flex flex-col gap-2 p-3">
+        {map.points.length > 0 && (
+          <DayMap points={map.points} anchor={map.anchor} />
+        )}
         {day.note && !confirmingDelete && mode !== "edit-day" && (
           <p className="text-sm whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">
             {day.note}
@@ -266,9 +269,6 @@ function DayCard({
               ),
             )}
           </ol>
-        )}
-        {map.points.length > 0 && (
-          <DayMap points={map.points} anchor={map.anchor} />
         )}
         {mode === "add-link" && (
           <PlaceLink
