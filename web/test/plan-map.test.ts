@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayMapPoints } from "@/lib/plan-map";
+import { dayDistanceMeters, dayMapPoints } from "@/lib/plan-map";
 import type { CheckpointType } from "@/lib/types";
 
 // 日別プラン地図のデータ組み立て(iOS の DayRoute.anchor と同じ規則)
@@ -99,5 +99,52 @@ describe("dayMapPoints", () => {
       { points: [], anchor: null },
       { points: [], anchor: null },
     ]);
+  });
+});
+
+// その日の移動距離。iOS がレグ未解決のときに出すのと同じ直線距離ベースの概算
+describe("dayDistanceMeters", () => {
+  const km = (meters: number) => Math.round(meters / 1000);
+
+  it("訪問順のチェックポイントを直線で結んだ距離を返す", () => {
+    // 東京(35.68,139.76) → 名古屋(35.17,136.88) の直線距離はおよそ 267km
+    const [day] = dayMapPoints([
+      {
+        checkpoints: [
+          cp({ latitude: 35.68, longitude: 139.76 }),
+          cp({ latitude: 35.17, longitude: 136.88 }),
+        ],
+      },
+    ]);
+    expect(km(dayDistanceMeters(day))).toBe(267);
+  });
+
+  it("前泊地(anchor)を起点に含める", () => {
+    const days = dayMapPoints([
+      { checkpoints: [cp({ latitude: 35.68, longitude: 139.76 })] },
+      { checkpoints: [cp({ latitude: 35.17, longitude: 136.88 })] },
+    ]);
+    // 2 日目は前泊地(東京)からの 1 レグぶん
+    expect(km(dayDistanceMeters(days[1]))).toBe(267);
+    // 1 日目は点が 1 つだけで起点も無いのでレグが無い
+    expect(dayDistanceMeters(days[0])).toBe(0);
+  });
+
+  it("座標なしのチェックポイントは距離に効かない", () => {
+    const [day] = dayMapPoints([
+      {
+        checkpoints: [
+          cp({ latitude: 35.68, longitude: 139.76 }),
+          cp({ latitude: null, longitude: null }),
+          cp({ latitude: 35.17, longitude: 136.88 }),
+        ],
+      },
+    ]);
+    expect(km(dayDistanceMeters(day))).toBe(267);
+  });
+
+  it("チェックポイントが無い日は 0", () => {
+    const [day] = dayMapPoints([{ checkpoints: [] }]);
+    expect(dayDistanceMeters(day)).toBe(0);
   });
 });

@@ -2,6 +2,14 @@
 
 ## 2026-08-23
 
+- Web の日カードに距離と経由地を出す [plan](docs/plans/archive/web-day-distance-waypoints.md)
+  - iOS の `TripDayRow` にある「🚗 約 N km」と「自宅 → 大涌谷 → 箱根湯本の宿」の 2 つが Web に無かった。表示情報を揃えたときに、経由地は「チェックポイント一覧があるので実質同等」と判断して見送り、距離は「レグ解決が要る」として先送りしていたが、どちらも日カードを見て分からないので出した
+  - 距離は `lib/plan-map.ts` の `dayDistanceMeters`(前泊地起点 + 座標ありチェックポイントの**直線距離**)。iOS の `RouteLegDistance.totalMeters` は解決済みレグを道路距離・未解決レグを直線距離で足すので、**これは iOS がレグ解決前に表示するのと同じ値**。書式も iOS と同じ `%.2f km` で、常に「約」を付ける
+  - レグが無い日(座標ありが 1 点以下)は距離を出さない(iOS の `legs.isEmpty` と同じ)
+  - 経由地は**座標の有無に関わらず全チェックポイント**を ` → ` で連結し、`line-clamp-2`(iOS の `lineLimit(2)` 相当)。位置は iOS と同じくヘッダの下・地図の上
+  - **道路距離への差し替えは `docs/plans/web-plan-route.md` の Step 4**。今は直線なので iOS の解決済み表示より小さい値が出る(例: 広島 → 東京 が直線 674km)
+  - 検証: web vitest 168 件(`dayDistanceMeters` 4 件を追加)+ lint + build、dev サーバで 12 日ぶんの距離と経由地、座標なしの日に距離が出ないことを確認
+
 - Web にも iOS と同じ編集操作を用意する [plan](docs/plans/archive/web-edit-operations.md)
   - 表示情報を揃えたときに残った「表示ではなく操作」の差 3 件。iOS でしかできず、Web を開いているときに直せなかった
   - `lib/plan.ts` に `updateTrip`(iOS `TripEditView.save` の移植)と `endTrip`(同 `LocationRecorder.endTrip`)を追加

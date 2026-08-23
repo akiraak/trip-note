@@ -18,8 +18,9 @@ import { DayMap } from "./day-map";
 import { PlaceLink } from "./place-link";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { formatDayWithWeekday } from "@/lib/format";
+import { formatDistance } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
-import { dayMapPoints, type DayMapData } from "@/lib/plan-map";
+import { dayDistanceMeters, dayMapPoints, type DayMapData } from "@/lib/plan-map";
 import type { CheckpointType } from "@/lib/types";
 
 // 旅行詳細のプラン(日別)表示・編集。データは server component (page.tsx) から
@@ -163,6 +164,10 @@ function DayCard({
   const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(
     null,
   );
+  // 走行距離は直線距離ベースの概算なので常に「約」(iOS もレグ未解決のうちは同じ値)
+  const distanceMeters = dayDistanceMeters(map);
+  // 経由地は座標の有無に関わらず訪問順に全部並べる(iOS の TripDayRow と同じ)
+  const waypoints = day.checkpoints.map((c) => c.name).join(" → ");
 
   return (
     <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
@@ -177,6 +182,11 @@ function DayCard({
         {day.departure_time && (
           <span className="shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
             出発 {day.departure_time}
+          </span>
+        )}
+        {distanceMeters > 0 && (
+          <span className="shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+            <span aria-hidden>🚗</span> 約 {formatDistance(distanceMeters)}
           </span>
         )}
         {day.title && <span className="truncate text-sm">{day.title}</span>}
@@ -222,6 +232,12 @@ function DayCard({
         </span>
       </header>
       <div className="flex flex-col gap-2 p-3">
+        {/* 経由地(訪問順に名前を繋いだ概要。iOS の TripDayRow と同じく 2 行でクランプ) */}
+        {waypoints && (
+          <p className="line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
+            {waypoints}
+          </p>
+        )}
         {map.points.length > 0 && (
           <DayMap points={map.points} anchor={map.anchor} />
         )}

@@ -4,6 +4,7 @@
   例:シアトルからシカゴまでのプランを作成済み。そこにシアトルまで帰るプランを追加する
 
 - Web の地図にプランのルート(道路形状)を表示する [plan](docs/plans/web-plan-route.md)
+  ※ 上の距離は直線距離ベースの概算。Step 4 で道路距離に差し替える
   - [ ] Step 1: レグ組み立ての共通化 `lib/route-legs.ts`(`legKey` 移設)
   - [ ] Step 2: Server Action `resolveRouteLegsAction`
   - [ ] Step 3: クライアントフック `use-route-legs.ts`(チャンク解決 + キャッシュ)

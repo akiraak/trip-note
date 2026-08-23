@@ -1,3 +1,4 @@
+import { totalDistance } from "./geo";
 import type { CheckpointType } from "./types";
 
 // 日別プラン地図に載せるデータの組み立て。
@@ -49,6 +50,18 @@ function locatedPoints(day: SourceDay): DayMapPoint[] {
     });
   }
   return points;
+}
+
+/** その日の移動距離(メートル)。前泊地を起点に、訪問順のチェックポイントを結んだ**直線距離**。
+ *
+ *  iOS の `RouteLegDistance.totalMeters(legs:resolved:)` は解決済みレグを道路距離、
+ *  未解決レグを直線距離で足す。Web はまだレグを解決していない(`docs/plans/web-plan-route.md`)ので
+ *  全レグ未解決とみなした値 = iOS がレグ解決前に表示するのと同じ値になる。
+ *  どちらも概算なので表示は常に「約」を付ける。
+ *  結ぶ点が 1 つ以下(= レグが無い)なら 0(呼び出し側は距離を出さない) */
+export function dayDistanceMeters({ points, anchor }: DayMapData): number {
+  const route = anchor ? [anchor, ...points] : points;
+  return totalDistance(route);
 }
 
 /** 日ごとの地図データ(days と同じ順序・同じ件数で返す) */
