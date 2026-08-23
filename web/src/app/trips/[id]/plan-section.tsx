@@ -297,7 +297,7 @@ function DayCard({
             onClick={() => setMode(mode === "add-manual" ? null : "add-manual")}
             className="underline"
           >
-            {mode === "add-manual" ? "手入力を閉じる" : "+ 手入力で追加"}
+            {mode === "add-manual" ? "テキスト入力を閉じる" : "+ テキストを追加"}
           </button>
         </div>
       </div>

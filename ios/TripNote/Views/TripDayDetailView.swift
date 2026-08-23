@@ -112,7 +112,7 @@ struct TripDayDetailView: View {
                 Button {
                     showsManualAdd = true
                 } label: {
-                    Label("手入力で追加", systemImage: "plus")
+                    Label("テキストを追加", systemImage: "plus")
                 }
             }
             Section {

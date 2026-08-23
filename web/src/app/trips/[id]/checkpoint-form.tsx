@@ -6,7 +6,7 @@ import { CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import type { CheckpointInput } from "@/lib/plan";
 import { CHECKPOINT_TYPES, type CheckpointType } from "@/lib/types";
 
-// チェックポイントの追加(手入力)・編集の共通フォーム。
+// チェックポイントの追加(テキスト入力)・編集の共通フォーム。
 // 予定時刻の入力・表示はブラウザのローカルタイムゾーン(iOS と同じく端末基準)
 
 function toLocalInputValue(iso: string | null): string {

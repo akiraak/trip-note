@@ -2,6 +2,12 @@
 
 ## 2026-08-23
 
+- 「手入力で追加」が意味不明なので「テキストを追加」に変更する [plan](docs/plans/archive/rename-manual-add-label.md)
+  - 追加ボタンが「Google Maps のリンクから追加」と 2 つ並んだとき「手入力」が何を指すか分かりにくかった(リンクを手で貼るのも手入力に読める)ので、実際にやること = 名前などをテキストで打ち込む、に合わせて言い換えた
+  - Web `plan-section.tsx`: 「+ 手入力で追加」→「+ テキストを追加」、開いているときは「テキスト入力を閉じる」(隣の「リンク入力を閉じる」と対称)。iOS `TripDayDetailView`: 「手入力で追加」→「テキストを追加」
+  - 表示文言のみ。内部の `add-manual` / `showsManualAdd` と、予定時刻の「手入力 plannedTime」など別の意味の「手入力」は触っていない
+  - 検証: web vitest 116 件 + lint + build、iOS 136 件 + シミュレータビルド、Chrome でローカル dev の目視
+
 - チェックポイントの追加を Google Maps の共有とリンクの直接入力だけにする(他の検索機能を全て削除) [plan](docs/plans/archive/checkpoint-add-link-only.md)
   - 背景: 追加の入口が 4 つ(自由語検索・AI 検索補助・カテゴリ検索・Google Maps のリンク)に増えていたが、実際に使うのは Google Maps 経由だけだったので 3 つを UI・API・ライブラリ・テスト・ドキュメントごと削除した
   - Web: `/api/places/nearby`・`/api/ai/search-assist` と `lib/overpass.ts` / `lib/category-search.ts` / `lib/day-route.ts` / `search-assist.tsx` を削除、`actions.ts` の `searchPlacesAction` / `nearbyPlacesAction` / `searchAssistAction` と `lib/ai.ts` の search-assist 一式・`lib/format.ts` の `formatDistance` も削除。`place-search.tsx` → `place-link.tsx`(`PlaceLink`)にリネームしてリンク専用入力欄(「読み込む」→ 1 件の結果行 →「追加」)に。`lib/nominatim.ts` は resolve-link 用のジオコーダ(`searchPlaces(query)` → 座標)に縮小
