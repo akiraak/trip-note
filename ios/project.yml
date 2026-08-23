@@ -18,12 +18,23 @@ targets:
     platform: iOS
     sources:
       - TripNote
+    dependencies:
+      # 共有シートの「旅ログ」(Google Maps の共有を受け取る)。App Group 経由で本体に渡す
+      - target: TripNoteShare
+    entitlements:
+      path: TripNote/TripNote.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.akiraak.TripNote]
     info:
       path: TripNote/Info.plist
       properties:
         CFBundleDisplayName: 旅ログ
         UILaunchScreen: {}
         UIBackgroundModes: [location]
+        # Share Extension の「旅ログを開く」(tripnote://share)
+        CFBundleURLTypes:
+          - CFBundleURLName: com.akiraak.TripNote
+            CFBundleURLSchemes: [tripnote]
         # ローカル開発で Mac 上の dev サーバ(http)へ同期するための例外。本番は https
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -36,6 +47,37 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.akiraak.TripNote
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  # 共有シートに出る Share Extension。受け取った共有を App Group の受信箱に入れて
+  # 本体を開くだけ(SwiftData・サーバ設定には触らない)
+  TripNoteShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - TripNoteShare
+      # 本体と共用する純粋なロジック(URL の抜き出し・受信箱)
+      - path: TripNote/Domain/GoogleMapsShare.swift
+      - path: TripNote/Services/ShareInbox.swift
+    entitlements:
+      path: TripNoteShare/TripNoteShare.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.akiraak.TripNote]
+    info:
+      path: TripNoteShare/Info.plist
+      properties:
+        CFBundleDisplayName: 旅ログ
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # URL 1 件 or テキストの共有に出る(Google Maps 以外のテキストにも出るが、
+            # リンクが無ければ Extension 側でその旨を表示する)
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.akiraak.TripNote.Share
+        TARGETED_DEVICE_FAMILY: "1"
   TripNoteTests:
     type: bundle.unit-test
     platform: iOS

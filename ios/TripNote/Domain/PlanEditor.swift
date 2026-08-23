@@ -174,6 +174,26 @@ enum PlanEditor {
         return orders.max().map { $0 + 1 } ?? 0
     }
 
+    /// その日の末尾に入れる新規チェックポイント(挿入・保存は呼び出し側)。
+    /// 検索結果・共有された場所など「名前 + 座標 + 種別」が決まっているときに使う
+    static func makeCheckpoint(
+        name: String,
+        type: CheckpointType,
+        latitude: Double?,
+        longitude: Double?,
+        in day: TripDayEntity
+    ) -> CheckpointEntity {
+        CheckpointEntity(
+            type: type,
+            name: name,
+            latitude: latitude,
+            longitude: longitude,
+            sortOrder: nextSortOrder(in: day),
+            trip: day.trip,
+            tripDay: day
+        )
+    }
+
     /// 並べ替え後の配列を受け取り、位置が変わった行だけ sort_order を振り直す
     /// (変わらない行の updatedAt を無駄に進めて LWW で他方の編集を潰さないため)
     static func applyOrder(_ ordered: [CheckpointEntity], now: Date = Date()) {

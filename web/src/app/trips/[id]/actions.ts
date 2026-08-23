@@ -11,6 +11,11 @@ import {
 } from "@/lib/ai";
 import { isSearchCategory } from "@/lib/category-search";
 import { isViewbox, parseRouteInput } from "@/lib/day-route";
+import {
+  parseLinkInput,
+  resolveGoogleMapsLink,
+  type ResolvedGoogleMapsPlace,
+} from "@/lib/google-maps-share";
 import { searchPlaces, type Place } from "@/lib/nominatim";
 import {
   fetchNearbyPlaces,
@@ -167,6 +172,21 @@ export async function nearbyPlacesAction(
       throw new Error("経路に座標がありません");
     }
     return { ok: true, places: await fetchNearbyPlaces(category, parsedRoute) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export type ResolveLinkResult =
+  | { ok: true; place: ResolvedGoogleMapsPlace }
+  | { ok: false; error: string };
+
+/** Google Maps の共有リンク(短縮 URL / 場所ページの URL)から場所を取り出す */
+export async function resolveGoogleMapsLinkAction(
+  link: unknown,
+): Promise<ResolveLinkResult> {
+  try {
+    return { ok: true, place: await resolveGoogleMapsLink(parseLinkInput(link)) };
   } catch (error) {
     return failure(error);
   }

@@ -18,6 +18,8 @@ struct CheckpointSearchView: View {
     /// その日の経路(前泊地 + 訪問順 CP)。座標があれば検索範囲をこちらに寄せ、
     /// AI 検索補助にも文脈として渡す
     var route: [DayRoutePlace] = []
+    /// 開いたときに検索欄に入れて検索を実行する(共有された場所の名前など)。空なら何もしない
+    var initialQuery: String = ""
     let onSelect: (PlaceSelection) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -26,6 +28,8 @@ struct CheckpointSearchView: View {
     /// カテゴリ検索(「観光地」など)の結果。地名検索の結果とは排他
     @State private var nearbyResults: [NearbyPlace] = []
     @State private var nearbyCategory: SearchCategory?
+    /// Google Maps のリンクを貼ったときの結果(1 件)。他の結果とは排他
+    @State private var linkResult: ResolvedGoogleMapsPlace?
     @State private var isSearching = false
     @State private var message: String?
     @State private var showsAssist = false
@@ -41,7 +45,9 @@ struct CheckpointSearchView: View {
                 Section {
                     HStack {
                         TextField(
-                            canSearchNearby ? "場所を検索(例: 松本城、観光地)" : "場所を検索(例: 松本城)",
+                            canSearchNearby
+                                ? "場所名、または Google Maps のリンク(例: 松本城、観光地)"
+                                : "場所名、または Google Maps のリンク",
                             text: $query
                         )
                             .submitLabel(.search)
@@ -50,12 +56,34 @@ struct CheckpointSearchView: View {
                             ProgressView()
                         }
                     }
+                } footer: {
+                    Text("Google Maps の「共有」→「リンクをコピー」したものを貼ると、その場所を追加できます。Google Maps の共有シートから直接「旅ログ」を選ぶこともできます。")
                 }
                 assistSection
                 Section {
                     if let message {
                         Text(message)
                             .foregroundStyle(.secondary)
+                    }
+                    if let linkResult, let latitude = linkResult.latitude,
+                       let longitude = linkResult.longitude {
+                        Button {
+                            selectLink(linkResult, latitude: latitude, longitude: longitude)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(linkName(linkResult))
+                                Text(
+                                    linkResult.isCenterOnly
+                                        ? "Google Maps のリンク(地図の中心の位置。ピンとずれることがあります)"
+                                        : "Google Maps のリンク(ピンの位置)"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                     ForEach(nearbyResults) { place in
                         HStack(spacing: 12) {
@@ -109,6 +137,12 @@ struct CheckpointSearchView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }
                 }
+            }
+            .task {
+                let initial = initialQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !initial.isEmpty, query.isEmpty else { return }
+                query = initial
+                await search()
             }
         }
     }
@@ -255,11 +289,18 @@ struct CheckpointSearchView: View {
     }
 
     private func search() async {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         isSearching = true
         message = nil
         defer { isSearching = false }
+        if GoogleMapsShare.extractURL(from: trimmed) != nil {
+            results = []
+            nearbyResults = []
+            await searchLink(trimmed)
+            return
+        }
+        linkResult = nil
         if let category = SearchCategory.match(trimmed), canSearchNearby {
             results = []
             await searchNearby(category)
@@ -299,6 +340,52 @@ struct CheckpointSearchView: View {
             nearbyResults = []
             message = "検索に失敗しました: \(error.localizedDescription)"
         }
+    }
+
+    /// Google Maps の共有リンクをサーバで展開して 1 件の結果にする。
+    /// 座標が取れなければ名前で通常の検索に切り替える
+    private func searchLink(_ link: String) async {
+        guard let client = SyncClient.fromBundle() else {
+            message = "サーバが未設定のためリンクを解決できません(ServerConfig.plist を確認してください)"
+            return
+        }
+        do {
+            let place = try await client.resolveGoogleMapsLink(link)
+            if place.hasCoordinate {
+                linkResult = place
+                return
+            }
+            linkResult = nil
+            if let name = place.name, !name.isEmpty {
+                query = name
+                await search()
+                message = results.isEmpty
+                    ? "リンクから座標が取れず「\(name)」で検索しましたが見つかりませんでした"
+                    : "リンクから座標が取れなかったため「\(name)」で検索しました"
+            } else {
+                message = "リンクから場所を特定できませんでした"
+            }
+        } catch {
+            linkResult = nil
+            message = "リンクを解決できませんでした: \(error.localizedDescription)"
+        }
+    }
+
+    private func linkName(_ place: ResolvedGoogleMapsPlace) -> String {
+        if let name = place.name, !name.isEmpty { return name }
+        return GoogleMapsShare.nameHint(from: query) ?? "Google Maps の場所"
+    }
+
+    private func selectLink(_ place: ResolvedGoogleMapsPlace, latitude: Double, longitude: Double) {
+        onSelect(
+            PlaceSelection(
+                name: linkName(place),
+                latitude: latitude,
+                longitude: longitude,
+                suggestedType: .sightseeing
+            )
+        )
+        dismiss()
     }
 
     private func selectNearby(_ place: NearbyPlace) {

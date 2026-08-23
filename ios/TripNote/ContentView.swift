@@ -17,6 +17,10 @@ struct ContentView: View {
     /// NavigationLink が黙って無視され、タップしても遷移しない)
     @State private var path = NavigationPath()
     @State private var createdTrip: TripEntity?
+    /// Share Extension から受け取った共有(App Group の受信箱)。あれば取り込みシートを出す
+    @State private var pendingShare: PendingShare?
+    /// 取り込みシートが閉じたあとに遷移する追加先の日
+    @State private var shareDestinationDay: TripDayEntity?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -62,17 +66,60 @@ struct ContentView: View {
                 createdTrip = trip
             }
         }
+        .sheet(
+            item: $pendingShare,
+            onDismiss: {
+                // スワイプで閉じても同じ共有を出し直さない(取り込み済みなら remove 済みで無害)
+                if let day = shareDestinationDay, let trip = day.trip {
+                    shareDestinationDay = nil
+                    path = NavigationPath()
+                    path.append(trip)
+                    // 日詳細の navigationDestination は旅行画面の中にあるため、
+                    // 旅行画面が出てから日を積む
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(400))
+                        path.append(day)
+                    }
+                }
+                loadPendingShare()
+            }
+        ) { share in
+            SharedPlaceImportView(share: share, trips: trips) { day in
+                ShareInbox.shared.remove(id: share.id)
+                shareDestinationDay = day
+                pendingShare = nil
+            }
+        }
+        .onOpenURL { url in
+            // Share Extension の「旅ログを開く」(tripnote://share)
+            if url.scheme == "tripnote" {
+                loadPendingShare()
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             // 記録中はローカル優先(自動同期しない)。復帰時に未同期分をまとめて送る
-            if newPhase == .active, !recorder.isRecording {
-                Task { await sync.syncNow() }
+            if newPhase == .active {
+                loadPendingShare()
+                if !recorder.isRecording {
+                    Task { await sync.syncNow() }
+                }
             }
         }
         .task {
+            loadPendingShare()
             if !recorder.isRecording {
                 await sync.syncNow()
             }
         }
+    }
+
+    /// 受信箱の先頭の共有を取り込みシートに出す(表示中・作成シート中は何もしない)。
+    /// 出した共有は閉じた時点で受信箱から消す
+    private func loadPendingShare() {
+        guard pendingShare == nil, !showsTripCreate else { return }
+        guard let share = ShareInbox.shared.pending().first else { return }
+        ShareInbox.shared.remove(id: share.id)
+        pendingShare = share
     }
 
     @ViewBuilder

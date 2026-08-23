@@ -334,6 +334,49 @@ Web は同じ処理を Server Action(`nearbyPlacesAction`)で呼ぶ。
 - Overpass のタイムアウト等は HTTP 200 のまま `remark` に入るため、`remark` にエラーが
   あれば 500 として返す
 
+## POST /api/places/resolve-link
+
+Google Maps の共有リンク(iOS アプリの「共有」・ブラウザ版の「リンクをコピー」)から
+場所を取り出す。共有で渡ってくるのは場所名 + 短縮リンク(`https://maps.app.goo.gl/…`)
+だけで、座標は短縮リンクを展開した先の URL に入っているため、展開とパースをサーバで
+行う(`web/src/lib/google-maps-share.ts`。形式が非公式で変わり得るので 1 箇所に置き、
+iOS もこの API を使う)。認証は Bearer、Web は同じ処理を Server Action
+(`resolveGoogleMapsLinkAction`)で呼ぶ。
+
+リクエスト:
+
+```json
+{ "link": "松本城\nhttps://maps.app.goo.gl/XXXX" }
+```
+
+- `link` は共有テキストそのもの(場所名 + URL)でも URL 単体でもよい(最大 4000 文字)。
+  中から Google Maps の URL(許可ホスト: `maps.app.goo.gl` / `goo.gl` / `share.google` /
+  `maps.google.com` / `www.google.com` / `google.co.jp` 系)を 1 つ取り出す。無ければ 400
+
+レスポンス:
+
+```json
+{
+  "place": {
+    "name": "松本城", "latitude": 36.238653, "longitude": 137.9688674,
+    "precision": "pin",
+    "resolvedUrl": "https://www.google.com/maps/place/%E6%9D%BE%E6%9C%AC%E5%9F%8E/@36.238653,137.9688674,17z/data=...!8m2!3d36.238653!4d137.9688674..."
+  }
+}
+```
+
+- `precision` は `pin`(`!3d<lat>!4d<lng>` または `q=<lat>,<lng>` のピン座標)/
+  `center`(`@<lat>,<lng>` の地図の表示中心。ピンとずれることがある)/ null(座標が
+  取れなかった)。座標が無くても名前が取れれば 200 で返し、クライアントは名前で
+  通常の検索にフォールバックする。名前も座標も取れなければ 500
+- 経路のリンク(`/maps/dir/`)は 500(「経路のリンクは取り込めません」)
+- 短縮リンクは `redirect: manual` で最大 5 ホップ追い、**転送先も許可ホストの https のみ**
+  (SSRF 対策。`consent.google.com` などへ飛んだら失敗)。タイムアウト 10 秒、
+  User-Agent は Nominatim と同じ。**座標は展開後の URL からのみ取る**(ページ本文の
+  og:image などに出る座標は接続元 IP から推定した既定の地図中心で場所と無関係なため使わない)
+- 座標入りの長い URL はサーバから取得せずにパースだけで返す。同じリンクは 24 時間キャッシュ
+- チェックポイントの種別はクライアント側で一律 `sightseeing`
+
 ## POST /api/route
 
 道路ルート解決。プランのルートを「隣接チェックポイント間のレグ(区間)」の集合として

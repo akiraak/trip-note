@@ -2,6 +2,15 @@
 
 ## 2026-08-23
 
+- Google Maps で場所を検索したあとの共有から受け取れるように(+ Web 版 Google Maps の URL をチェックポイントに追加できるように) [plan](docs/plans/archive/google-maps-share-import.md)
+  - 方式: リンクの解決は サーバ `POST /api/places/resolve-link`(Bearer)+ Server Action に 1 本化(`lib/google-maps-share.ts`。短縮リンク `maps.app.goo.gl` の転送を許可ホスト限定で最大 5 ホップ追い、展開後 URL の `!3d!4d`(ピン)→ `q=lat,lng` → `@lat,lng`(表示中心)の順で座標、`/maps/place/<名前>` から名前。座標が取れなければ名前だけ返し、クライアントが名前検索にフォールバック。同じリンクは 24 時間キャッシュ)。**ページ本文の座標(og:image の staticmap center)は接続元 IP の既定の地図中心(シアトル)で場所と無関係と判明したので使わない**
+  - Web: 検索欄(`PlaceSearch`)に Google Maps のリンクを貼ると 1 件の結果(「Google Maps のリンク(ピンの位置)」)として出て「追加」できる。プレースホルダと検索欄直下の補足文で貼れることを明記
+  - iOS 本体: `SharedPlaceImportView`(取り込みシート: 名前・種別・小地図・旅行 / 日の選択・「検索で位置を決める」)、App Group の受信箱 `ShareInbox`(`group.com.akiraak.TripNote`)を起動 / 復帰 / `tripnote://share` で読んでシートを出す。検索欄(`CheckpointSearchView`)へのリンク貼り付けにも対応し、プレースホルダ + footer で明記。CP 生成は `PlanEditor.makeCheckpoint` に共通化
+  - iOS Share Extension: 新ターゲット `TripNoteShare`(共有シートの「旅ログ」。URL / テキストを受信箱に入れて「旅ログを開く」= responder chain の `openURL:` 回避策)。`project.yml` に URL スキーム・App Group entitlements・Extension 埋め込みを追加、生成物(Info.plist / entitlements)は gitignore。`run-ios-device.sh` に `-allowProvisioningUpdates`
+  - `docs/specs/server-api.md` と g3plus-ops の運用ドキュメント(外向き通信先に Google のホスト追加)を更新
+  - 検証: web vitest 136 件(google-maps-share 21 件新規)+ lint + build、ローカル dev サーバの E2E(実物の場所ページ URL → 松本城 36.238653,137.9688674 / 名前だけの `?q=` → 名前のみ / 経路リンク・非 Google・未認証のエラー)、Chrome で Web の検索欄にリンク貼り付け → 1 件表示、iOS ユニットテスト 146 件(新規 16 件)+ Share Extension 込みのシミュレータビルド、シミュレータの App Group に共有を仕込んで起動 → 取り込みシートが開くことを確認
+  - **未検証**: 実機の Google Maps アプリからの共有(短縮リンクの実際の展開先・共有シートに「旅ログ」が出ること・「旅ログを開く」の回避策が効くこと)。App Group の capability 登録で初回は Xcode から実機ビルドした方が確実
+
 - プランの日毎の検索に「観光地」と入れると、その日の経路の近くの観光地の情報が出てくるようにする [plan](docs/plans/archive/checkpoint-nearby-sightseeing.md)
   - 方式: OSM Overpass API をサーバでプロキシ(`lib/overpass.ts`)し iOS / Web 共通の `POST /api/places/nearby`(Bearer)+ Server Action に。経路(座標あり地点の折れ線)から半径 15km を `around:` で検索、設定行の `[bbox:]` で全体を絞る(bbox 無しだと relation の around で 16 秒タイムアウト → bbox ありで 2〜3 秒)。有名どころ(wikipedia / wikidata タグ)→ 種類の重み(城・主要スポット > 博物館・寺社 > 記念碑)→ 経路から近い順に最大 30 件。寺社・滝・温泉は wikipedia 付きのみ、山頂(`natural=peak`)は北アルプスで埋まるため対象外
   - 検索欄の「観光地 / 観光 / 観光スポット / 名所」(完全一致)でカテゴリ検索に切り替え(判定表は `lib/category-search.ts` / `Domain/CategorySearch.swift`)。結果は種類ラベル・最寄り経路地点からの距離・Wikipedia / 公式サイトのリンク付きで、追加操作は従来の一覧選択のまま。経路に座標が無い日は Web はメッセージ、iOS は MapKit 検索にフォールバック

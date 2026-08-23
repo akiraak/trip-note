@@ -46,12 +46,15 @@ echo "==> Xcode プロジェクトを生成 (DEVELOPMENT_TEAM=${TEAM})"
 DEVELOPMENT_TEAM="$TEAM" xcodegen generate
 
 echo "==> ビルド"
+# -allowProvisioningUpdates: App Group(Share Extension との受け渡し)の capability を
+# App ID に登録してプロファイルを更新するため(Xcode に Apple ID でログイン済みが前提)
 xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -configuration Debug \
   -destination "generic/platform=iOS" \
   -derivedDataPath "$DERIVED_DATA" \
+  -allowProvisioningUpdates \
   -quiet \
   build
 

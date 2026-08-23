@@ -168,14 +168,12 @@ struct TripDayDetailView: View {
 
     /// 検索結果はそのまま追加する(種別は POI カテゴリから推測。行タップで直せる)
     private func addCheckpoint(from place: PlaceSelection) {
-        let checkpoint = CheckpointEntity(
-            type: place.suggestedType,
+        let checkpoint = PlanEditor.makeCheckpoint(
             name: place.name,
+            type: place.suggestedType,
             latitude: place.latitude,
             longitude: place.longitude,
-            sortOrder: PlanEditor.nextSortOrder(in: day),
-            trip: day.trip,
-            tripDay: day
+            in: day
         )
         modelContext.insert(checkpoint)
         try? modelContext.save()

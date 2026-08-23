@@ -47,6 +47,20 @@ extension SyncClient {
         return response.places
     }
 
+    /// 短縮リンクの展開はサーバ側で最大 10 秒 × 数ホップ
+    private static let resolveLinkTimeout: TimeInterval = 60
+
+    /// Google Maps の共有リンク(共有テキストでも可)から場所を取り出す。
+    /// URL の形式が変わってもサーバ側だけで直せるよう、パースはサーバに寄せている
+    func resolveGoogleMapsLink(_ link: String) async throws -> ResolvedGoogleMapsPlace {
+        let response: ResolveLinkResponse = try await postAI(
+            path: "api/places/resolve-link",
+            body: ResolveLinkRequest(link: link),
+            timeout: Self.resolveLinkTimeout
+        )
+        return response.place
+    }
+
     /// ジョブを登録して完了までポーリングする。アプリ切替の瞬間などの一時的な
     /// 通信エラーは無視して続行し(登録は id 冪等なので再送も安全)、サーバが
     /// 明示的にエラーを返したとき(バリデーション・生成失敗など)だけ即失敗する
