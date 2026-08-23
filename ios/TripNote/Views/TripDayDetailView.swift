@@ -215,10 +215,12 @@ struct TripDayDetailView: View {
     }
 
     private var dayTitle: String {
+        let date = PlanEditor.displayDate(day.date)
         if let index = day.trip?.sortedDays.firstIndex(where: { $0.id == day.id }) {
-            return "\(index + 1)日目"
+            return "\(index + 1)日目 · \(date)"
         }
-        return "プラン"
+        // 旅行に紐付いておらず番号が出せないときは日付だけ
+        return date
     }
 
     private var displayDate: String {

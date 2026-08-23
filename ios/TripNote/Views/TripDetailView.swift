@@ -505,8 +505,7 @@ private struct TripDayRow: View {
     }
 
     private var dateText: String {
-        guard let date = PlanEditor.parseDate(day.date) else { return day.date }
-        return date.formatted(.dateTime.month().day().weekday())
+        PlanEditor.displayDate(day.date)
     }
 }
 

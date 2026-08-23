@@ -110,7 +110,7 @@ struct AIPlanSuggestView: View {
                     }
                 }
             } header: {
-                Text("\(index + 1)日目 \(displayDate(day.date)) \(day.title)")
+                Text("\(index + 1)日目 \(PlanEditor.displayDate(day.date)) \(day.title)")
             }
         }
         Section {
@@ -171,10 +171,5 @@ struct AIPlanSuggestView: View {
 
     private func trimmed(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func displayDate(_ dateString: String) -> String {
-        guard let date = PlanEditor.parseDate(dateString) else { return dateString }
-        return date.formatted(.dateTime.month().day().weekday())
     }
 }

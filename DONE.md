@@ -2,6 +2,13 @@
 
 ## 2026-08-23
 
+- プランの「N日目」の横の日付表示を揃える(Aug 25 形式) [plan](docs/plans/archive/plan-day-date-label.md)
+  - 日付自体は iOS のプラン一覧・Web の日カード・AI 提案プレビューに既に出ていたが、書式がばらばら(iOS は端末ロケール依存の「8月25日(月)」、Web は「8/25(月)」)で、iOS の日詳細タイトルだけ日付が無かった
+  - 書式は `Aug 25` に統一。ロケール依存で揺れないよう iOS は `en_US_POSIX` + `MMM d`、Web は `en-US` の `month: short` 固定。曜日と年は出さない(「N日目」と併記するラベルなので)
+  - iOS: `PlanEditor.displayDate(_:)` を追加して一覧(`TripDayRow`)・AI 提案プレビューから共用し、日詳細のタイトルを「1日目 · Aug 25」に。日詳細の「日付」行は年つき(2026年8月25日(月))のまま残した
+  - Web: `lib/format.ts` の `formatDay` を差し替え(呼び出し側は変更なし)。`trip_days.date` を表示 TZ でずらさない UTC 固定はそのまま
+  - 検証: web vitest 129 件(`format.test.ts` を新設)+ lint + build、iOS ユニットテスト 144 件 + シミュレータビルド、ローカル dev のレンダリング確認(「1日目 Aug 21」)
+
 - プランの途中の日を追加できる / 特定の日を削除すると後続が 1 日前にずれる [plan](docs/plans/archive/plan-day-insert-delete.md)
   - 日の順序は `trip_days.date` だけで決まる(順序カラム無し・「N日目」は並び順の index)ので、途中への差し込み・途中の削除は**後続の日の date を ±1 日ずらす**実装にした。`checkpoints.planned_time` は日付込みの絶対時刻なので同じ日数だけ一緒にずらす(`departure_time` は "HH:MM" なので触らない)
   - 共通ロジック: iOS `PlanEditor.shiftDays(after:by:)` / `insertedDay(after:)` / `deleteShiftingFollowing(_:)`、Web `lib/plan.ts` の `shiftDaysAfter` / `insertTripDayAfter` / `deleteTripDay`(削除に -1 日シフトを追加)。ずらした行だけ `updated_at` を進める(変わらない行を進めて LWW で他方の編集を潰さないため)

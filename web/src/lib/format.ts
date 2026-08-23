@@ -16,11 +16,11 @@ const timeFormat = new Intl.DateTimeFormat("ja-JP", {
   timeZone: TIME_ZONE,
 });
 
-// trip_days.date (YYYY-MM-DD) 用。日付だけの値を表示 TZ でずらさないよう UTC で整形する
-const dayFormat = new Intl.DateTimeFormat("ja-JP", {
-  month: "numeric",
+// trip_days.date (YYYY-MM-DD) 用。日付だけの値を表示 TZ でずらさないよう UTC で整形する。
+// 「N日目」と併記するラベルなので月日だけ(iOS の PlanEditor.displayDate と同じ書式)
+const dayFormat = new Intl.DateTimeFormat("en-US", {
+  month: "short",
   day: "numeric",
-  weekday: "short",
   timeZone: "UTC",
 });
 
@@ -28,7 +28,7 @@ export function formatDateTime(iso: string): string {
   return dateTimeFormat.format(new Date(iso));
 }
 
-/** YYYY-MM-DD → 例: 9/1(火) */
+/** YYYY-MM-DD → 例: Sep 1 */
 export function formatDay(dateString: string): string {
   return dayFormat.format(new Date(`${dateString}T00:00:00Z`));
 }

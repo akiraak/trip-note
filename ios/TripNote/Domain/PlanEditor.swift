@@ -37,6 +37,19 @@ enum PlanEditor {
         return Self.dateString(next, calendar: calendar)
     }
 
+    /// 一覧やタイトルに「N日目」と併記する日付ラベル(例: Aug 25)。
+    /// 端末のロケールで表示が揺れないよう en_US_POSIX 固定。
+    /// パースできなければ入力をそのまま返す
+    static func displayDate(_ dateString: String, calendar: Calendar = .current) -> String {
+        guard let date = parseDate(dateString, calendar: calendar) else { return dateString }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
+    }
+
     /// trip_days の表示や AI 候補出しに使う HH:mm 形式に変換する
     static func timeString(_ date: Date, calendar: Calendar = .current) -> String {
         let formatter = DateFormatter()

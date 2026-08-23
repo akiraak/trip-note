@@ -36,6 +36,13 @@ struct PlanEditorTests {
         #expect(PlanEditor.nextDate(after: "壊れた値", calendar: calendar) == nil)
     }
 
+    @Test func displayDateはロケールによらずAug25形式を返す() {
+        #expect(PlanEditor.displayDate("2026-08-25", calendar: calendar) == "Aug 25")
+        #expect(PlanEditor.displayDate("2026-09-05", calendar: calendar) == "Sep 5")
+        // パースできない値はそのまま返す
+        #expect(PlanEditor.displayDate("壊れた値", calendar: calendar) == "壊れた値")
+    }
+
     @Test func parseDateとdateStringは往復する() {
         let parsed = PlanEditor.parseDate("2026-09-01", calendar: calendar)
         #expect(parsed != nil)
