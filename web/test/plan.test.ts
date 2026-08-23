@@ -8,6 +8,7 @@ import {
   addTripDay,
   adoptPlanSuggestion,
   createCheckpoint,
+  createTrip,
   deleteCheckpoint,
   deleteTrip,
   deleteTripDay,
@@ -18,6 +19,7 @@ import {
   updateCheckpoint,
   updateTripDay,
   type CheckpointInput,
+  type TripInput,
 } from "@/lib/plan";
 import type { Checkpoint, Trip, TripDay } from "@/lib/types";
 
@@ -129,6 +131,103 @@ describe("nextDate", () => {
 
   it("YYYY-MM-DD 以外は拒否する", () => {
     expect(() => nextDate("2026/09/01")).toThrow();
+  });
+});
+
+describe("createTrip", () => {
+  const tripInput = (over: Partial<TripInput> = {}): TripInput => ({
+    title: "松本旅行",
+    departure_date: "2026-09-01",
+    departure_time: "09:00",
+    destination: "上高地",
+    departure_place: { name: "自宅", latitude: 35.6, longitude: 139.7 },
+    ...over,
+  });
+
+  function daysOf(tripId: string): TripDay[] {
+    return getDb()
+      .prepare("select * from trip_days where trip_id = ? order by date")
+      .all(tripId) as TripDay[];
+  }
+
+  function checkpointsOf(tripId: string): Checkpoint[] {
+    return getDb()
+      .prepare("select * from checkpoints where trip_id = ? order by sort_order")
+      .all(tripId) as Checkpoint[];
+  }
+
+  it("プラン中の旅行と 1 日目・出発チェックポイントを作る", () => {
+    const trip = createTrip(tripInput());
+    expect(trip.title).toBe("松本旅行");
+    // 出発日時は表示 TZ の壁時計(2026-09-01 09:00 PDT = 16:00Z)
+    expect(trip.departure_at).toBe("2026-09-01T16:00:00.000Z");
+    expect(trip.destination).toBe("上高地");
+    expect(trip.transport).toBe("car");
+    expect(trip.started_at).toBeNull();
+    expect(trip.ended_at).toBeNull();
+    expect(trip.deleted_at).toBeNull();
+
+    const days = daysOf(trip.id);
+    expect(days).toHaveLength(1);
+    // 1 日目は入力した日付そのもの(表示 TZ で変換し直さない)
+    expect(days[0].date).toBe("2026-09-01");
+    expect(days[0].updated_at).toBe(trip.updated_at);
+
+    const checkpoints = checkpointsOf(trip.id);
+    expect(checkpoints).toHaveLength(1);
+    expect(checkpoints[0]).toMatchObject({
+      trip_day_id: days[0].id,
+      type: "departure",
+      name: "自宅",
+      latitude: 35.6,
+      longitude: 139.7,
+      planned_time: trip.departure_at,
+      sort_order: 0,
+    });
+  });
+
+  it("冬時間の出発日時も表示 TZ の壁時計として変換する", () => {
+    const trip = createTrip(
+      tripInput({ departure_date: "2026-12-01", departure_time: "09:00" }),
+    );
+    // 12-01 は PST (UTC-8)
+    expect(trip.departure_at).toBe("2026-12-01T17:00:00.000Z");
+    expect(daysOf(trip.id)[0].date).toBe("2026-12-01");
+  });
+
+  it("出発地が無ければチェックポイントを作らない", () => {
+    const trip = createTrip(tripInput({ departure_place: null }));
+    expect(daysOf(trip.id)).toHaveLength(1);
+    expect(checkpointsOf(trip.id)).toHaveLength(0);
+  });
+
+  it("出発地の座標が無くてもチェックポイントは作る", () => {
+    const trip = createTrip(
+      tripInput({
+        departure_place: { name: " 自宅 ", latitude: null, longitude: null },
+      }),
+    );
+    const checkpoints = checkpointsOf(trip.id);
+    expect(checkpoints).toHaveLength(1);
+    expect(checkpoints[0].name).toBe("自宅");
+    expect(checkpoints[0].latitude).toBeNull();
+  });
+
+  it("目的地の空文字は null にする", () => {
+    const trip = createTrip(tripInput({ destination: "   " }));
+    expect(trip.destination).toBeNull();
+  });
+
+  it("タイトル・日付・時刻が不正なら作らない", () => {
+    expect(() => createTrip(tripInput({ title: "  " }))).toThrow();
+    expect(() =>
+      createTrip(tripInput({ departure_date: "2026/09/01" })),
+    ).toThrow();
+    expect(() => createTrip(tripInput({ departure_time: "25:00" }))).toThrow();
+    // 失敗した作成は行を残さない
+    expect(getDb().prepare("select count(*) as n from trips").get()).toEqual({
+      n: 0,
+    });
   });
 });
 

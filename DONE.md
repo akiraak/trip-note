@@ -2,6 +2,15 @@
 
 ## 2026-08-23
 
+- Web から旅行を作成できるようにする [plan](docs/plans/archive/web-create-trip.md)
+  - これまで旅行の新規作成は iOS の `TripCreateView` だけで、Web は導線どころか作成処理自体が無かった(`insert into trips` は `/api/sync` と マイグレーションのみ)
+  - `lib/plan.ts` に `createTrip` を追加。iOS の `PlanEditor.makeTrip` と同じく、プラン中の旅行(`started_at` は null、`transport` は car 固定)+ 出発日の 1 日目 + 出発地を入れたときだけ `departure` チェックポイント(`planned_time` = 出発日時、`sort_order` 0)を 1 トランザクションで作る
+  - 出発日時は日付 (`YYYY-MM-DD`) と時刻 (`HH:mm`) を分けて送り、サーバ側で表示 TZ (America/Los_Angeles) の壁時計として ISO に変換する(ブラウザのローカル TZ で解釈すると入力した日付と 1 日目の日付がずれ得るため)。DST はオフセット差分で補正
+  - `/trips/new`(作成フォーム + `createTripAction`)を新設し、トップに「旅行を作成」ボタンと空状態の文言修正を追加。出発地は既存の `PlaceLink` を再利用して Google Maps のリンクから座標も入れられる
+  - スキーマ・同期は変更なし(`/api/sync/pull` が返し、iOS の `PlanPull.makeTrip` が未知の trip を新規作成する)
+  - 残: 作成後の AI 日数・宿泊地候補ステップ(iOS の trip_outline 相当)は Web 未実装のため TODO に切り出し
+  - 検証: web vitest 135 件(`createTrip` のケースを追加)+ lint + build、dev サーバでトップ → 作成 → 旅行画面(1日目 Aug 23 に出発「自宅」)まで手動確認
+
 - プランの「N日目」の横の日付表示を揃える(Aug 25 形式) [plan](docs/plans/archive/plan-day-date-label.md)
   - 日付自体は iOS のプラン一覧・Web の日カード・AI 提案プレビューに既に出ていたが、書式がばらばら(iOS は端末ロケール依存の「8月25日(月)」、Web は「8/25(月)」)で、iOS の日詳細タイトルだけ日付が無かった
   - 書式は `Aug 25` に統一。ロケール依存で揺れないよう iOS は `en_US_POSIX` + `MMM d`、Web は `en-US` の `month: short` 固定。曜日と年は出さない(「N日目」と併記するラベルなので)

@@ -28,10 +28,19 @@ export default function Home() {
     <>
       <Header />
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
-        <h1 className="mb-6 text-xl font-semibold">旅行</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-xl font-semibold">旅行</h1>
+          <Link
+            href="/trips/new"
+            className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white dark:bg-zinc-200 dark:text-zinc-900"
+          >
+            旅行を作成
+          </Link>
+        </div>
         {trips.length === 0 ? (
           <p className="text-zinc-500 dark:text-zinc-400">
-            まだ記録がありません。iOS アプリで記録して同期するとここに表示されます。
+            まだ旅行がありません。「旅行を作成」から始めるか、iOS
+            アプリで記録して同期するとここに表示されます。
           </p>
         ) : (
           <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">

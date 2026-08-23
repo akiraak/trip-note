@@ -52,6 +52,18 @@ export function dateStringOf(date: Date): string {
   return dateStringFormat.format(date);
 }
 
+// 表示タイムゾーンでの HH:mm
+const timeStringFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  hourCycle: "h23",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export function timeStringOf(date: Date): string {
+  return timeStringFormat.format(date);
+}
+
 // 表示タイムゾーンでの日時の各要素(UTC オフセットの算出用)
 const tzPartsFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: TIME_ZONE,
@@ -93,6 +105,22 @@ export function shiftIsoByDays(iso: string, offsetDays: number): string {
     naive.getTime() + (tzOffsetMs(date) - tzOffsetMs(naive)),
   );
   return corrected.toISOString();
+}
+
+/** 表示タイムゾーンの壁時計(YYYY-MM-DD + HH:mm)を ISO8601 の瞬間にする。
+ *  ブラウザのローカル TZ で解釈すると入力した日付と 1 日目の日付がずれ得るため、
+ *  作成フォームの出発日時はこちらで解釈する。オフセットは瞬間ごとに変わる(DST)ので
+ *  一度当たりを付けてから引き直す */
+function isoFromLocalWallClock(dateString: string, timeString: string): string {
+  if (!DATE_RE.test(dateString)) {
+    throw new Error(`不正な日付です: ${dateString}`);
+  }
+  if (!TIME_RE.test(timeString)) {
+    throw new Error(`不正な時刻です: ${timeString}`);
+  }
+  const wallClock = new Date(`${dateString}T${timeString}:00Z`);
+  const guess = new Date(wallClock.getTime() - tzOffsetMs(wallClock));
+  return new Date(wallClock.getTime() - tzOffsetMs(guess)).toISOString();
 }
 
 function getTrip(tripId: string): Trip {
@@ -142,6 +170,94 @@ function validateInput(input: CheckpointInput): CheckpointInput {
     planned_time: input.planned_time || null,
     note: input.note?.trim() || null,
   };
+}
+
+/** 旅行の作成入力(iOS の TripCreateView と同じ項目)。移動手段は車固定なので持たない */
+export type TripInput = {
+  title: string;
+  /** 出発日 (YYYY-MM-DD)。表示タイムゾーンの壁時計で解釈し、1 日目の日付になる */
+  departure_date: string;
+  /** 出発時刻 (HH:mm) */
+  departure_time: string;
+  destination: string | null;
+  /** 出発地。null なら出発チェックポイントを作らない(座標はリンクから取れたときだけ) */
+  departure_place: {
+    name: string;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
+};
+
+// 移動手段は車固定(iOS の TripCreateView と同じ。選択 UI は持たない)
+const DEFAULT_TRANSPORT = "car";
+
+/** 旅行を作成する。出発日の 1 日目だけを作り(日数は作成時に決めない)、
+ *  出発地が入力されていれば 1 日目の先頭に出発チェックポイントを置く。
+ *  started_at / ended_at は null のまま(= プラン中)。
+ *  iOS 側 Domain/PlanEditor.makeTrip と対応 */
+export function createTrip(input: TripInput): Trip {
+  const title = input.title.trim();
+  if (!title) throw new Error("タイトルを入力してください");
+  const departureAt = isoFromLocalWallClock(
+    input.departure_date,
+    input.departure_time,
+  );
+  const place = input.departure_place;
+  const departure = place
+    ? validateInput({
+        type: "departure",
+        name: place.name,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        planned_time: departureAt,
+        note: null,
+      })
+    : null;
+  const db = getDb();
+  const now = nowIso();
+  const tripId = randomUUID();
+  const dayId = randomUUID();
+  db.transaction(() => {
+    db.prepare(
+      `insert into trips
+         (id, title, started_at, ended_at, transport, departure_at, destination, updated_at)
+       values
+         (@id, @title, null, null, @transport, @departure_at, @destination, @updated_at)`,
+    ).run({
+      id: tripId,
+      title,
+      transport: DEFAULT_TRANSPORT,
+      departure_at: departureAt,
+      destination: input.destination?.trim() || null,
+      updated_at: now,
+    });
+    db.prepare(
+      `insert into trip_days (id, trip_id, date, updated_at)
+       values (@id, @trip_id, @date, @updated_at)`,
+    ).run({
+      id: dayId,
+      trip_id: tripId,
+      date: input.departure_date,
+      updated_at: now,
+    });
+    if (departure) {
+      db.prepare(
+        `insert into checkpoints
+           (id, trip_id, trip_day_id, type, name, latitude, longitude,
+            planned_time, note, sort_order, updated_at)
+         values
+           (@id, @trip_id, @trip_day_id, @type, @name, @latitude, @longitude,
+            @planned_time, @note, 0, @updated_at)`,
+      ).run({
+        id: randomUUID(),
+        trip_id: tripId,
+        trip_day_id: dayId,
+        ...departure,
+        updated_at: now,
+      });
+    }
+  })();
+  return getTrip(tripId);
 }
 
 /** 最終日の翌日を追加する。日が 1 つも無ければ started_at(未出発なら今日)の日付 */
