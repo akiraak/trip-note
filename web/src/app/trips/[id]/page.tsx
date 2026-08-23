@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Header } from "../../header";
 import { DeleteTrip } from "./delete-trip";
+import { EditTrip } from "./edit-trip";
+import { EndTrip } from "./end-trip";
 import { PlanSection, type PlanDay } from "./plan-section";
 import { TripMap } from "./trip-map";
 import { getDb } from "@/lib/db";
-import { formatDateTime, formatPointTime } from "@/lib/format";
-import { dateStringOf } from "@/lib/plan";
+import { formatDateTime, formatPointTime, TIME_ZONE } from "@/lib/format";
+import { dateStringOf, timeStringOf } from "@/lib/plan";
 import { formatDistance, totalDistance } from "@/lib/geo";
 import {
   tripStatus,
@@ -96,6 +98,14 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
     departure:
       planDays[0]?.checkpoints.find((c) => c.type === "departure")?.name ?? "",
   };
+  // 編集フォームの初期値。出発予定は表示 TZ の壁時計に割って渡す(保存時も同じ扱い)
+  const departureDate = trip.departure_at ? new Date(trip.departure_at) : null;
+  const editInitial = {
+    title: trip.title,
+    departureDate: departureDate ? dateStringOf(departureDate) : null,
+    departureTime: departureDate ? timeStringOf(departureDate) : null,
+    destination: trip.destination ?? "",
+  };
   const checkpointMarkers = checkpoints
     .filter((c) => c.latitude !== null && c.longitude !== null)
     .map((c) => ({
@@ -129,6 +139,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             </span>
           )}
         </h1>
+        <EditTrip tripId={trip.id} initial={editInitial} timeZone={TIME_ZONE} />
         {(points.length > 0 || checkpointMarkers.length > 0) && (
           <div className="mb-6">
             <TripMap
@@ -180,6 +191,8 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             <dd>{formatDistance(distance)}</dd>
           </div>
         </dl>
+        {/* 終了は進行中のときだけ(iOS の TripDetailView と同じ条件・同じ位置) */}
+        {status === "in_progress" && <EndTrip tripId={trip.id} />}
         <h2 className="mb-2 font-medium">プラン</h2>
         <div className="mb-8">
           <PlanSection

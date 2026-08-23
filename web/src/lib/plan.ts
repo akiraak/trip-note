@@ -260,6 +260,62 @@ export function createTrip(input: TripInput): Trip {
   return getTrip(tripId);
 }
 
+/** 旅行の編集入力(iOS の TripEditView と同じ項目)。移動手段は車固定なので持たない */
+export type TripEditInput = {
+  title: string;
+  /** 出発日 (YYYY-MM-DD)。null なら出発予定を消す */
+  departure_date: string | null;
+  /** 出発時刻 (HH:mm)。departure_date があるときだけ使う */
+  departure_time: string | null;
+  destination: string | null;
+};
+
+/** 旅行のタイトル・出発予定・目的地を編集する(iOS 側 TripEditView.save と対応)。
+ *  プランの日付は動かさない(1 日目の日付は作成時に決まる。iOS も同じ) */
+export function updateTrip(tripId: string, input: TripEditInput): Trip {
+  getTrip(tripId);
+  const title = input.title.trim();
+  if (!title) throw new Error("タイトルを入力してください");
+  // 出発日時は日付 + 時刻を表示 TZ の壁時計として解釈する(createTrip と同じ)
+  const departureAt = input.departure_date
+    ? isoFromLocalWallClock(input.departure_date, input.departure_time || "00:00")
+    : null;
+  getDb()
+    .prepare(
+      `update trips set
+         title = @title, transport = @transport, departure_at = @departure_at,
+         destination = @destination, updated_at = @now
+       where id = @id`,
+    )
+    .run({
+      id: tripId,
+      title,
+      // 移動手段は車固定。古い旅行の null もここで揃える(iOS の TripEditView と同じ)
+      transport: DEFAULT_TRANSPORT,
+      departure_at: departureAt,
+      destination: input.destination?.trim() || null,
+      now: nowIso(),
+    });
+  return getTrip(tripId);
+}
+
+/** 旅行を終了する(iOS 側 LocationRecorder.endTrip と対応。Web は記録しないので
+ *  ended_at を入れるだけ)。iOS も進行中のときしかボタンを出さない */
+export function endTrip(tripId: string): Trip {
+  const trip = getTrip(tripId);
+  if (trip.started_at === null) {
+    throw new Error("まだ出発していない旅行は終了できません");
+  }
+  if (trip.ended_at !== null) {
+    throw new Error("すでに終了している旅行です");
+  }
+  const now = nowIso();
+  getDb()
+    .prepare("update trips set ended_at = @now, updated_at = @now where id = @id")
+    .run({ id: tripId, now });
+  return getTrip(tripId);
+}
+
 /** 最終日の翌日を追加する。日が 1 つも無ければ started_at(未出発なら今日)の日付 */
 export function addTripDay(tripId: string): TripDay {
   const trip = getTrip(tripId);

@@ -13,14 +13,17 @@ import {
   deleteCheckpoint,
   deleteTrip,
   deleteTripDay,
+  endTrip,
   insertTripDayAfter,
   moveCheckpoint,
   nextDate,
   shiftIsoByDays,
   updateCheckpoint,
+  updateTrip,
   updateTripDay,
   type AdoptOutline,
   type CheckpointInput,
+  type TripEditInput,
   type TripInput,
 } from "@/lib/plan";
 import type { Checkpoint, Trip, TripDay } from "@/lib/types";
@@ -48,14 +51,15 @@ function seedTrip(over: Record<string, unknown> = {}) {
   getDb()
     .prepare(
       `insert into trips
-         (id, title, started_at, departure_at, destination, deleted_at, updated_at)
+         (id, title, started_at, ended_at, departure_at, destination, deleted_at, updated_at)
        values
-         (@id, @title, @started_at, @departure_at, @destination, @deleted_at, @updated_at)`,
+         (@id, @title, @started_at, @ended_at, @departure_at, @destination, @deleted_at, @updated_at)`,
     )
     .run({
       id: "trip-1",
       title: "松本旅行",
       started_at: null,
+      ended_at: null,
       departure_at: null,
       destination: null,
       deleted_at: null,
@@ -234,6 +238,98 @@ describe("createTrip", () => {
     expect(getDb().prepare("select count(*) as n from trips").get()).toEqual({
       n: 0,
     });
+  });
+});
+
+describe("updateTrip", () => {
+  const editInput = (over: Partial<TripEditInput> = {}): TripEditInput => ({
+    title: "松本旅行",
+    departure_date: "2026-09-01",
+    departure_time: "09:00",
+    destination: "上高地",
+    ...over,
+  });
+
+  it("タイトル・目的地を trim して更新し updated_at を進める", () => {
+    seedTrip();
+    const trip = updateTrip("trip-1", editInput({ title: " 上高地旅行 ", destination: " 河童橋 " }));
+    expect(trip.title).toBe("上高地旅行");
+    expect(trip.destination).toBe("河童橋");
+    expect(trip.updated_at > OLD).toBe(true);
+  });
+
+  it("出発日時を表示 TZ の壁時計として変換する(createTrip と同じ扱い)", () => {
+    seedTrip();
+    // 2026-09-01 09:00 PDT = 16:00Z / 12-01 は PST なので 17:00Z
+    expect(updateTrip("trip-1", editInput()).departure_at).toBe(
+      "2026-09-01T16:00:00.000Z",
+    );
+    expect(
+      updateTrip("trip-1", editInput({ departure_date: "2026-12-01" }))
+        .departure_at,
+    ).toBe("2026-12-01T17:00:00.000Z");
+  });
+
+  it("出発日を null にすると出発予定を消す", () => {
+    seedTrip({ departure_at: "2026-09-01T16:00:00.000Z" });
+    const trip = updateTrip(
+      "trip-1",
+      editInput({ departure_date: null, departure_time: null }),
+    );
+    expect(trip.departure_at).toBeNull();
+  });
+
+  it("移動手段は car に正規化する(古い旅行の null もここで揃う)", () => {
+    seedTrip();
+    expect(getTripRow("trip-1").transport).toBeNull();
+    expect(updateTrip("trip-1", editInput()).transport).toBe("car");
+  });
+
+  it("目的地が空文字なら null にする", () => {
+    seedTrip({ destination: "上高地" });
+    expect(updateTrip("trip-1", editInput({ destination: "  " })).destination).toBeNull();
+    expect(updateTrip("trip-1", editInput({ destination: null })).destination).toBeNull();
+  });
+
+  it("タイトルが空ならエラー", () => {
+    seedTrip();
+    expect(() => updateTrip("trip-1", editInput({ title: "  " }))).toThrow(
+      /タイトル/,
+    );
+  });
+
+  it("プランの日付は動かさない(1 日目の日付は作成時に決まる)", () => {
+    seedTrip();
+    seedDay({ date: "2026-09-01" });
+    updateTrip("trip-1", editInput({ departure_date: "2026-10-05" }));
+    expect(getDayRow("day-1").date).toBe("2026-09-01");
+    expect(getDayRow("day-1").updated_at).toBe(OLD);
+  });
+
+  it("消えた旅行は編集できない", () => {
+    seedTrip({ deleted_at: OLD });
+    expect(() => updateTrip("trip-1", editInput())).toThrow(/見つかりません/);
+  });
+});
+
+describe("endTrip", () => {
+  it("進行中の旅行に ended_at を入れる", () => {
+    seedTrip({ started_at: "2026-09-01T16:00:00.000Z" });
+    const trip = endTrip("trip-1");
+    expect(trip.ended_at).not.toBeNull();
+    expect(trip.ended_at).toBe(trip.updated_at);
+    expect(trip.updated_at > OLD).toBe(true);
+  });
+
+  it("未出発・終了済みは終了できない(iOS もボタンを出さない条件)", () => {
+    seedTrip();
+    expect(() => endTrip("trip-1")).toThrow(/出発していない/);
+    seedTrip({
+      id: "trip-2",
+      started_at: "2026-09-01T16:00:00.000Z",
+      ended_at: "2026-09-05T16:00:00.000Z",
+    });
+    expect(() => endTrip("trip-2")).toThrow(/すでに終了/);
   });
 });
 

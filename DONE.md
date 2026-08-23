@@ -2,6 +2,16 @@
 
 ## 2026-08-23
 
+- Web にも iOS と同じ編集操作を用意する [plan](docs/plans/archive/web-edit-operations.md)
+  - 表示情報を揃えたときに残った「表示ではなく操作」の差 3 件。iOS でしかできず、Web を開いているときに直せなかった
+  - `lib/plan.ts` に `updateTrip`(iOS `TripEditView.save` の移植)と `endTrip`(同 `LocationRecorder.endTrip`)を追加
+    - `updateTrip`: タイトル必須・目的地は trim して空なら null・**移動手段は car に正規化**(古い旅行の null もここで揃う)。出発日時は**日付 + 時刻を表示 TZ の壁時計として解釈**する(`createTrip` と同じ `isoFromLocalWallClock`)。**プランの日付は動かさない**(1 日目の日付は作成時に決まる。iOS も同じ)
+    - `endTrip`: `ended_at` を入れるだけ(Web は記録しない)。**進行中(started_at あり・ended_at なし)以外はエラー**にした(iOS もその条件でしかボタンを出さない)
+  - UI は `edit-trip.tsx`(タイトル下の「旅行を編集」で開閉。項目は iOS と同じ)と `end-trip.tsx`(**進行中のときだけ**。`delete-trip.tsx` と同じ二段階確認 + iOS の footer 文言)
+  - 日の出発時刻は `DayForm` に `<input type="time">` を追加(**空 = 未設定**。iOS の Toggle + DatePicker と同じ意味を素の input で表す)。`lib/plan.ts` の `updateTripDay` は対応済みだったので Action に通すだけ
+  - 同期: `trips.updated_at` / `trip_days.updated_at` が進むので `/api/sync/pull` で iOS に流れる。スキーマ・API 契約の変更なし
+  - 検証: web vitest 164 件(`updateTrip` 7 件・`endTrip` 2 件を追加。テスト治具 `seedTrip` に `ended_at` を追加)+ lint + build、dev サーバで 編集 → 反映 / 終了 → バッジとボタンが消える / 出発時刻の設定・クリア を確認
+
 - 旅行画面・プランの Web 表示を iOS と同じ情報にする [plan](docs/plans/archive/web-ios-info-parity.md)
   - iOS(`TripDetailView` / `TripDayRow` / `TripDayDetailView` / `CheckpointRow`)と Web を項目単位で突き合わせ、iOS にしか出ていなかった情報を Web にも出した。対照表はプランファイルに残してある
   - チェックポイント行: 名前の下に**種別ラベル**(「観光」「宿泊」等)を出し、iOS と同じ「種別 · 予定時刻 · 座標未設定」の並びにした。文言も「位置未定」→**「座標未設定」**に統一

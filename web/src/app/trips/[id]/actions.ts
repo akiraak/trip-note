@@ -38,6 +38,33 @@ export async function deleteTripAction(tripId: string): Promise<ActionResult> {
   }
 }
 
+/** 旅行のタイトル・出発予定・目的地を編集する(iOS の TripEditView 相当) */
+export async function updateTripAction(
+  tripId: string,
+  input: plan.TripEditInput,
+): Promise<ActionResult> {
+  try {
+    plan.updateTrip(tripId, input);
+    revalidatePath("/");
+    revalidateTrip(tripId);
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** 旅行を終了する(進行中のときだけ。一覧の表示も変わるので / も再検証する) */
+export async function endTripAction(tripId: string): Promise<ActionResult> {
+  try {
+    plan.endTrip(tripId);
+    revalidatePath("/");
+    revalidateTrip(tripId);
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 export async function addDayAction(tripId: string): Promise<ActionResult> {
   try {
     const day = plan.addTripDay(tripId);
@@ -63,7 +90,12 @@ export async function insertDayAfterAction(
 
 export async function updateDayAction(
   dayId: string,
-  fields: { title: string | null; note: string | null },
+  fields: {
+    title: string | null;
+    note: string | null;
+    /** "HH:MM" / null で解除。省略すると現状維持(iOS からの同期値を保持) */
+    departure_time?: string | null;
+  },
 ): Promise<ActionResult> {
   try {
     const day = plan.updateTripDay(dayId, fields);

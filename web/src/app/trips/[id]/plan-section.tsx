@@ -357,17 +357,27 @@ function DayForm({
 }: {
   day: PlanDay;
   pending: boolean;
-  onSubmit: (fields: { title: string | null; note: string | null }) => void;
+  onSubmit: (fields: {
+    title: string | null;
+    note: string | null;
+    departure_time: string | null;
+  }) => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState(day.title ?? "");
   const [note, setNote] = useState(day.note ?? "");
+  // 空 = 未設定(iOS の Toggle + DatePicker と同じ意味を素の input で表す)
+  const [departureTime, setDepartureTime] = useState(day.departure_time ?? "");
   return (
     <form
       className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit({ title: title || null, note: note || null });
+        onSubmit({
+          title: title || null,
+          note: note || null,
+          departure_time: departureTime || null,
+        });
       }}
     >
       <input
@@ -384,6 +394,18 @@ function DayForm({
         rows={2}
         className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
       />
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-zinc-500 dark:text-zinc-400">出発時刻</span>
+        <input
+          type="time"
+          value={departureTime}
+          onChange={(event) => setDepartureTime(event.target.value)}
+          className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+        />
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          この日の宿泊地(前泊地)を出発する時刻。空にすると未設定
+        </span>
+      </label>
       <div className="flex gap-2">
         <button
           type="submit"
