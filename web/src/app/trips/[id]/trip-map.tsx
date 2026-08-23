@@ -1,22 +1,13 @@
 "use client";
 
-import {
-  MapLibreMap,
-  Marker,
-  NavigationControl,
-  Popup,
-  setWorkerUrl,
-} from "maplibre-gl";
+import { MapLibreMap, Marker, NavigationControl, Popup } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { boundingBox, splitByTimeGap } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
+import { MAP_STYLE_URL } from "@/lib/maplibre-setup";
 import type { CheckpointType } from "@/lib/types";
-
-// バンドラ(Turbopack)経由だと maplibre が自身のワーカーを解決できないため、
-// public/ に置いたワーカー(npm run copy-maplibre-worker が配置)を明示する
-setWorkerUrl("/maplibre-gl-worker.mjs");
 
 type TrackPoint = {
   latitude: number;
@@ -38,10 +29,6 @@ type CheckpointMarker = {
   latitude: number;
   longitude: number;
 };
-
-// OpenFreeMap のベクタタイル。登録・API キー不要で本番利用可、帰属表記はスタイル側に
-// 含まれる。選定経緯は docs/plans/archive/web-map-tiles-production.md
-const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 export function TripMap({
   points,

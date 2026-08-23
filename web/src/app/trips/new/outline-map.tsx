@@ -1,22 +1,16 @@
 "use client";
 
-import { MapLibreMap, Marker, setWorkerUrl } from "maplibre-gl";
+import { MapLibreMap, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { CHECKPOINT_COLORS } from "@/lib/checkpoint-style";
 import { boundingBox } from "@/lib/geo";
+import { MAP_STYLE_URL } from "@/lib/maplibre-setup";
 import type { OutlineMapPoint } from "@/lib/outline-map";
 
 // AI の日数・宿泊地候補 1 件のプレビュー地図(iOS の OutlineCandidateMap 相当)。
 // 出発地 → 各泊 → 目的地をマーカーとポリラインで結ぶだけの操作不可の地図。
 // 座標は AI の概算なのでおおよその位置(採用後に Google Maps のリンクで具体化する)
-
-// バンドラ(Turbopack)経由だと maplibre が自身のワーカーを解決できないため、
-// public/ に置いたワーカー(npm run copy-maplibre-worker が配置)を明示する
-setWorkerUrl("/maplibre-gl-worker.mjs");
-
-// trip-map.tsx と同じ OpenFreeMap のベクタタイル(登録・API キー不要)
-const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 export function OutlineMap({ points }: { points: OutlineMapPoint[] }) {
   const containerRef = useRef<HTMLDivElement>(null);

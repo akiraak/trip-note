@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   addCheckpointAction,
   addDayAction,
@@ -14,10 +14,12 @@ import {
 } from "./actions";
 import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
+import { DayMap } from "./day-map";
 import { PlaceLink } from "./place-link";
 import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { formatDay } from "@/lib/format";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
+import { dayMapPoints, type DayMapData } from "@/lib/plan-map";
 import type { CheckpointType } from "@/lib/types";
 
 // 旅行詳細のプラン(日別)表示・編集。データは server component (page.tsx) から
@@ -57,6 +59,8 @@ export function PlanSection({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
+  // 日別地図のデータ。フォームの開閉くらいで地図を作り直さないよう days に紐付ける
+  const maps = useMemo(() => dayMapPoints(days), [days]);
 
   // Server Action を実行し、成功したらフォームを閉じるなどの後処理を行う
   const run = (action: () => Promise<ActionResult>, onSuccess?: () => void) => {
@@ -89,6 +93,7 @@ export function PlanSection({
           day={day}
           dayNumber={index + 1}
           isLast={index === days.length - 1}
+          map={maps[index]}
           pending={pending}
           run={run}
         />
@@ -135,6 +140,7 @@ function DayCard({
   day,
   dayNumber,
   isLast,
+  map,
   pending,
   run,
 }: {
@@ -142,6 +148,8 @@ function DayCard({
   dayNumber: number;
   /** 最終日(削除・日の差し込みで後続がずれない)か */
   isLast: boolean;
+  /** この日の地図データ(座標ありが 0 件なら地図は出さない) */
+  map: DayMapData;
   pending: boolean;
   run: RunAction;
 }) {
@@ -258,6 +266,9 @@ function DayCard({
               ),
             )}
           </ol>
+        )}
+        {map.points.length > 0 && (
+          <DayMap points={map.points} anchor={map.anchor} />
         )}
         {mode === "add-link" && (
           <PlaceLink

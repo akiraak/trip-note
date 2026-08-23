@@ -2,6 +2,15 @@
 
 ## 2026-08-23
 
+- Web の日毎のプランに地図を表示する [plan](docs/plans/archive/web-day-plan-map.md)
+  - 日カードがテキストだけで、その日の回り方が分からなかった(位置関係が見えるのはページ上部の全チェックポイント混在の地図 1 枚だけ)。iOS の `TripDayMiniMap` と同等の日別地図を Web にも出した
+  - 表示データは `lib/plan-map.ts` の `dayMapPoints`(純ロジック・テスト付き)。座標が両方そろったチェックポイントだけを日内の順序のまま残し、ルートの起点(`anchor`)は iOS の `DayRoute.anchor(before:in:)` と同じく**それより前の日を逆順に見て最初に見つかった座標ありチェックポイント**(= 前泊地)
+  - `day-map.tsx` は種別色のマーカー(`scale: 0.7`、名前は element の `title`)+ 訪問順の青いポリライン + 前泊地の小さな灰色の丸。`interactive: false` でページのスクロールを奪わない。ルート線はこの段階では**直線**(道路形状は `docs/plans/web-plan-route.md`)
+  - `MAP_STYLE_URL` と `setWorkerUrl` の重複を `lib/maplibre-setup.ts` に共通化(`trip-map.tsx` / `outline-map.tsx` / `day-map.tsx` の 3 箇所)
+  - WebGL コンテキスト対策として `use-lazy-mount.ts`(`IntersectionObserver`、`rootMargin: 100%`)で可視ぶんだけマウントする。**素早いスクロールでは 1 回のコールバックに複数の記録が届く**ので、先頭ではなく最後のエントリを見ること(先頭を見ると途中の状態を掴んで永久にマウントされない)
+  - 検証: web vitest 152 件(`plan-map` を新設)+ lint + build、dev サーバに 12 日分の旅行を仕込んで各日の地図・前泊地からの線・座標ゼロの日に地図が出ないこと・スクロールしても同時に生きる地図が 5〜7 枚に収まることを確認(ダークモード)
+  - なお **Chrome のタブが hidden(ウィンドウ最小化など)だと `IntersectionObserver` も maplibre の描画も止まる**ため、地図が真っ白なときはまずタブが前面にあるか疑う
+
 - Web の日数・宿泊地候補にプレビュー地図を出す [plan](docs/plans/archive/web-outline-candidate-map.md)
   - 候補が文字だけでどこを回るのか分かりにくかったので、iOS の `OutlineCandidateMap` と同じく出発地 → 各泊 → 目的地をマーカー + ポリラインで結んだ操作不可の地図を候補カードに出す
   - 点列は `lib/outline-map.ts` の `outlineMapPoints`(純ロジック・テスト付き)。座標が無い点・片方だけの座標は飛ばす。出発地の座標は作成フォームで Google Maps のリンクから取れたときだけ付く
