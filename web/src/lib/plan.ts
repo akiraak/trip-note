@@ -578,6 +578,145 @@ export function adoptPlanSuggestion(tripId: string, days: AdoptDay[]): Trip {
   return trip;
 }
 
+/** AI の日数・宿泊地候補の採用入力(lib/ai.ts の TripOutlineCandidate に対応) */
+export type AdoptOutline = {
+  /** 旅行全体の日数(日帰りは 1) */
+  dayCount: number;
+  /** 泊数分。n 番目 = n+1 泊目 = n+1 日目の宿 */
+  nights: {
+    name: string;
+    note: string | null;
+    /** AI の概算座標(任意) */
+    latitude?: number | null;
+    longitude?: number | null;
+  }[];
+  /** 目的地の概算座標(最終日の destination チェックポイントに使う) */
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+};
+
+/** 座標は片方だけなら両方捨てる(validateInput の対条件に合わせる) */
+function coordinatePair(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): { latitude: number | null; longitude: number | null } {
+  return typeof latitude === "number" && typeof longitude === "number"
+    ? { latitude, longitude }
+    : { latitude: null, longitude: null };
+}
+
+/** AI の日数・宿泊地候補を採用する。1 日目(既存の最初の日 ?? departure_at ?? 今日)
+ *  から dayCount 分の連続した日を揃え(既存の日付は再利用)、最終日に目的地の到着
+ *  チェックポイント(trips.destination + 概算座標)を、n 泊目の宿泊チェックポイントを
+ *  n 日目に末尾追記する。既存行の updated_at は進めない(LWW で iOS の編集を潰さない
+ *  ため)。iOS 側 PlanEditor.adopt(_ candidate:into:) と対応 */
+export function adoptTripOutline(tripId: string, outline: AdoptOutline): Trip {
+  const trip = getTrip(tripId);
+  const dayCount = Math.floor(outline.dayCount);
+  if (!Number.isFinite(dayCount) || dayCount < 1 || dayCount > 30) {
+    throw new Error(`不正な日数です: ${outline.dayCount}`);
+  }
+  const db = getDb();
+  const now = nowIso();
+  const existingDays = db
+    .prepare(
+      "select * from trip_days where trip_id = ? and deleted_at is null order by date",
+    )
+    .all(tripId) as TripDay[];
+  const start =
+    existingDays[0]?.date ??
+    dateStringOf(trip.departure_at ? new Date(trip.departure_at) : new Date());
+  const dates = [start];
+  while (dates.length < dayCount) {
+    dates.push(nextDate(dates[dates.length - 1]));
+  }
+
+  const insertDay = db.prepare(
+    `insert into trip_days (id, trip_id, date, updated_at)
+     values (@id, @trip_id, @date, @updated_at)`,
+  );
+  const maxOrder = db.prepare(
+    `select max(sort_order) as max_order from checkpoints
+     where trip_day_id = ? and deleted_at is null`,
+  );
+  const insertCheckpoint = db.prepare(
+    `insert into checkpoints
+       (id, trip_id, trip_day_id, type, name, latitude, longitude,
+        planned_time, note, sort_order, updated_at)
+     values
+       (@id, @trip_id, @trip_day_id, @type, @name, @latitude, @longitude,
+        null, @note, @sort_order, @updated_at)`,
+  );
+
+  db.transaction(() => {
+    // 日を揃える(既存の日はそのまま。updated_at も進めない)
+    const dayIdByDate = new Map<string, string>();
+    for (const date of dates) {
+      const found = existingDays.find((day) => day.date === date);
+      if (found) {
+        dayIdByDate.set(date, found.id);
+        continue;
+      }
+      const id = randomUUID();
+      insertDay.run({ id, trip_id: tripId, date, updated_at: now });
+      dayIdByDate.set(date, id);
+    }
+    // sort_order は日ごとに既存の末尾から連番(最終日は「到着 → 宿泊」の順)
+    const nextOrder = new Map<string, number>();
+    const takeOrder = (date: string): number => {
+      const dayId = dayIdByDate.get(date)!;
+      const order =
+        nextOrder.get(date) ??
+        ((maxOrder.get(dayId) as { max_order: number | null }).max_order ?? -1) +
+          1;
+      nextOrder.set(date, order + 1);
+      return order;
+    };
+    const add = (
+      date: string,
+      input: Omit<CheckpointInput, "planned_time">,
+    ): void => {
+      const valid = validateInput({ ...input, planned_time: null });
+      insertCheckpoint.run({
+        id: randomUUID(),
+        trip_id: tripId,
+        trip_day_id: dayIdByDate.get(date)!,
+        type: valid.type,
+        name: valid.name,
+        latitude: valid.latitude,
+        longitude: valid.longitude,
+        note: valid.note,
+        sort_order: takeOrder(date),
+        updated_at: now,
+      });
+    };
+
+    const destination = trip.destination?.trim();
+    if (destination) {
+      add(dates[dates.length - 1], {
+        type: "destination",
+        name: destination,
+        ...coordinatePair(
+          outline.destinationLatitude,
+          outline.destinationLongitude,
+        ),
+        note: null,
+      });
+    }
+    // nights[n] = n+1 泊目 = n+1 日目の宿。日数を超える分は捨てる
+    outline.nights.slice(0, dates.length).forEach((night, index) => {
+      if (!night.name.trim()) return;
+      add(dates[index], {
+        type: "lodging",
+        name: night.name,
+        ...coordinatePair(night.latitude, night.longitude),
+        note: night.note,
+      });
+    });
+  })();
+  return trip;
+}
+
 /** 同じ日の中で 1 つ上/下と入れ替える。端では何もしない。
  *  位置が変わった行だけ sort_order と updated_at を更新する
  *  (変わらない行の updated_at を進めて LWW で他方の編集を潰さないため) */

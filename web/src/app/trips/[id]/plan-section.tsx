@@ -52,7 +52,7 @@ export function PlanSection({
   days: PlanDay[];
   transport: string | null;
   /** AI 提案フォームの初期値(page.tsx で計算) */
-  aiDefaults: { startDate: string; dayCount: number };
+  aiDefaults: { startDate: string; dayCount: number; departure: string };
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +99,7 @@ export function PlanSection({
           transport={transport}
           defaultStartDate={aiDefaults.startDate}
           defaultDayCount={aiDefaults.dayCount}
+          defaultDeparture={aiDefaults.departure}
           onDone={() => setAiOpen(false)}
         />
       )}

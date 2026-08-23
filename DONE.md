@@ -2,6 +2,15 @@
 
 ## 2026-08-23
 
+- Web の旅行作成でも AI の日数・宿泊地候補ステップを出す [plan](docs/plans/archive/web-trip-outline.md)
+  - Web で旅行を作っても 1 日目しかできず「作ったのに変化が見えない」状態だった(iOS は作成直後に trip_outline の候補ステップがある)
+  - 採用処理 `adoptTripOutline` を `lib/plan.ts` に追加(Swift の `PlanEditor.adopt(_ candidate:into:)` の移植)。1 日目(既存の初日 ?? `departure_at` ?? 今日)から dayCount 分の日を揃え、最終日に目的地の到着チェックポイント、n 泊目を n 日目に宿泊チェックポイントとして末尾追記する。既存行の `updated_at` は進めない
+  - 生成は同期呼び出しにせず iOS と同じ `ai_jobs` を使う(Cloudflare の 100 秒制限を避ける)。作成ボタンの延長でジョブを登録 → `after()` で生成 → クライアントが 3 秒間隔でポーリング
+  - `/trips/new` に候補ステップ UI(候補の要約 + 泊の一覧・採用・スキップ・再試行)。iOS にある候補ごとのミニ地図は入れていない(maplibre の GL コンテキストを候補数ぶん張るため)
+  - 旅行画面「AI で行程を提案」の出発地に 1 日目の出発チェックポイント名を初期値として入れた(iOS の `AIPlanSuggestView` と同じ。到着予定地は終点を書く欄なので空のまま)
+  - API 仕様・スキーマの変更なし
+  - 検証: web vitest 141 件(`adoptTripOutline` のケースを追加)+ lint + build、dev サーバで 作成 → 候補 → 採用 → 3 日分のプラン(1日目 出発 + 松本泊 / 2日目 上高地泊 / 3日目 到着)まで確認。ローカルは AI キーが無いため候補の JSON は治具で差し込み、キー未設定時のエラー + 再試行表示も確認した
+
 - Web から旅行を作成できるようにする [plan](docs/plans/archive/web-create-trip.md)
   - これまで旅行の新規作成は iOS の `TripCreateView` だけで、Web は導線どころか作成処理自体が無かった(`insert into trips` は `/api/sync` と マイグレーションのみ)
   - `lib/plan.ts` に `createTrip` を追加。iOS の `PlanEditor.makeTrip` と同じく、プラン中の旅行(`started_at` は null、`transport` は car 固定)+ 出発日の 1 日目 + 出発地を入れたときだけ `departure` チェックポイント(`planned_time` = 出発日時、`sort_order` 0)を 1 トランザクションで作る

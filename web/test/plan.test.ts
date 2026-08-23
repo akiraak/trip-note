@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db";
 import {
   addTripDay,
   adoptPlanSuggestion,
+  adoptTripOutline,
   createCheckpoint,
   createTrip,
   deleteCheckpoint,
@@ -18,6 +19,7 @@ import {
   shiftIsoByDays,
   updateCheckpoint,
   updateTripDay,
+  type AdoptOutline,
   type CheckpointInput,
   type TripInput,
 } from "@/lib/plan";
@@ -45,13 +47,17 @@ afterEach(() => {
 function seedTrip(over: Record<string, unknown> = {}) {
   getDb()
     .prepare(
-      `insert into trips (id, title, started_at, deleted_at, updated_at)
-       values (@id, @title, @started_at, @deleted_at, @updated_at)`,
+      `insert into trips
+         (id, title, started_at, departure_at, destination, deleted_at, updated_at)
+       values
+         (@id, @title, @started_at, @departure_at, @destination, @deleted_at, @updated_at)`,
     )
     .run({
       id: "trip-1",
       title: "松本旅行",
       started_at: null,
+      departure_at: null,
+      destination: null,
       deleted_at: null,
       updated_at: OLD,
       ...over,
@@ -701,6 +707,153 @@ describe("adoptPlanSuggestion", () => {
       ]),
     ).toThrow(/不正な日付/);
     expect(() => adoptPlanSuggestion("missing", suggestedDays)).toThrow(
+      /旅行が見つかりません/,
+    );
+  });
+});
+
+describe("adoptTripOutline", () => {
+  const candidate = (over: Partial<AdoptOutline> = {}): AdoptOutline => ({
+    dayCount: 3,
+    nights: [
+      { name: "松本市街の宿", note: "駅近", latitude: 36.23, longitude: 137.97 },
+      { name: "上高地の宿", note: null, latitude: 36.25, longitude: 137.63 },
+    ],
+    destinationLatitude: 36.25,
+    destinationLongitude: 137.63,
+    ...over,
+  });
+
+  function daysOfTrip(): TripDay[] {
+    return getDb()
+      .prepare(
+        "select * from trip_days where trip_id = 'trip-1' and deleted_at is null order by date",
+      )
+      .all() as TripDay[];
+  }
+
+  function checkpointsOfDay(dayId: string): Checkpoint[] {
+    return getDb()
+      .prepare(
+        "select * from checkpoints where trip_day_id = ? and deleted_at is null order by sort_order",
+      )
+      .all(dayId) as Checkpoint[];
+  }
+
+  it("1 日目を再利用して dayCount 分の日を作り、泊と目的地を入れる", () => {
+    seedTrip({ destination: "上高地", departure_at: "2026-09-01T16:00:00.000Z" });
+    seedDay(); // 2026-09-01
+    seedCheckpoint({ type: "departure", name: "自宅" });
+
+    adoptTripOutline("trip-1", candidate());
+
+    const days = daysOfTrip();
+    expect(days.map((d) => d.date)).toEqual([
+      "2026-09-01",
+      "2026-09-02",
+      "2026-09-03",
+    ]);
+    // 既存の 1 日目は作り直さない(updated_at も進めない)
+    expect(days[0].id).toBe("day-1");
+    expect(days[0].updated_at).toBe(OLD);
+
+    // 1 泊目は 1 日目の既存チェックポイントの後ろ
+    expect(
+      checkpointsOfDay(days[0].id).map((c) => [c.type, c.name, c.sort_order]),
+    ).toEqual([
+      ["departure", "自宅", 0],
+      ["lodging", "松本市街の宿", 1],
+    ]);
+    expect(
+      checkpointsOfDay(days[1].id).map((c) => [c.type, c.name, c.sort_order]),
+    ).toEqual([["lodging", "上高地の宿", 0]]);
+    // 最終日は「到着 → 宿泊」の順(3 日目に泊は無いので到着だけ)
+    expect(
+      checkpointsOfDay(days[2].id).map((c) => [c.type, c.name, c.sort_order]),
+    ).toEqual([["destination", "上高地", 0]]);
+
+    const lodging = checkpointsOfDay(days[0].id)[1];
+    expect(lodging.latitude).toBe(36.23);
+    expect(lodging.note).toBe("駅近");
+    expect(lodging.planned_time).toBeNull();
+  });
+
+  it("日が 1 つも無ければ departure_at の日付(表示 TZ)から始める", () => {
+    // 2026-09-01T02:00Z は America/Los_Angeles では 08-31 19:00
+    seedTrip({ departure_at: "2026-09-01T02:00:00.000Z", destination: null });
+    adoptTripOutline("trip-1", candidate({ dayCount: 2, nights: [] }));
+    expect(daysOfTrip().map((d) => d.date)).toEqual(["2026-08-31", "2026-09-01"]);
+  });
+
+  it("最終日に泊があれば到着 → 宿泊の順に入る", () => {
+    seedTrip({ destination: "上高地" });
+    seedDay();
+    adoptTripOutline(
+      "trip-1",
+      candidate({
+        dayCount: 2,
+        nights: [{ name: "松本市街の宿", note: null, latitude: null, longitude: null }],
+      }),
+    );
+    const days = daysOfTrip();
+    // 2 日目 = 最終日。1 泊目は 1 日目なので最終日は到着のみ
+    expect(checkpointsOfDay(days[1].id).map((c) => c.type)).toEqual([
+      "destination",
+    ]);
+    // 1 日目が最終日になる日帰り候補では同じ日に両方入る
+    seedTrip({ id: "trip-2", destination: "上高地" });
+    seedDay({ id: "day-2", trip_id: "trip-2" });
+    adoptTripOutline("trip-2", {
+      dayCount: 1,
+      nights: [{ name: "松本市街の宿", note: null, latitude: null, longitude: null }],
+      destinationLatitude: null,
+      destinationLongitude: null,
+    });
+    expect(checkpointsOfDay("day-2").map((c) => [c.type, c.sort_order])).toEqual([
+      ["destination", 0],
+      ["lodging", 1],
+    ]);
+  });
+
+  it("目的地が空なら到着チェックポイントを作らない", () => {
+    seedTrip({ destination: null });
+    seedDay();
+    adoptTripOutline("trip-1", candidate({ dayCount: 2, nights: [] }));
+    const days = daysOfTrip();
+    expect(checkpointsOfDay(days[1].id)).toHaveLength(0);
+  });
+
+  it("日数を超える泊・空の名前は捨て、座標は片方だけなら両方 null にする", () => {
+    seedTrip({ destination: null });
+    seedDay();
+    adoptTripOutline(
+      "trip-1",
+      candidate({
+        dayCount: 2,
+        nights: [
+          { name: "  ", note: null, latitude: 36.2, longitude: 137.9 },
+          { name: "上高地の宿", note: null, latitude: 36.25, longitude: null },
+          { name: "捨てられる宿", note: null, latitude: null, longitude: null },
+        ],
+      }),
+    );
+    const days = daysOfTrip();
+    expect(checkpointsOfDay(days[0].id)).toHaveLength(0);
+    const second = checkpointsOfDay(days[1].id);
+    expect(second.map((c) => c.name)).toEqual(["上高地の宿"]);
+    expect(second[0].latitude).toBeNull();
+    expect(second[0].longitude).toBeNull();
+  });
+
+  it("不正な日数・見つからない旅行は拒否する", () => {
+    seedTrip();
+    expect(() => adoptTripOutline("trip-1", candidate({ dayCount: 0 }))).toThrow(
+      /不正な日数/,
+    );
+    expect(() => adoptTripOutline("trip-1", candidate({ dayCount: 31 }))).toThrow(
+      /不正な日数/,
+    );
+    expect(() => adoptTripOutline("missing", candidate())).toThrow(
       /旅行が見つかりません/,
     );
   });

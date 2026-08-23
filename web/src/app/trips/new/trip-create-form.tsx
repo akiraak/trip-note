@@ -2,12 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createTripAction } from "./actions";
+import { createTripAction, startTripOutlineAction } from "./actions";
+import { TripOutlineStep } from "./trip-outline-step";
 import { PlaceLink, type LinkedPlace } from "../[id]/place-link";
+import type { TripOutlineInput } from "@/lib/ai";
 
 // 旅行の作成フォーム(iOS の TripCreateView と同じ項目。移動手段は車固定)。
 // 出発日時は日付と時刻を分けて送り、サーバ側で表示タイムゾーンの壁時計として解釈する
-// (ブラウザのローカル TZ で解釈すると入力した日付と 1 日目の日付がずれ得るため)
+// (ブラウザのローカル TZ で解釈すると入力した日付と 1 日目の日付がずれ得るため)。
+// 目的地が入力されていれば、作成後に AI の日数・宿泊地候補ステップへ進む
 
 const inputClass =
   "w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700";
@@ -32,6 +35,14 @@ export function TripCreateForm({
   const [linking, setLinking] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 作成済みの旅行(non-null になったら候補ステップ)。候補生成のジョブは
+  // 作成ボタンの延長で 1 回だけ登録し、待つのは候補ステップに任せる
+  const [created, setCreated] = useState<{
+    tripId: string;
+    input: TripOutlineInput;
+    jobId: string | null;
+    error: string | null;
+  } | null>(null);
 
   // 現在の入力名と一致するときだけリンクで取れた座標を使う(名前を書き換えたら捨てる)
   const coordinate =
@@ -43,26 +54,60 @@ export function TripCreateForm({
     setPending(true);
     setError(null);
     const name = departurePlace.trim();
+    const place = name
+      ? {
+          name,
+          latitude: coordinate?.latitude ?? null,
+          longitude: coordinate?.longitude ?? null,
+        }
+      : null;
     const result = await createTripAction({
       title,
       departure_date: date,
       departure_time: time,
       destination: destination.trim() || null,
-      departure_place: name
-        ? {
-            name,
-            latitude: coordinate?.latitude ?? null,
-            longitude: coordinate?.longitude ?? null,
-          }
-        : null,
+      departure_place: place,
     });
-    if (result.ok) {
+    if (!result.ok) {
+      setError(result.error);
+      setPending(false);
+      return;
+    }
+    // 目的地が無ければ候補を出しようがないので、そのまま旅行画面へ
+    if (!destination.trim()) {
       router.push(`/trips/${result.id}`);
       return;
     }
-    setError(result.error);
-    setPending(false);
+    const input: TripOutlineInput = {
+      destination: destination.trim(),
+      departureDate: date,
+      departureTime: time,
+      departure: place?.name ?? null,
+      departureLatitude: place?.latitude ?? null,
+      departureLongitude: place?.longitude ?? null,
+      // 移動手段は車固定(createTrip と同じ)
+      transport: "car",
+      request: null,
+    };
+    const started = await startTripOutlineAction(input);
+    setCreated({
+      tripId: result.id,
+      input,
+      jobId: started.ok ? started.jobId : null,
+      error: started.ok ? null : started.error,
+    });
   };
+
+  if (created) {
+    return (
+      <TripOutlineStep
+        tripId={created.tripId}
+        input={created.input}
+        initialJobId={created.jobId}
+        initialError={created.error}
+      />
+    );
+  }
 
   return (
     <form

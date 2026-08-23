@@ -14,15 +14,18 @@ export function AiPlanSuggest({
   transport,
   defaultStartDate,
   defaultDayCount,
+  defaultDeparture,
   onDone,
 }: {
   tripId: string;
   transport: string | null;
   defaultStartDate: string;
   defaultDayCount: number;
+  /** 1 日目の出発チェックポイント名(無ければ空文字) */
+  defaultDeparture: string;
   onDone: () => void;
 }) {
-  const [departure, setDeparture] = useState("");
+  const [departure, setDeparture] = useState(defaultDeparture);
   const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [dayCount, setDayCount] = useState(defaultDayCount);

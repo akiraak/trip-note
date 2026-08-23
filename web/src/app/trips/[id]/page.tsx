@@ -84,12 +84,16 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       note: c.note,
     })),
   }));
-  // AI 行程提案フォームの初期値: 開始日 = 既存プランの初日 ?? 出発予定 ?? 開始 ?? 今日
+  // AI 行程提案フォームの初期値: 開始日 = 既存プランの初日 ?? 出発予定 ?? 開始 ?? 今日、
+  // 出発地 = 1 日目の出発チェックポイント名(iOS の AIPlanSuggestView と同じ。
+  // 到着予定地は終点を書く欄なので初期値を入れない)
   const aiStart = trip.departure_at ?? trip.started_at;
   const aiDefaults = {
     startDate:
       days[0]?.date ?? dateStringOf(aiStart ? new Date(aiStart) : new Date()),
     dayCount: Math.max(days.length, 2),
+    departure:
+      planDays[0]?.checkpoints.find((c) => c.type === "departure")?.name ?? "",
   };
   const checkpointMarkers = checkpoints
     .filter((c) => c.latitude !== null && c.longitude !== null)
