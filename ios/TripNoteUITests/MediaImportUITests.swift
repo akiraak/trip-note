@@ -1,6 +1,6 @@
 import XCTest
 
-/// 旅行作成 → 記録(旅行の中)→ ライブラリから写真取り込み → 同期までの E2E。
+/// 旅行作成 → 記録(旅行の中)→ ライブラリから写真取り込み → 同期 → 削除までの E2E。
 ///
 /// 前提(手動 or スクリプトで実行):
 /// - `xcrun simctl privacy <udid> grant location-always com.akiraak.TripNote`
@@ -51,9 +51,16 @@ final class MediaImportUITests: XCTestCase {
         XCTAssertTrue(stopButton.waitForExistence(timeout: 5))
         stopButton.tap()
 
-        // そのまま旅行詳細で PhotosPicker からシミュレータ標準の写真を 1 枚選ぶ
+        // そのまま旅行詳細の MEDIA セクションの「写真・動画を追加」から
+        // シミュレータ標準の写真を 1 枚選ぶ
         // (グリッドの写真は identifier "PXGGridLayout-Info" の Image として見える)
-        app.buttons["ライブラリから追加"].tap()
+        let addMedia = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@ OR label == %@", "media-add", "写真・動画を追加")
+        ).firstMatch
+        guard scrollToVisible(addMedia, in: app) else {
+            return XCTFail("写真・動画を追加が見つからない: \(app.debugDescription)")
+        }
+        addMedia.tap()
         let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 20), "PhotosPicker の写真が見つからない")
         // リモートビュー(PhotosUI)の要素は isHittable にならないことがあるため座標でタップする
@@ -91,5 +98,64 @@ final class MediaImportUITests: XCTestCase {
             _ = synced.waitForExistence(timeout: 20)
         }
         XCTAssertTrue(synced.exists, "同期が完了しなかった")
+
+        // 取り込んだメディアを長押しから削除する(サーバへは DELETE /api/media が飛ぶ)
+        app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "UIテスト取込")
+        ).firstMatch.tap()
+        let importedThumbnail = app.buttons["media-thumbnail"].firstMatch
+        guard scrollToVisible(importedThumbnail, in: app) else {
+            return XCTFail("削除するサムネイルが見つからない")
+        }
+        importedThumbnail.press(forDuration: 1.2)
+        let deleteInMenu = app.buttons["削除"].firstMatch
+        XCTAssertTrue(deleteInMenu.waitForExistence(timeout: 10), "長押しメニューに削除が出ない")
+        deleteInMenu.tap()
+        // 確認ダイアログの「削除」(メニューが閉じたあとに出る)
+        let confirmDelete = app.buttons["削除"].firstMatch
+        XCTAssertTrue(confirmDelete.waitForExistence(timeout: 10), "削除の確認が出ない")
+        confirmDelete.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["写真・動画がありません"].waitForExistence(timeout: 10),
+            "削除後にメディアが残っている"
+        )
+
+        // ホームへ戻り、削除の同期(未同期メディア 0 件)まで確認する
+        app.navigationBars.buttons.firstMatch.tap()
+        for _ in 0..<3 where !synced.exists {
+            let syncButton = app.buttons["今すぐ同期"]
+            if syncButton.waitForExistence(timeout: 5), syncButton.isEnabled {
+                syncButton.tap()
+            }
+            _ = synced.waitForExistence(timeout: 20)
+        }
+        XCTAssertTrue(synced.exists, "削除の同期が完了しなかった")
+    }
+
+    /// シートの中の要素までスクロールする(旅行詳細は地図の上のシートに情報を積んでいて、
+    /// List は遅延生成なので下の行はスクロールするまで存在しない)
+    @MainActor
+    private func scrollToVisible(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        attempts: Int = 10
+    ) -> Bool {
+        let list = app.collectionViews.firstMatch
+        guard list.exists else { return false }
+        // まずシートを一番高い段へ上げる(つまみは装飾なので座標でタップする)
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: list.frame.midX, dy: list.frame.minY - 12))
+            .tap()
+        for _ in 0..<attempts {
+            if element.exists, element.isHittable { return true }
+            // 画面下端は記録バーが浮いているので、その手前から上へドラッグする
+            list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+                .press(
+                    forDuration: 0.05,
+                    thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
+                )
+        }
+        return element.exists && element.isHittable
     }
 }

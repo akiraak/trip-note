@@ -132,6 +132,23 @@ final class MediaImporter {
         }
     }
 
+    // MARK: - 削除
+
+    /// メディアを削除する。ローカルのファイルは即消して容量を返し、行は
+    /// tombstone(deletedAt)として残す。サーバへの DELETE は次の同期
+    /// (`SyncEngine.pushMedia`)が送り、成功したら行も物理削除される
+    func delete(_ media: MediaEntity) {
+        store.remove(fileName: media.fileName)
+        store.remove(fileName: media.thumbnailFileName)
+        media.deletedAt = Date()
+        media.needsSync = true
+        do {
+            try modelContext.save()
+        } catch {
+            lastError = "削除に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - 保存
 
     private func insert(

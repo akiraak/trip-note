@@ -27,6 +27,11 @@ struct MediaStore: Sendable {
         try FileManager.default.moveItem(at: sourceURL, to: destination)
     }
 
+    /// ストア内のファイルを消す(無ければ何もしない)
+    func remove(fileName: String) {
+        try? FileManager.default.removeItem(at: url(for: fileName))
+    }
+
     func ensureDirectory() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }

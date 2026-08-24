@@ -20,6 +20,8 @@ struct TripDetailView: View {
     @State private var showsDeleteConfirmation = false
     /// スワイプで削除しようとしているプラン日(確認ダイアログの対象)
     @State private var dayPendingDeletion: TripDayEntity?
+    /// グリッドの長押しから削除しようとしているメディア(確認ダイアログの対象)
+    @State private var mediaPendingDeletion: MediaEntity?
     @State private var showsTripEdit = false
     @State private var showsAIPlanSuggest = false
     @State private var detent: SheetDetent = .medium
@@ -51,13 +53,6 @@ struct TripDetailView: View {
             TripDayDetailView(day: day)
         }
         .toolbar {
-            // ネイティブカメラで撮った写真・動画を後から紐付ける(シミュレータの動作確認も兼ねる)
-            PhotosPicker(
-                selection: $pickerItems,
-                matching: .any(of: [.images, .videos])
-            ) {
-                Label("ライブラリから追加", systemImage: "photo.badge.plus")
-            }
             Button {
                 showsTripEdit = true
             } label: {
@@ -76,7 +71,9 @@ struct TripDetailView: View {
             Task { await importer.importPicked(items, into: trip) }
         }
         .fullScreenCover(item: $selectedMedia) { media in
-            MediaViewerView(media: media, store: importer.store)
+            MediaViewerView(media: media, store: importer.store) {
+                deleteMedia(media)
+            }
         }
         .confirmationDialog(
             "この旅行を終了しますか?",
@@ -111,6 +108,19 @@ struct TripDetailView: View {
             Button("削除", role: .destructive) { deleteDay(day) }
         } message: { day in
             Text(Self.deleteDayMessage(for: day))
+        }
+        .confirmationDialog(
+            mediaPendingDeletion?.type == .video ? "この動画を削除しますか?" : "この写真を削除しますか?",
+            isPresented: Binding(
+                get: { mediaPendingDeletion != nil },
+                set: { if !$0 { mediaPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: mediaPendingDeletion
+        ) { media in
+            Button("削除", role: .destructive) { deleteMedia(media) }
+        } message: { _ in
+            Text(MediaViewerView.deleteMessage)
         }
     }
 
@@ -388,11 +398,32 @@ struct TripDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("media-thumbnail")
+                    // 長押しからも消せるようにする(1 枚ずつ開かなくてよい)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            mediaPendingDeletion = item
+                        } label: {
+                            Label("削除", systemImage: "trash")
+                        }
+                    }
                 }
             }
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         }
+        // ネイティブのカメラアプリで撮った写真・動画を後から旅行に紐付ける主動線
+        // (記録中の撮影は画面下のバーの📷から)
+        PhotosPicker(
+            selection: $pickerItems,
+            matching: .any(of: [.images, .videos])
+        ) {
+            Label("写真・動画を追加", systemImage: "photo.badge.plus")
+                .font(.subheadline)
+                .foregroundStyle(Theme.accent)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("media-add")
+        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 10, trailing: 16))
         if importer.isImporting {
             HStack(spacing: 8) {
                 ProgressView()
@@ -470,6 +501,15 @@ struct TripDetailView: View {
         guard let inserted = PlanEditor.insertedDay(after: day) else { return }
         modelContext.insert(inserted)
         try? modelContext.save()
+        Task { await sync.syncNow() }
+    }
+
+    /// 写真・動画を削除する。ローカルのファイルは即消え、サーバの行とファイルは
+    /// 次の同期(DELETE /api/media)で消える
+    private func deleteMedia(_ media: MediaEntity) {
+        mediaPendingDeletion = nil
+        selectedMedia = nil
+        importer.delete(media)
         Task { await sync.syncNow() }
     }
 

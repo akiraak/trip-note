@@ -61,8 +61,9 @@ final class TripEntity {
         points.sorted { $0.recordedAt < $1.recordedAt }
     }
 
+    /// 削除済み(tombstone)を除いた撮影時刻順のメディア
     var sortedMedia: [MediaEntity] {
-        media.sorted { $0.takenAt < $1.takenAt }
+        media.filter { $0.deletedAt == nil }.sorted { $0.takenAt < $1.takenAt }
     }
 
     /// 削除済み(tombstone)を除いた日付順のプラン日
@@ -224,7 +225,11 @@ final class MediaEntity {
     var trip: TripEntity?
     /// 撮影時刻に最も近い記録点(MediaAttachment)。点が無い trip では nil
     var locationPoint: LocationPointEntity?
-    /// サーバへ未同期か(メディアは不変なのでアップロード成功で false のまま)
+    /// 削除済みの目印。ローカルのファイルは削除時にすぐ消し、この行は
+    /// サーバへ DELETE を送るまで残す(送信できたら行も物理削除する)
+    var deletedAt: Date?
+    /// サーバへ未同期か(メディアは不変なのでアップロード成功で false のまま。
+    /// 削除時は DELETE を送るために true へ戻す)
     var needsSync: Bool = true
 
     init(

@@ -22,10 +22,11 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
 - **撮影**: 記録中(`LocationRecorder.isRecording`)のみ、ホーム画面にカメラボタンを表示。
   `UIImagePickerController(sourceType: .camera)` を SwiftUI でラップし、写真・動画両対応
   (システム UI 側で切り替え)。カメラ非搭載環境(シミュレータ)ではボタンを出さない
-- **ライブラリ取り込み**: `TripDetailView` に PhotosUI の `PhotosPicker`(画像 + 動画)。
-  ネイティブカメラアプリで撮った写真を後から trip に紐付ける用途と、シミュレータでの
-  E2E 確認用。撮影時刻は EXIF(`DateTimeOriginal`)/ 動画の `creationDate` から取り、
-  取れなければ現在時刻
+- **ライブラリ取り込み**: `TripDetailView` の MEDIA セクションに「写真・動画を追加」
+  (PhotosUI の `PhotosPicker`、画像 + 動画)。**ネイティブカメラアプリで撮った写真・動画を
+  後から trip に紐付ける主動線**で、シミュレータでの E2E 確認も兼ねる
+  (記録中の撮影は画面下の記録バーの📷から)。撮影時刻は EXIF(`DateTimeOriginal`)/
+  動画の `creationDate` から取り、取れなければ現在時刻
 - **権限**: `NSCameraUsageDescription` / `NSMicrophoneUsageDescription`(動画の音声)。
   PhotosPicker は out-of-process のため写真ライブラリ権限は不要
 
@@ -45,6 +46,20 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
 - 紐付け先の点は「その trip の記録点のうち takenAt に最も近いもの」
   (`Domain/MediaAttachment.swift` の純関数。記録中の撮影なら実質直近の点)。点が無ければ nil
 
+### 削除
+
+- 削除は **iOS だけの操作**(Web は閲覧のみ)。旅行詳細のメディアグリッドの長押し、
+  またはフルスクリーンビューアのゴミ箱から。どちらも確認ダイアログを挟む
+- `MediaImporter.delete` が**ローカルのファイル(本体・サムネイル)をすぐ消し**、
+  行は `MediaEntity.deletedAt`(tombstone)にする。表示(`TripEntity.sortedMedia`・
+  地図マーカー)は tombstone を除外する
+- 同期(`SyncEngine.pushMedia`)は `deletedAt != nil` のメディアをアップロードの代わりに
+  `DELETE /api/media?id=` で送り、成功したら**ローカル行も物理削除**する
+  (media は pull しないので tombstone を残す必要がない)。オフライン中の削除は
+  tombstone のまま残り次回同期で再送される
+- サーバに行が無い(アップロード前に消した)場合の 404 はクライアント側で成功扱い =
+  削除は冪等
+
 ### 同期
 
 - `SyncEngine` の同期順: trips → points → media(needsSync == true を takenAt 順に 1 件ずつ)
@@ -54,6 +69,12 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
 - 成功(2xx)で needsSync = false。409(trip 未同期)含む失敗時は下ろさず次回再送
 
 ## サーバ API(web/)
+
+### DELETE /api/media(Bearer 必須)
+
+- クエリ: `id`(UUID)。ファイル(`storage_path`)を消してから行を削除する
+- レスポンス: `200 {"ok":true}` / `400 invalid query` / `401` / `404 not found`
+  (クライアントは 404 も成功扱い)
 
 ### POST /api/media(Bearer 必須)
 
@@ -129,8 +150,23 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
   location_point に紐付き。`/media/[id]` 配信 200(image/jpeg / video/mp4)・Range 206・
   詳細ページのメディアグリッド/video タグ描画まで確認
 
+## 検証結果(2026-08-24 / 削除と取り込み導線)
+
+- iOS ユニットテスト 164 件成功(削除まわりは `MediaDeletionTests`: tombstone を
+  一覧から外す・撮影時刻順の維持・`MediaStore.remove`)
+- Web `npm run lint` + `npm run build` 成功。dev サーバに curl で
+  `DELETE /api/media` の 401 / 400(不正 id)/ 200(行とファイルが消え、以後
+  `GET /media/[id]` は 404)/ 再送 404 を確認
+- シミュレータ E2E(`TripNoteUITests/MediaImportUITests`、ローカル dev サーバ相手):
+  記録 → MEDIA セクションの「写真・動画を追加」で取り込み → 同期 → サムネイル長押しから
+  削除 → 「写真・動画がありません」表示 → 同期。サーバ側は `media` 行 0 件・
+  メディアディレクトリ空(dev サーバのログで POST 200 → DELETE 200 を確認)
+  - UI テストは旅行詳細がボトムシートになったため、シートを一番高い段へ上げてから
+    リスト内をドラッグして MEDIA セクションまでスクロールする(`scrollToVisible`)
+
 ## 将来課題(スコープ外)
 
-- trip 削除時のメディアファイル GC(そもそも削除 UI が未実装)
+- trip 削除(tombstone)時のメディアファイル GC。個別削除は
+  `DELETE /api/media` で消えるが、旅行ごと消したときのファイルは残る
 - サーバ側サムネイル生成、100MB 超動画の分割アップロード
-- Web からのメディアアップロード
+- Web からのメディアアップロード・削除(削除は iOS のみ)

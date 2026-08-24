@@ -201,6 +201,14 @@ final class SyncEngine {
         )
         let mediaItems = try modelContext.fetch(descriptor)
         for media in mediaItems {
+            // 削除(tombstone)はアップロードの代わりに DELETE を送り、
+            // 成功したらローカル行も消す(media は pull しないので残す必要がない)
+            if media.deletedAt != nil {
+                try await client.delete(mediaId: media.id)
+                modelContext.delete(media)
+                try modelContext.save()
+                continue
+            }
             let fileURL = store.url(for: media.fileName)
             guard
                 let meta = MediaUploadMeta(media),

@@ -126,6 +126,31 @@ struct SyncClient: Sendable {
         }
     }
 
+    /// メディアを 1 件サーバから削除する。**404 は成功扱い**にする
+    /// (アップロード前に削除した場合・再送の場合。これで削除は冪等になる)
+    func delete(mediaId: UUID) async throws {
+        guard
+            var components = URLComponents(
+                url: baseURL.appending(path: "api/media"),
+                resolvingAgainstBaseURL: false
+            )
+        else { throw SyncClientError.serverError(statusCode: -1) }
+        components.queryItems = [URLQueryItem(name: "id", value: mediaId.uuidString)]
+        guard let url = components.url else {
+            throw SyncClientError.serverError(statusCode: -1)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SyncClientError.serverError(statusCode: -1)
+        }
+        guard (200..<300).contains(http.statusCode) || http.statusCode == 404 else {
+            throw SyncClientError.serverError(statusCode: http.statusCode)
+        }
+    }
+
     /// ServerConfig.plist から生成する。未設定・雛形のままなら nil
     static func fromBundle() -> SyncClient? {
         guard

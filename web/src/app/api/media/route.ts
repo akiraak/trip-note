@@ -86,3 +86,34 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
+
+// iOS でメディアを削除したときの伝搬。media は pull しない(一方向)ので、
+// 削除は tombstone を持たずサーバ側も行とファイルを物理削除する。
+// クライアントは 404 も成功扱いにするため再送は冪等
+export async function DELETE(request: NextRequest) {
+  if (!authorized(request.headers.get("authorization"))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const id = request.nextUrl.searchParams.get("id") ?? "";
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: "invalid query" }, { status: 400 });
+  }
+
+  const db = getDb();
+  const row = db.prepare("select storage_path from media where id = ?").get(id) as
+    | { storage_path: string }
+    | undefined;
+  if (!row) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  // 配信元は実行時にしか決まらないため Turbopack のファイルトレースから除外する。
+  // ファイルを先に消す(失敗したら行を残してクライアントの再送に任せる)
+  fs.rmSync(path.join(/*turbopackIgnore: true*/ getMediaDir(), row.storage_path), {
+    force: true,
+  });
+  db.prepare("delete from media where id = ?").run(id);
+
+  return NextResponse.json({ ok: true });
+}
