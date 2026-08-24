@@ -67,6 +67,10 @@ struct TripMapView: View {
     private let store = MediaStore.makeDefault()
 
     @State private var roadLegs: [String: ResolvedRouteLeg] = [:]
+    @State private var position: MapCameraPosition = .automatic
+    /// 初期位置を当てたか。地図のサイズが決まってから 1 回だけ当てる
+    /// (GeometryReader の初回は size が 0 で、そのまま Map を作ると .automatic のままになる)
+    @State private var didPlaceCamera = false
 
     private var planLegs: [RouteLeg] {
         RouteLegBuilder.legs(through: planRoute.map(\.routePoint))
@@ -84,42 +88,73 @@ struct TripMapView: View {
             + planRoute
     }
 
-    /// 初期表示範囲。`.automatic` は画面全体に合わせて寄せるので、下half をシートが
-    /// 覆っているとピンがシートの裏に隠れる。隠れるぶんだけ範囲を下へ広げて、
-    /// 表示物が見えている上側に収まるようにする
-    private var initialPosition: MapCameraPosition {
+    /// 初期表示範囲。`.automatic` は画面全体に合わせて寄せるので、下側をシートが
+    /// 覆っているとピンがシートの裏に隠れる。
+    /// 緯度経度の span で調整すると、MapKit が画面の縦横比に合わせて緯度方向を
+    /// 大きく引き伸ばすため東西に長いルートでほとんど効かない。
+    /// 歪みの無いメルカトル座標(MKMapRect)で、画面の縦横比まで含めて
+    /// 「見えている上側に収まる矩形」を組み立てる
+    private func initialPosition(in size: CGSize) -> MapCameraPosition {
         let coordinates = displayedCoordinates
-        guard
-            bottomCoverRatio > 0, bottomCoverRatio < 1,
-            let minLatitude = coordinates.map(\.latitude).min(),
-            let maxLatitude = coordinates.map(\.latitude).max(),
-            let minLongitude = coordinates.map(\.longitude).min(),
-            let maxLongitude = coordinates.map(\.longitude).max()
+        guard bottomCoverRatio > 0, bottomCoverRatio < 1,
+              size.width > 0, size.height > 0,
+              !coordinates.isEmpty
         else { return .automatic }
 
-        // 見えている高さ(1 - 覆われる割合)に収まるよう緯度方向を広げる。
-        // 経度は MapKit が画面の縦横比に合わせて広げるので、余白ぶんだけ足しておく
-        let visible = 1 - bottomCoverRatio
-        let latitudeSpan = max((maxLatitude - minLatitude) * 1.25, 0.01) / visible
-        // 端のピンとその名前が切れないよう、東西は少し広めに取る
-        let longitudeSpan = max((maxLongitude - minLongitude) * 1.45, 0.01)
-        let center = CLLocationCoordinate2D(
-            // 中心を南へずらすと表示物は北(画面の上)へ寄る
-            latitude: (minLatitude + maxLatitude) / 2 - latitudeSpan * bottomCoverRatio / 2,
-            longitude: (minLongitude + maxLongitude) / 2
-        )
-        return .region(
-            MKCoordinateRegion(
-                center: center,
-                span: MKCoordinateSpan(
-                    latitudeDelta: latitudeSpan, longitudeDelta: longitudeSpan
-                )
+        var content = MKMapRect.null
+        for coordinate in coordinates {
+            content = content.union(
+                MKMapRect(origin: MKMapPoint(coordinate), size: MKMapSize(width: 0, height: 0))
             )
+        }
+        guard !content.isNull else { return .automatic }
+
+        // 1 点だけ・ほぼ同じ地点でも potato のように潰れないよう最低の広さを持たせる
+        // (MKMapPoint は世界一周で 2^28 ≒ 1 ポイント 0.15m。20,000 ≒ 3km)
+        let minimumSize: Double = 20_000
+        if content.width < minimumSize || content.height < minimumSize {
+            content = MKMapRect(
+                x: content.midX - minimumSize / 2,
+                y: content.midY - minimumSize / 2,
+                width: minimumSize, height: minimumSize
+            )
+        }
+        // ピンと吹き出しのぶんの余白
+        let padding = max(content.width, content.height) * 0.16
+        content = content.insetBy(dx: -padding, dy: -padding)
+
+        // 画面のうち見えているのは上側の (1 - bottomCoverRatio)。
+        // そこに content がちょうど収まるような画面全体の矩形を求める
+        let visible = 1 - bottomCoverRatio
+        let aspect = size.width / size.height
+        let height = max(content.width / aspect, content.height / visible)
+        let width = height * aspect
+        let rect = MKMapRect(
+            x: content.midX - width / 2,
+            // 見えている領域の中心が content の中心に来る位置
+            y: content.midY - height * visible / 2,
+            width: width, height: height
         )
+        return .rect(rect)
     }
 
     var body: some View {
-        Map(initialPosition: initialPosition) {
+        GeometryReader { proxy in
+            mapView
+                .onAppear { placeCamera(in: proxy.size) }
+                .onChange(of: proxy.size) { _, size in placeCamera(in: size) }
+        }
+    }
+
+    /// 地図の大きさが決まった時点で初期位置を当てる(1 回だけ。以降は操作に任せる)
+    private func placeCamera(in size: CGSize) {
+        guard !didPlaceCamera, size.width > 0, size.height > 0 else { return }
+        didPlaceCamera = true
+        position = initialPosition(in: size)
+    }
+
+    private var mapView: some View {
+        Map(position: $position) {
             // これからのプランは Theme.accent(青)の破線、記録済みは Theme.done(緑)の実線。
             // 暗い地図の上でどちらがどちらか色で分かるようにしている
             ForEach(Array(planLegs.enumerated()), id: \.offset) { _, leg in
