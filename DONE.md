@@ -2,6 +2,12 @@
 
 ## 2026-08-24
 
+- 旅行ページの TIMELINE(GPS 記録点の一覧)表示を iOS・Web とも消す [plan](docs/plans/archive/remove-timeline-section.md)
+  - 記録点をそのまま全件並べるだけのセクションで、長時間記録した旅行では数百行になり読み物にならなかった(同じ点は地図の軌跡として描かれ、件数と総距離は統計に出ている)
+  - **表示だけを消し、データは残す**: location_points の記録・同期・地図の軌跡・地点数/総距離の統計は変更なし。iOS の `timelineSection` と `PointRow`、Web の Timeline セクションを削除(points の取得は距離計算と地図に使うので残す)
+  - iOS と Web を同じコミットで消して情報を揃えた(CLAUDE.md の情報パリティ)。`docs/plans/archive/web-ios-info-parity.md` にも追記
+  - 検証: iOS 175 テスト / Web lint + build / ブラウザで TIMELINE が消え、地図の軌跡と地点数・総距離(2 地点・2.05 km)は残ることを確認
+
 - 旅行の出発日を変えたらプランの各日付も一緒に動かす [plan](docs/plans/archive/departure-date-shifts-plan.md)
   - 出発予定日を編集してもプランの日付は据え置きで(Web の編集フォームにも「プランの日付は動きません」と明記していた)、出発が 1 日ずれるだけで日ごとのチェックポイントを手で直す必要があった
   - **ずらす量の規則**(iOS `PlanEditor.departureShiftDays` / Web `lib/plan-dates.ts` で同じ): **出発日を変えたら 1 日目がその日になるようにそろえる**(2 日目以降も同じ日数動くので日どうしの間隔は保つ)。出発日を消した / 時刻だけ変えた / 日が 1 つも無い場合は動かさない

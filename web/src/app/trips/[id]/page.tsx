@@ -227,31 +227,6 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
           </ul>
         )}
       </section>
-      <section className="flex flex-col gap-2">
-        <h2 className="tabular text-xs tracking-[0.18em] text-muted uppercase">
-          Timeline
-        </h2>
-        {points.length === 0 ? (
-          <p className="text-sm text-muted">位置情報がありません</p>
-        ) : (
-          <ol className="divide-y divide-border text-sm">
-            {points.map((point) => (
-              <li key={point.id} className="flex flex-col gap-0.5 py-2">
-                <span className="tabular">
-                  {formatPointTime(point.recorded_at)}
-                </span>
-                <span className="tabular text-xs text-muted">
-                  {point.latitude.toFixed(5)}, {point.longitude.toFixed(5)}
-                  {point.altitude !== null &&
-                    ` · 高度 ${Math.round(point.altitude)} m`}
-                  {point.accuracy !== null &&
-                    ` · ±${Math.round(point.accuracy)} m`}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
       <DeleteTrip tripId={trip.id} />
     </>
   );

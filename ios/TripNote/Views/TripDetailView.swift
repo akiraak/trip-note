@@ -182,7 +182,6 @@ struct TripDetailView: View {
                 endTripRow
             }
             mediaSection
-            timelineSection
             deleteTripRow
         }
     }
@@ -442,22 +441,6 @@ struct TripDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var timelineSection: some View {
-        sectionLabel("TIMELINE")
-        let points = trip.sortedPoints
-        if points.isEmpty {
-            Text("位置情報がありません")
-                .font(.subheadline)
-                .foregroundStyle(Theme.muted)
-                .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-        }
-        ForEach(points) { point in
-            PointRow(point: point)
-                .listRowInsets(EdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16))
-        }
-    }
-
     private var deleteTripRow: some View {
         Button("旅行を削除") {
             showsDeleteConfirmation = true
@@ -634,28 +617,5 @@ private struct TripDayRow: View {
                 .font(Theme.numeric(.caption))
         }
         .foregroundStyle(Theme.muted)
-    }
-}
-
-private struct PointRow: View {
-    let point: LocationPointEntity
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(point.recordedAt, format: .dateTime.month().day().hour().minute().second())
-                .font(Theme.numeric(.subheadline))
-                .foregroundStyle(Theme.ink)
-            HStack(spacing: 10) {
-                Text(String(format: "%.5f, %.5f", point.latitude, point.longitude))
-                if let altitude = point.altitude {
-                    Text(String(format: "高度 %.0f m", altitude))
-                }
-                if let accuracy = point.horizontalAccuracy {
-                    Text(String(format: "±%.0f m", accuracy))
-                }
-            }
-            .font(Theme.numeric(.caption))
-            .foregroundStyle(Theme.muted)
-        }
     }
 }
