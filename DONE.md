@@ -9,7 +9,8 @@
   - iOS は既存の `shiftDays(after:by:)` と共通の内部処理に整理して `shiftAllDays` を追加。Web は `shiftDaysAfter` を任意日数に一般化し、`updateTrip` をトランザクションの中で日ずらしまで行うようにした
   - **編集フォームで予告する**: 「プランの日付も N 日うしろ/まえへ動きます」を保存前に出す(iOS の `TripEditView` と Web の `edit-trip.tsx`。文言も同じ)
   - 検証: iOS 173 テスト(`departureShiftDays` の 旧あり/旧なし/消去/時刻だけ/日なし、`shiftAllDays`、予告文言)/ Web lint + build / ブラウザで実操作(9/1 → 9/4 で 3 日うしろ、9/4 → 9/2 で 2 日まえ。DB で日付と planned_time が一緒に動くことを確認)
-  - iOS の編集シートでの操作は未目視(TODO に残した)。ロジックは純関数側でテスト済み
+  - iOS の編集シートでの操作も UI テスト(`TripEditShiftUITests`)で確認: 旅行を作成 → 旅行を編集 → カレンダーで 3 日後を選ぶ → 予告が出る → 保存でプランの 1 日目が動く。位置シミュレーションもサーバも要らない
+  - **「iOS で変わらない」という指摘は端末のアプリが変更前のビルドだったため**(サーバのデプロイでは iOS アプリは更新されない)。`./run-ios-device.sh` で実機へ入れ直した
 
 - Web からも写真・動画を削除できるようにする [plan](docs/plans/archive/web-media-delete.md)
   - 同日の削除実装は iOS 限定だったため、Web の閲覧中に消したいものを見つけても消せなかった。**media の「削除だけ」を双方向**にした(ファイル本体は従来どおり iOS → サーバの一方向アップロードのまま)
