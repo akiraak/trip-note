@@ -24,31 +24,41 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            List {
-                Section("同期") {
-                    syncSection
-                }
-                Section("旅行") {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    syncBar
+                    PanelLabel(text: "TRIPS")
+                        .padding(.top, 6)
+                        .padding(.leading, 4)
                     if trips.isEmpty {
                         Text("まだ記録がありません")
-                            .foregroundStyle(.secondary)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.muted)
+                            .padding(.vertical, 24)
+                            .frame(maxWidth: .infinity)
                     }
                     ForEach(trips) { trip in
                         NavigationLink(value: trip) {
-                            TripRow(trip: trip)
+                            TripCard(trip: trip)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
+            .background(Theme.canvas)
             .navigationTitle("旅ログ")
             .navigationDestination(for: TripEntity.self) { trip in
                 TripDetailView(trip: trip)
             }
             .toolbar {
-                Button {
-                    showsTripCreate = true
-                } label: {
-                    Label("旅行を作成", systemImage: "plus")
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsTripCreate = true
+                    } label: {
+                        Label("旅行を作成", systemImage: "plus")
+                    }
                 }
             }
         }
@@ -122,44 +132,70 @@ struct ContentView: View {
         pendingShare = share
     }
 
+    /// 一覧の一番上に置く同期の状態と操作。
+    /// ナビゲーションバーに入れると文言が潰れるので、幅の取れる行として出す
     @ViewBuilder
-    private var syncSection: some View {
-        if !sync.isConfigured {
-            Text("サーバが未設定です。Resources/ServerConfig.plist を作成すると同期できます。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            HStack {
+    private var syncBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
                 if sync.isSyncing {
                     ProgressView()
-                    Text("同期中…")
-                        .foregroundStyle(.secondary)
-                } else {
-                    let pending = sync.pendingPointCount
-                    let pendingMedia = sync.pendingMediaCount
-                    if pending > 0 || pendingMedia > 0 {
-                        Text("未同期: \(pending) 地点 / \(pendingMedia) メディア")
-                            .foregroundStyle(.secondary)
-                    } else if let syncedAt = sync.lastSyncedAt {
-                        Text("同期済み (\(syncedAt.formatted(.dateTime.hour().minute())))")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("未同期のデータはありません")
-                            .foregroundStyle(.secondary)
+                        .controlSize(.mini)
+                        .tint(Theme.muted)
+                }
+                Text(syncStatusText)
+                    .font(Theme.numeric(.caption))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 8)
+                if sync.isConfigured {
+                    Button {
+                        Task { await sync.syncNow() }
+                    } label: {
+                        Label("今すぐ同期", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption)
+                            .labelStyle(.titleAndIcon)
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .disabled(sync.isSyncing)
                 }
             }
-            .font(.subheadline)
-            Button("今すぐ同期") {
-                Task { await sync.syncNow() }
+            if !sync.isConfigured {
+                Text("Resources/ServerConfig.plist を作成すると同期できます。")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
             }
-            .disabled(sync.isSyncing)
             if let error = sync.lastError {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Theme.danger)
             }
         }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line, lineWidth: 1))
+    }
+
+    private var syncStatusText: String {
+        if !sync.isConfigured {
+            return "サーバ未設定"
+        }
+        if sync.isSyncing {
+            return "同期中…"
+        }
+        let pending = sync.pendingPointCount
+        let pendingMedia = sync.pendingMediaCount
+        if pending > 0 || pendingMedia > 0 {
+            return "未同期: \(pending) 地点 / \(pendingMedia) メディア"
+        }
+        if let syncedAt = sync.lastSyncedAt {
+            return "同期済み (\(syncedAt.formatted(.dateTime.hour().minute())))"
+        }
+        return "未同期のデータはありません"
     }
 
     static func formatDistance(_ meters: Double) -> String {
@@ -170,47 +206,67 @@ struct ContentView: View {
     }
 }
 
-private struct TripRow: View {
+/// 一覧の 1 行。左にルートのサムネイル、右にタイトルと状態・実績の数値
+private struct TripCard: View {
     let trip: TripEntity
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(trip.title)
-                    .font(.headline)
-                if trip.isRecordingActive {
-                    badge("記録中", color: .green)
-                } else if trip.status == .inProgress {
-                    badge("進行中", color: .green)
-                } else if trip.status == .planning {
-                    badge("プラン中", color: .blue)
+        HStack(spacing: 0) {
+            RouteThumbnail(
+                coordinates: trip.thumbnailRoute,
+                color: trip.startedAt == nil ? Theme.accent : Theme.done
+            )
+            .frame(width: 96)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(trip.title)
+                        .font(.body)
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(2)
+                    statusTag
                 }
+                summary
+                    .font(Theme.numeric(.caption))
+                    .foregroundStyle(Theme.muted)
             }
-            HStack(spacing: 12) {
-                if let startedAt = trip.startedAt {
-                    Text(startedAt, format: .dateTime.year().month().day().hour().minute())
-                    Text("\(trip.points.count) 地点")
-                    Text(ContentView.formatDistance(trip.totalDistanceMeters))
-                } else if let first = trip.sortedDays.first,
-                          let date = PlanEditor.parseDate(first.date) {
-                    // プラン中はプランの期間を出す(地点数・距離は 0 なので出さない)
-                    Text("\(date.formatted(.dateTime.month().day())) から \(trip.sortedDays.count) 日間")
-                } else {
-                    Text("未出発")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 2)
+        .frame(height: 92)
+        .background(Theme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line, lineWidth: 1))
     }
 
-    private func badge(_ label: String, color: Color) -> some View {
-        Text(label)
-            .font(.caption2)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.2), in: Capsule())
-            .foregroundStyle(color)
+    @ViewBuilder
+    private var statusTag: some View {
+        if trip.isRecordingActive {
+            StatusTag(label: "記録中", color: Theme.done)
+        } else if trip.status == .inProgress {
+            StatusTag(label: "進行中", color: Theme.done)
+        } else if trip.status == .planning {
+            StatusTag(label: "プラン中", color: Theme.accent)
+        }
+    }
+
+    @ViewBuilder
+    private var summary: some View {
+        if let startedAt = trip.startedAt {
+            // 日時にも空白が入るので、項目の区切りは中黒で示す
+            let startedText = startedAt.formatted(
+                .dateTime.year().month().day().hour().minute()
+            )
+            let distance = ContentView.formatDistance(trip.totalDistanceMeters)
+            Text("\(startedText) · \(trip.points.count) 地点 · \(distance)")
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        } else if let first = trip.sortedDays.first,
+                  let date = PlanEditor.parseDate(first.date) {
+            // プラン中はプランの期間を出す(地点数・距離は 0 なので出さない)
+            Text("\(date.formatted(.dateTime.month().day())) から \(trip.sortedDays.count) 日間")
+        } else {
+            Text("未出発")
+        }
     }
 }

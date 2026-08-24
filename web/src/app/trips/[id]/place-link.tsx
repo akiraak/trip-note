@@ -92,30 +92,30 @@ export function PlaceLink({
             resolve();
           }}
           placeholder="Google Maps のリンクを貼る"
-          className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+          className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm"
         />
         <button
           type="button"
           onClick={resolve}
           disabled={loading || !link.trim()}
-          className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
         >
           {loading ? "読み込み中…" : "読み込む"}
         </button>
       </div>
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="text-xs text-muted">
         Google Maps で場所を開き「共有」→「リンクをコピー」したものを貼ると、その場所を追加できます
       </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       {place && (
-        <ul className="divide-y divide-zinc-200 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+        <ul className="divide-y divide-border rounded-md border border-border">
           <li className="flex items-center gap-2 p-2">
             <span aria-hidden>📍</span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm">
                 {place.name ?? "Google Maps の場所"}
               </span>
-              <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+              <span className="block truncate text-xs text-muted">
                 {linkPrecisionLabel(place)}
                 {!hasCoordinate &&
                   (allowsMissingCoordinate
@@ -134,7 +134,7 @@ export function PlaceLink({
                     longitude: place.longitude,
                   })
                 }
-                className="shrink-0 rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs hover:bg-raised disabled:opacity-50"
               >
                 {selectLabel}
               </button>

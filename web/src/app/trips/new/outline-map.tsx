@@ -5,7 +5,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { CHECKPOINT_COLORS } from "@/lib/checkpoint-style";
 import { boundingBox } from "@/lib/geo";
-import { MAP_STYLE_URL } from "@/lib/maplibre-setup";
+import { mapStyle } from "@/lib/maplibre-setup";
 import type { OutlineMapPoint } from "@/lib/outline-map";
 
 // AI の日数・宿泊地候補 1 件のプレビュー地図(iOS の OutlineCandidateMap 相当)。
@@ -22,19 +22,28 @@ export function OutlineMap({ points }: { points: OutlineMapPoint[] }) {
       return;
     }
 
-    const map = new MapLibreMap({
-      container,
-      style: MAP_STYLE_URL,
-      bounds,
-      // 概算座標なので寄りすぎない。1 点だけのときも街の広さで収まる
-      fitBoundsOptions: { padding: 40, maxZoom: 9 },
-      attributionControl: { compact: true },
-      interactive: false,
+    let map: MapLibreMap | null = null;
+    let cancelled = false;
+    void mapStyle().then((style) => {
+      if (cancelled) return;
+      map = new MapLibreMap({
+        container,
+        style,
+        bounds,
+        // 概算座標なので寄りすぎない。1 点だけのときも街の広さで収まる
+        fitBoundsOptions: { padding: 40, maxZoom: 9 },
+        attributionControl: { compact: true },
+        interactive: false,
+      });
+      setup(map);
     });
+
+    function setup(map: MapLibreMap) {
     map.on("error", (e) => console.error("[OutlineMap]", e.error ?? e));
 
     if (points.length >= 2) {
-      map.on("load", () => {
+      // スタイルをオブジェクトで渡すと load が購読前に終わっていることがある
+      const addOutline = () => {
         map.addSource("outline", {
           type: "geojson",
           data: {
@@ -51,9 +60,14 @@ export function OutlineMap({ points }: { points: OutlineMapPoint[] }) {
           type: "line",
           source: "outline",
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#2563eb", "line-width": 3 },
+          paint: { "line-color": "#5AA9E6", "line-width": 3 },
         });
-      });
+      };
+      if (map.isStyleLoaded()) {
+        addOutline();
+      } else {
+        map.on("style.load", addOutline);
+      }
     }
 
     for (const point of points) {
@@ -66,16 +80,18 @@ export function OutlineMap({ points }: { points: OutlineMapPoint[] }) {
       // ラベルはユーザー入力・AI 出力なので textContent 相当の title で渡す
       marker.getElement().title = point.label;
     }
+    }
 
     return () => {
-      map.remove();
+      cancelled = true;
+      map?.remove();
     };
   }, [points]);
 
   return (
     <div
       ref={containerRef}
-      className="h-40 w-full overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800"
+      className="h-40 w-full overflow-hidden rounded-md border border-border"
     />
   );
 }

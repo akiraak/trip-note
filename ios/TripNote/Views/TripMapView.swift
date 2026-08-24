@@ -53,6 +53,9 @@ struct TripMapView: View {
     let isActive: Bool
     var mediaAnnotations: [TripMediaAnnotation] = []
     var checkpointAnnotations: [TripCheckpointAnnotation] = []
+    /// 旅行全体のように何十個も並ぶ場面では、吹き出し付きのピンだと団子になるので
+    /// 種別色の小さな点で描く(日単位の地図は名前付きのピンのまま)
+    var compactCheckpoints = false
     /// 今後のプランのルート(チェックポイントを日順・訪問順につないだ座標列)。
     /// 記録済みの軌跡(実線)と区別するため破線で描く。レグ(隣接点間)ごとに
     /// 道路形状を非同期で解決し、未取得・失敗レグは従来どおりの直線で描く
@@ -73,37 +76,50 @@ struct TripMapView: View {
 
     var body: some View {
         Map(initialPosition: .automatic) {
+            // これからのプランは Theme.accent(青)の破線、記録済みは Theme.done(緑)の実線。
+            // 暗い地図の上でどちらがどちらか色で分かるようにしている
             ForEach(Array(planLegs.enumerated()), id: \.offset) { _, leg in
                 MapPolyline(coordinates: polyline(for: leg))
                     .stroke(
-                        .blue.opacity(0.55),
-                        style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 6])
+                        Theme.accent,
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [7, 7])
                     )
             }
             ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                 if segment.count >= 2 {
                     MapPolyline(coordinates: segment)
                         .stroke(
-                            .blue,
+                            Theme.done,
                             style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
                         )
                 }
             }
             if let first = segments.first?.first {
                 Marker("開始", systemImage: "flag.fill", coordinate: first)
-                    .tint(.green)
+                    .tint(Theme.done)
             }
             if totalCount >= 2, let last = segments.last?.last {
                 Marker(isActive ? "現在" : "終了", systemImage: "flag.checkered", coordinate: last)
-                    .tint(.red)
+                    .tint(Theme.danger)
             }
             ForEach(checkpointAnnotations) { annotation in
-                Marker(
-                    annotation.checkpoint.name,
-                    systemImage: annotation.checkpoint.type.systemImage,
-                    coordinate: annotation.coordinate
-                )
-                .tint(annotation.checkpoint.type.tint)
+                if compactCheckpoints {
+                    Annotation("", coordinate: annotation.coordinate) {
+                        Circle()
+                            .fill(annotation.checkpoint.type.tint)
+                            .frame(width: 13, height: 13)
+                            .overlay(Circle().stroke(Theme.canvas, lineWidth: 2.5))
+                            .shadow(color: .black.opacity(0.5), radius: 2)
+                    }
+                    .annotationTitles(.hidden)
+                } else {
+                    Marker(
+                        annotation.checkpoint.name,
+                        systemImage: annotation.checkpoint.type.systemImage,
+                        coordinate: annotation.coordinate
+                    )
+                    .tint(annotation.checkpoint.type.tint)
+                }
             }
             ForEach(mediaAnnotations) { annotation in
                 Annotation("", coordinate: annotation.coordinate) {
@@ -114,7 +130,8 @@ struct TripMapView: View {
                 }
             }
         }
-        .mapStyle(.standard)
+        // ルートとピンを主役にしたいので地図自体は控えめに描く
+        .mapStyle(.standard(emphasis: .muted))
         .task(id: planLegs.map(\.key).joined(separator: "|")) {
             guard !planLegs.isEmpty, let client = SyncClient.fromBundle() else { return }
             roadLegs = await client.resolvedLegs(for: planLegs)

@@ -75,9 +75,9 @@ export function AiPlanSuggest({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
       <p className="text-sm font-medium">AI で行程を提案</p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       {suggestion === null ? (
         <form
           className="flex flex-col gap-2"
@@ -92,14 +92,14 @@ export function AiPlanSuggest({
               value={departure}
               onChange={(event) => setDeparture(event.target.value)}
               placeholder="出発地(例: 東京駅)"
-              className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+              className="rounded-md border border-border bg-background px-2 py-1 text-sm"
             />
             <input
               type="text"
               value={destination}
               onChange={(event) => setDestination(event.target.value)}
               placeholder="到着予定地(例: 自宅)"
-              className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+              className="rounded-md border border-border bg-background px-2 py-1 text-sm"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -109,7 +109,7 @@ export function AiPlanSuggest({
                 type="date"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
-                className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700"
+                className="rounded-md border border-border bg-background px-2 py-1"
               />
             </label>
             <label className="flex items-center gap-1">
@@ -122,7 +122,7 @@ export function AiPlanSuggest({
                 onChange={(event) =>
                   setDayCount(Number(event.target.value) || 1)
                 }
-                className="w-16 rounded-md border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700"
+                className="w-16 rounded-md border border-border bg-background px-2 py-1"
               />
             </label>
           </div>
@@ -131,20 +131,20 @@ export function AiPlanSuggest({
             onChange={(event) => setRequest(event.target.value)}
             placeholder="要望(例: 城と温泉を入れたい。運転は 1 日 3 時間まで)"
             rows={2}
-            className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm"
           />
           <div className="flex gap-2">
             <button
               type="submit"
               disabled={pending || !departure.trim() || !destination.trim()}
-              className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+              className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
             >
               {pending ? "提案を作成中…(1 分ほどかかります)" : "提案してもらう"}
             </button>
             <button
               type="button"
               onClick={onDone}
-              className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+              className="rounded-md border border-border px-3 py-1 text-sm"
             >
               閉じる
             </button>
@@ -156,11 +156,11 @@ export function AiPlanSuggest({
             {suggestion.days.map((day, index) => (
               <li
                 key={day.date}
-                className="rounded-md border border-zinc-200 p-2 dark:border-zinc-800"
+                className="rounded-md border border-border p-2"
               >
                 <p className="text-sm font-medium">
                   {index + 1}日目{" "}
-                  <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                  <span className="font-normal text-muted">
                     {formatDay(day.date)}
                   </span>{" "}
                   {day.title}
@@ -173,7 +173,7 @@ export function AiPlanSuggest({
                       </span>
                       <span>{checkpoint.name}</span>
                       {checkpoint.note && (
-                        <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                        <span className="truncate text-xs text-muted">
                           {checkpoint.note}
                         </span>
                       )}
@@ -183,7 +183,7 @@ export function AiPlanSuggest({
               </li>
             ))}
           </ol>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="text-xs text-muted">
             採用後は通常の編集で調整できます。地点の位置は概算のため、Google Maps のリンクで具体化してください
           </p>
           <div className="flex gap-2">
@@ -191,7 +191,7 @@ export function AiPlanSuggest({
               type="button"
               disabled={pending}
               onClick={adopt}
-              className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+              className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
             >
               {pending ? "追加中…" : "この内容でプランに追加"}
             </button>
@@ -199,14 +199,14 @@ export function AiPlanSuggest({
               type="button"
               disabled={pending}
               onClick={() => setSuggestion(null)}
-              className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+              className="rounded-md border border-border px-3 py-1 text-sm"
             >
               条件に戻る
             </button>
             <button
               type="button"
               onClick={onDone}
-              className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+              className="rounded-md border border-border px-3 py-1 text-sm"
             >
               閉じる
             </button>

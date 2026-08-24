@@ -1,26 +1,83 @@
 @import "tailwindcss";
 
+/* 案 C「ルートキャンバス」のデザイントークン(docs/plans/design-refresh.md)。
+   ダーク固定なので OS の設定に関わらずこの 1 セットだけを使う。
+   iOS 側 ios/TripNote/Views/Theme.swift と同じ値を持たせること */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  /* 地図の下に敷く一番暗い面(ページの地) */
+  --background: #101419;
+  /* パネル・カードの面 */
+  --surface: #1a222b;
+  /* 面の上でさらに一段持ち上げる場所(選択中の日・チップ) */
+  --raised: #222c36;
+  --border: #2c3743;
+  --foreground: #e9edf2;
+  --muted: #93a0ae;
+  /* これからのルート・操作色 */
+  --accent: #5aa9e6;
+  /* 記録済みのルート・進行中 */
+  --done: #7bd389;
+  /* 削除など後戻りできない操作 */
+  --danger: #ff7c6b;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-border: var(--border);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-done: var(--done);
+  --color-danger: var(--danger);
+  --font-mono: var(--font-plex-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* 日本語は端末のシステムフォントに任せる(iOS 側も同じ方針)。
+     距離・時刻・座標だけ font-mono(IBM Plex Mono)で桁をそろえる */
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP",
+    "Yu Gothic UI", system-ui, sans-serif;
+}
+
+/* 数値の桁をそろえる(距離・時刻・座標・件数) */
+.tabular {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* MapLibre のコントロール・ポップアップを暗い面に合わせる */
+.maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--border) !important;
+}
+.maplibregl-ctrl-group button span {
+  filter: invert(1) brightness(1.6);
+}
+.maplibregl-popup-content {
+  background: var(--surface) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12px;
+}
+.maplibregl-popup-tip {
+  border-top-color: var(--surface) !important;
+  border-bottom-color: var(--surface) !important;
+}
+.maplibregl-ctrl-attrib {
+  background: rgba(26, 34, 43, 0.8) !important;
+  color: var(--muted) !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--muted) !important;
 }

@@ -14,24 +14,21 @@ import {
 } from "./actions";
 import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
-import { DayMap } from "./day-map";
 import { PlaceLink } from "./place-link";
 import { useRouteLegs } from "./use-route-legs";
-import { CHECKPOINT_ICONS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
+import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { formatDayWithWeekday } from "@/lib/format";
 import { formatDistance } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
 import { dayMapPoints, type DayMapData } from "@/lib/plan-map";
-import {
-  buildLegs,
-  totalLegMeters,
-  type ResolvedLeg,
-} from "@/lib/route-legs";
+import { buildLegs, totalLegMeters, type ResolvedLeg } from "@/lib/route-legs";
 import type { CheckpointType } from "@/lib/types";
 
 // 旅行詳細のプラン(日別)表示・編集。データは server component (page.tsx) から
 // 受け取り、変更は Server Actions 経由。アクションが revalidatePath するので
-// 完了後は新しい props が流れてくる(クライアント側でリストの複製は持たない)
+// 完了後は新しい props が流れてくる(クライアント側でリストの複製は持たない)。
+// 地図は画面いっぱいの 1 枚(TripMap)に集約したので、日カードにミニ地図は持たない。
+// 代わりに日の見出しを押すとその日へ地図が寄る
 
 export type PlanCheckpoint = {
   id: string;
@@ -59,6 +56,8 @@ export function PlanSection({
   transport,
   aiDefaults,
   cachedLegs,
+  selectedDayId,
+  onSelectDay,
 }: {
   tripId: string;
   days: PlanDay[];
@@ -67,11 +66,14 @@ export function PlanSection({
   aiDefaults: { startDate: string; dayCount: number; departure: string };
   /** SSR 時点でキャッシュ済みだったレグ(page.tsx の readCachedLegs) */
   cachedLegs?: Record<string, ResolvedLeg>;
+  /** 地図が寄っている日 */
+  selectedDayId?: string | null;
+  onSelectDay?: (dayId: string | null) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
-  // 日別地図のデータ。フォームの開閉くらいで地図を作り直さないよう days に紐付ける
+  // 日ごとのルート(前泊地起点)。走行距離の計算に使う
   const maps = useMemo(() => dayMapPoints(days), [days]);
 
   // Server Action を実行し、成功したらフォームを閉じるなどの後処理を行う
@@ -88,16 +90,14 @@ export function PlanSection({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+        <p className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
         </p>
       )}
       {days.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          プランはまだありません
-        </p>
+        <p className="text-sm text-muted">プランはまだありません</p>
       )}
       {days.map((day, index) => (
         <DayCard
@@ -109,6 +109,10 @@ export function PlanSection({
           cachedLegs={cachedLegs}
           pending={pending}
           run={run}
+          selected={selectedDayId === day.id}
+          onSelect={() =>
+            onSelectDay?.(selectedDayId === day.id ? null : day.id)
+          }
         />
       ))}
       {aiOpen && (
@@ -126,7 +130,7 @@ export function PlanSection({
           type="button"
           disabled={pending}
           onClick={() => run(() => addDayAction(tripId))}
-          className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          className="rounded-md border border-border px-3 py-1 text-sm hover:bg-raised disabled:opacity-50"
         >
           + 日を追加
         </button>
@@ -134,7 +138,7 @@ export function PlanSection({
           <button
             type="button"
             onClick={() => setAiOpen(true)}
-            className="rounded-md border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            className="rounded-md border border-border px-3 py-1 text-sm hover:bg-raised"
           >
             ✨ AI で行程を提案
           </button>
@@ -157,16 +161,20 @@ function DayCard({
   cachedLegs,
   pending,
   run,
+  selected,
+  onSelect,
 }: {
   day: PlanDay;
   dayNumber: number;
   /** 最終日(削除・日の差し込みで後続がずれない)か */
   isLast: boolean;
-  /** この日の地図データ(座標ありが 0 件なら地図は出さない) */
+  /** この日のルート(前泊地起点)。走行距離に使う */
   map: DayMapData;
   cachedLegs?: Record<string, ResolvedLeg>;
   pending: boolean;
   run: RunAction;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   // 同時に開くフォームは日ごとに 1 つ
   const [mode, setMode] = useState<
@@ -176,7 +184,7 @@ function DayCard({
   const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(
     null,
   );
-  // 前泊地を起点にした、その日のレグ列。地図もヘッダの走行距離もこれを見る
+  // 前泊地を起点にした、その日のレグ列
   const legs = useMemo(
     () => buildLegs({ start: map.anchor, points: map.points }),
     [map],
@@ -189,31 +197,39 @@ function DayCard({
   const waypoints = day.checkpoints.map((c) => c.name).join(" → ");
 
   return (
-    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-        <span className="font-medium">
-          {dayNumber}日目{" "}
-          <span className="text-sm font-normal text-zinc-500 dark:text-zinc-400">
+    <section
+      className={`rounded-lg border ${
+        selected ? "border-accent bg-raised" : "border-border bg-surface"
+      }`}
+    >
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2">
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex items-center gap-2 text-left"
+          title={selected ? "地図の絞り込みを外す" : "この日を地図で見る"}
+        >
+          <span className="font-medium">{dayNumber}日目</span>
+          <span className="tabular text-xs text-muted">
             {formatDayWithWeekday(day.date)}
           </span>
-        </span>
+        </button>
         {/* 前泊地を出発する時刻(iOS の日詳細「出発時刻」) */}
         {day.departure_time && (
-          <span className="shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+          <span className="tabular shrink-0 text-xs text-muted">
             出発 {day.departure_time}
           </span>
         )}
         {distanceMeters > 0 && (
-          <span className="shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+          <span className="tabular shrink-0 text-xs text-muted">
             <span aria-hidden>🚗</span> 約 {formatDistance(distanceMeters)}
           </span>
         )}
-        {day.title && <span className="truncate text-sm">{day.title}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-2 text-xs">
           <button
             type="button"
             onClick={() => setMode(mode === "edit-day" ? null : "edit-day")}
-            className="underline"
+            className="text-accent hover:underline"
           >
             編集
           </button>
@@ -223,18 +239,19 @@ function DayCard({
                 type="button"
                 disabled={pending}
                 onClick={() =>
-                  run(() => deleteDayAction(day.id), () =>
-                    setConfirmingDelete(false),
+                  run(
+                    () => deleteDayAction(day.id),
+                    () => setConfirmingDelete(false),
                   )
                 }
-                className="font-medium text-red-600 underline disabled:opacity-50"
+                className="font-medium text-danger underline disabled:opacity-50"
               >
                 本当に削除する
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(false)}
-                className="underline"
+                className="hover:underline"
               >
                 やめる
               </button>
@@ -243,7 +260,7 @@ function DayCard({
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="text-red-600 underline"
+              className="text-danger hover:underline"
             >
               削除
             </button>
@@ -251,27 +268,16 @@ function DayCard({
         </span>
       </header>
       <div className="flex flex-col gap-2 p-3">
+        {day.title && <p className="text-sm">{day.title}</p>}
         {/* 経由地(訪問順に名前を繋いだ概要。iOS の TripDayRow と同じく 2 行でクランプ) */}
         {waypoints && (
-          <p className="line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
-            {waypoints}
-          </p>
-        )}
-        {map.points.length > 0 && (
-          <DayMap
-            points={map.points}
-            anchor={map.anchor}
-            legs={legs}
-            resolved={resolved}
-          />
+          <p className="line-clamp-2 text-sm text-muted">{waypoints}</p>
         )}
         {day.note && !confirmingDelete && mode !== "edit-day" && (
-          <p className="text-sm whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">
-            {day.note}
-          </p>
+          <p className="text-sm whitespace-pre-wrap text-muted">{day.note}</p>
         )}
         {confirmingDelete && (
-          <p className="text-sm text-red-600">
+          <p className="text-sm text-danger">
             この日とチェックポイント {day.checkpoints.length} 件を削除します
             {!isLast && "。以降の日は 1 日前にずれます"}
           </p>
@@ -281,15 +287,16 @@ function DayCard({
             day={day}
             pending={pending}
             onSubmit={(fields) =>
-              run(() => updateDayAction(day.id, fields), () => setMode(null))
+              run(
+                () => updateDayAction(day.id, fields),
+                () => setMode(null),
+              )
             }
             onCancel={() => setMode(null)}
           />
         )}
         {day.checkpoints.length === 0 && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            チェックポイントなし
-          </p>
+          <p className="text-sm text-muted">チェックポイントなし</p>
         )}
         {day.checkpoints.length > 0 && (
           <ol className="flex flex-col gap-1">
@@ -348,16 +355,19 @@ function DayCard({
             pending={pending}
             submitLabel="追加"
             onSubmit={(input) =>
-              run(() => addCheckpointAction(day.id, input), () => setMode(null))
+              run(
+                () => addCheckpointAction(day.id, input),
+                () => setMode(null),
+              )
             }
             onCancel={() => setMode(null)}
           />
         )}
-        <div className="flex gap-2 text-xs">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
           <button
             type="button"
             onClick={() => setMode(mode === "add-link" ? null : "add-link")}
-            className="underline"
+            className="text-accent hover:underline"
           >
             {mode === "add-link"
               ? "リンク入力を閉じる"
@@ -366,7 +376,7 @@ function DayCard({
           <button
             type="button"
             onClick={() => setMode(mode === "add-manual" ? null : "add-manual")}
-            className="underline"
+            className="text-accent hover:underline"
           >
             {mode === "add-manual" ? "テキスト入力を閉じる" : "+ テキストを追加"}
           </button>
@@ -374,7 +384,7 @@ function DayCard({
             type="button"
             disabled={pending}
             onClick={() => run(() => insertDayAfterAction(day.id))}
-            className="ml-auto underline disabled:opacity-50"
+            className="ml-auto text-accent hover:underline disabled:opacity-50"
             title={
               isLast
                 ? "末尾に日を追加します"
@@ -410,7 +420,7 @@ function DayForm({
   const [departureTime, setDepartureTime] = useState(day.departure_time ?? "");
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+      className="flex flex-col gap-2 rounded-md border border-border p-3"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit({
@@ -425,24 +435,24 @@ function DayForm({
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         placeholder="タイトル(例: 松本周辺を観光して泊)"
-        className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+        className="rounded-md border border-border bg-background px-2 py-1 text-sm"
       />
       <textarea
         value={note}
         onChange={(event) => setNote(event.target.value)}
         placeholder="メモ"
         rows={2}
-        className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+        className="rounded-md border border-border bg-background px-2 py-1 text-sm"
       />
       <label className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">出発時刻</span>
+        <span className="text-muted">出発時刻</span>
         <input
           type="time"
           value={departureTime}
           onChange={(event) => setDepartureTime(event.target.value)}
-          className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+          className="tabular rounded-md border border-border bg-background px-2 py-1 text-sm"
         />
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-muted">
           この日の宿泊地(前泊地)を出発する時刻。空にすると未設定
         </span>
       </label>
@@ -450,14 +460,14 @@ function DayForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
         >
           保存
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+          className="rounded-md border border-border px-3 py-1 text-sm hover:bg-raised"
         >
           キャンセル
         </button>
@@ -483,12 +493,17 @@ function CheckpointRow({
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   return (
-    <li className="flex items-center gap-2 rounded-md px-1 py-1 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900">
-      <span aria-hidden>{CHECKPOINT_ICONS[checkpoint.type]}</span>
-      {/* 名前の下に「種別 · 予定時刻 · 座標未設定」を並べる(iOS の CheckpointRow と同じ) */}
+    <li className="flex items-start gap-2 rounded-md px-1 py-1 text-sm hover:bg-raised">
+      {/* 地図のピンと同じ種別色の点で結びつける(iOS の CheckpointRow と同じ) */}
+      <span
+        aria-hidden
+        className="mt-1.5 size-2.5 shrink-0 rounded-full"
+        style={{ background: CHECKPOINT_COLORS[checkpoint.type] }}
+      />
+      {/* 名前の下に「種別 · 予定時刻 · 座標未設定」を並べる */}
       <span className="min-w-0 flex-1">
         <span className="block truncate">{checkpoint.name}</span>
-        <span className="flex flex-wrap items-baseline gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="tabular flex flex-wrap items-baseline gap-2 text-xs text-muted">
           <span>{CHECKPOINT_LABELS[checkpoint.type]}</span>
           {checkpoint.planned_time && (
             // 予定時刻はブラウザのローカル TZ で表示する(SSR とはずれ得るので警告を抑止)
@@ -502,7 +517,7 @@ function CheckpointRow({
           {checkpoint.latitude === null && <span>座標未設定</span>}
         </span>
         {checkpoint.note && (
-          <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="block truncate text-xs text-muted">
             {checkpoint.note}
           </span>
         )}
@@ -514,7 +529,7 @@ function CheckpointRow({
             target="_blank"
             rel="noreferrer"
             title="Google Maps で開く"
-            className="mr-1 underline"
+            className="mr-1 text-accent hover:underline"
           >
             地図↗
           </a>
@@ -523,7 +538,7 @@ function CheckpointRow({
           type="button"
           disabled={pending || isFirst}
           onClick={() => run(() => moveCheckpointAction(checkpoint.id, -1))}
-          className="rounded border border-zinc-300 px-1.5 py-0.5 disabled:opacity-30 dark:border-zinc-700"
+          className="rounded border border-border px-1.5 py-0.5 disabled:opacity-30"
           aria-label="上へ"
         >
           ↑
@@ -532,12 +547,16 @@ function CheckpointRow({
           type="button"
           disabled={pending || isLast}
           onClick={() => run(() => moveCheckpointAction(checkpoint.id, 1))}
-          className="rounded border border-zinc-300 px-1.5 py-0.5 disabled:opacity-30 dark:border-zinc-700"
+          className="rounded border border-border px-1.5 py-0.5 disabled:opacity-30"
           aria-label="下へ"
         >
           ↓
         </button>
-        <button type="button" onClick={onEdit} className="ml-1 underline">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="ml-1 text-accent hover:underline"
+        >
           編集
         </button>
         {confirmingDelete ? (
@@ -546,14 +565,14 @@ function CheckpointRow({
               type="button"
               disabled={pending}
               onClick={() => run(() => deleteCheckpointAction(checkpoint.id))}
-              className="font-medium text-red-600 underline disabled:opacity-50"
+              className="font-medium text-danger underline disabled:opacity-50"
             >
               本当に削除する
             </button>
             <button
               type="button"
               onClick={() => setConfirmingDelete(false)}
-              className="underline"
+              className="hover:underline"
             >
               やめる
             </button>
@@ -562,7 +581,7 @@ function CheckpointRow({
           <button
             type="button"
             onClick={() => setConfirmingDelete(true)}
-            className="text-red-600 underline"
+            className="text-danger hover:underline"
           >
             削除
           </button>

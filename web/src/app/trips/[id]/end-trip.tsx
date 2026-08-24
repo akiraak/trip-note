@@ -28,12 +28,12 @@ export function EndTrip({ tripId }: { tripId: string }) {
     <div className="mb-8 text-sm">
       {confirming ? (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-red-600">この旅行を終了しますか?</span>
+          <span className="text-danger">この旅行を終了しますか?</span>
           <button
             type="button"
             disabled={pending}
             onClick={run}
-            className="font-medium text-red-600 underline disabled:opacity-50"
+            className="font-medium text-danger underline disabled:opacity-50"
           >
             旅行を終了
           </button>
@@ -50,15 +50,15 @@ export function EndTrip({ tripId }: { tripId: string }) {
         <button
           type="button"
           onClick={() => setConfirming(true)}
-          className="text-red-600 underline"
+          className="text-danger underline"
         >
           旅行を終了
         </button>
       )}
-      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 text-xs text-muted">
         記録の停止では旅行は終了しません。終了すると一覧で「進行中」ではなくなります。
       </p>
-      {error && <p className="mt-2 text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-danger">{error}</p>}
     </div>
   );
 }

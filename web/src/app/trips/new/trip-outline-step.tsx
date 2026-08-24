@@ -118,7 +118,7 @@ export function TripOutlineStep({
         <button
           type="button"
           onClick={() => router.push(`/trips/${tripId}`)}
-          className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+          className="rounded-md border border-border px-3 py-1 text-sm"
         >
           スキップ
         </button>
@@ -126,11 +126,11 @@ export function TripOutlineStep({
 
       {error && (
         <div className="flex flex-col items-start gap-2">
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-danger">{error}</p>
           <button
             type="button"
             onClick={retry}
-            className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+            className="rounded-md border border-border px-3 py-1 text-sm"
           >
             再試行
           </button>
@@ -138,7 +138,7 @@ export function TripOutlineStep({
       )}
 
       {!error && !suggestion && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-muted">
           候補を作成中…(1 分ほどかかります)
         </p>
       )}
@@ -164,11 +164,11 @@ export function TripOutlineStep({
         return (
           <div
             key={index}
-            className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
+            className="flex flex-col gap-2 rounded-lg border border-border p-3"
           >
             <div>
               <p className="font-medium">{candidate.title}</p>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-muted">
                 {summary(candidate)}
               </p>
             </div>
@@ -181,7 +181,7 @@ export function TripOutlineStep({
                     <span>
                       {i + 1}泊目 {night.area}
                     </span>
-                    <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                    <span className="truncate text-xs text-muted">
                       {night.name}
                       {night.note ? ` · ${night.note}` : ""}
                     </span>
@@ -194,7 +194,7 @@ export function TripOutlineStep({
                 type="button"
                 disabled={adopting}
                 onClick={() => adopt(candidate)}
-                className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+                className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
               >
                 {adopting ? "追加中…" : "この候補を採用"}
               </button>
@@ -203,7 +203,7 @@ export function TripOutlineStep({
         );
       })}
 
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="text-xs text-muted">
         旅行は作成済みです。スキップしても「日を追加」や AI
         行程提案で後から日程を組めます。地図はおおよその位置で、採用後は通常の編集で調整でき、宿の位置は
         Google Maps のリンクで具体化できます

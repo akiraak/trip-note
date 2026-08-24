@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 @main
 struct TripNoteApp: App {
@@ -33,7 +34,32 @@ struct TripNoteApp: App {
                 .environment(recorder)
                 .environment(sync)
                 .environment(importer)
+                // デザインは案 C「ルートキャンバス」でダーク固定
+                // (OS がライトでもダークで出す。docs/plans/design-refresh.md)
+                .preferredColorScheme(.dark)
+                .tint(Theme.accent)
+                // preferredColorScheme は SwiftUI のビューにしか効かず、
+                // MapKit(UIKit 側)はシステムの外観のままになる。地図もダークにするため
+                // ウィンドウの外観自体を固定する
+                .background(DarkWindow())
         }
         .modelContainer(container)
+    }
+}
+
+/// ウィンドウの外観をダークに固定する。SwiftUI の preferredColorScheme だけでは
+/// MapKit(UIKit)まで届かず地図がライトのままになるため、window を直接掴んで指定する
+private struct DarkWindow: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        // 追加直後は window がまだ nil なので、次のループで設定する
+        DispatchQueue.main.async {
+            uiView.window?.overrideUserInterfaceStyle = .dark
+        }
     }
 }

@@ -43,7 +43,7 @@ export function SettingsForm({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
         {models.map((model) => (
           <label
             key={model.id}
@@ -62,17 +62,17 @@ export function SettingsForm({
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-medium">{model.label}</span>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                <span className="text-xs text-muted">
                   {PROVIDER_LABELS[model.provider] ?? model.provider} ·{" "}
                   {model.pricing}
                 </span>
                 {!model.keyConfigured && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                  <span className="text-xs text-amber-400">
                     API キー未設定
                   </span>
                 )}
               </span>
-              <span className="block text-sm text-zinc-500 dark:text-zinc-400">
+              <span className="block text-sm text-muted">
                 {model.note}
               </span>
             </span>
@@ -84,7 +84,7 @@ export function SettingsForm({
           type="button"
           disabled={pending || selected === currentId}
           onClick={save}
-          className="rounded-md bg-zinc-800 px-4 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-background disabled:opacity-50"
         >
           {pending ? "保存中…" : "保存"}
         </button>
@@ -92,8 +92,8 @@ export function SettingsForm({
           <p
             className={
               message.kind === "ok"
-                ? "text-sm text-green-600 dark:text-green-400"
-                : "text-sm text-red-600"
+                ? "text-sm text-done"
+                : "text-sm text-danger"
             }
           >
             {message.text}

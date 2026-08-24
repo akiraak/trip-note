@@ -13,7 +13,7 @@ import type { TripOutlineInput } from "@/lib/ai";
 // 目的地が入力されていれば、作成後に AI の日数・宿泊地候補ステップへ進む
 
 const inputClass =
-  "w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700";
+  "w-full rounded-md border border-border bg-background px-2 py-1 text-sm";
 
 export function TripCreateForm({
   defaultDate,
@@ -118,7 +118,7 @@ export function TripCreateForm({
       }}
     >
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">タイトル</span>
+        <span className="text-muted">タイトル</span>
         <input
           type="text"
           value={title}
@@ -130,7 +130,7 @@ export function TripCreateForm({
       </label>
 
       <div className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">出発日時</span>
+        <span className="text-muted">出発日時</span>
         <div className="flex gap-2">
           <input
             type="date"
@@ -147,13 +147,13 @@ export function TripCreateForm({
             className={inputClass}
           />
         </div>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-muted">
           {timeZone} の時刻として保存します。この日付が 1 日目になります
         </span>
       </div>
 
       <div className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">
+        <span className="text-muted">
           出発地(任意)
         </span>
         <input
@@ -163,7 +163,7 @@ export function TripCreateForm({
           placeholder="例: 自宅"
           className={inputClass}
         />
-        <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="flex items-center gap-2 text-xs text-muted">
           {coordinate?.latitude != null && coordinate.longitude != null ? (
             <span>
               位置 {coordinate.latitude.toFixed(5)},{" "}
@@ -190,13 +190,13 @@ export function TripCreateForm({
             }}
           />
         )}
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-muted">
           入力すると 1 日目の出発チェックポイントになります
         </span>
       </div>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500 dark:text-zinc-400">
+        <span className="text-muted">
           目的地(任意)
         </span>
         <input
@@ -208,24 +208,24 @@ export function TripCreateForm({
         />
       </label>
 
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="text-xs text-muted">
         日数は決めなくて OK。作成後に「日を追加」や AI 行程提案で日程を組めます
       </p>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <div className="flex gap-2">
         <button
           type="submit"
           disabled={pending || !title.trim()}
-          className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
         >
           {pending ? "作成中…" : "作成"}
         </button>
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+          className="rounded-md border border-border px-3 py-1 text-sm"
         >
           キャンセル
         </button>

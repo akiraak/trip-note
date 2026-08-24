@@ -24,17 +24,17 @@ export function DeleteTrip({ tripId }: { tripId: string }) {
   };
 
   return (
-    <div className="mt-12 border-t border-zinc-200 pt-4 text-sm dark:border-zinc-800">
+    <div className="mt-12 border-t border-border pt-4 text-sm">
       {confirming ? (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-red-600">
+          <span className="text-danger">
             プラン・記録・メディアごと削除します(iOS にも同期されます)
           </span>
           <button
             type="button"
             disabled={pending}
             onClick={run}
-            className="font-medium text-red-600 underline disabled:opacity-50"
+            className="font-medium text-danger underline disabled:opacity-50"
           >
             本当に削除する
           </button>
@@ -51,12 +51,12 @@ export function DeleteTrip({ tripId }: { tripId: string }) {
         <button
           type="button"
           onClick={() => setConfirming(true)}
-          className="text-red-600 underline"
+          className="text-danger underline"
         >
           この旅行を削除
         </button>
       )}
-      {error && <p className="mt-2 text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-danger">{error}</p>}
     </div>
   );
 }

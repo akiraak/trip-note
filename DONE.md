@@ -2,6 +2,20 @@
 
 ## 2026-08-23
 
+- デザインを案 C「ルートキャンバス」に刷新する(iOS / PC-Web / Mobile-Web) [plan](docs/plans/archive/design-refresh.md)
+  - 3 案(A: フィールドガイド / B: 旅の切符 / C: ルートキャンバス)を HTML モックで提示して **C を採用**。配色は**ダーク固定**(OS がライトでもダークで出す)。書体はプラットフォームに合わせ、iOS はシステムフォント、Web はシステムフォント + IBM Plex Mono(距離・時刻・座標の桁そろえ)。日本語 Web フォントは重いので使わない
+  - **iOS**: 画面いっぱいの地図 + ボトムシートに作り替え(`Views/RouteSheet.swift` を新設)。SwiftUI の `.sheet` はシート内から `NavigationLink` で遷移できないため、`ZStack` に重ねる自前のシートにした(3 段階スナップ、つまみのドラッグ + タップで開閉)
+  - **iOS の地図がダークにならない問題**: `preferredColorScheme(.dark)` は SwiftUI のビューにしか効かず MapKit はシステムの外観のままになる。`UIViewRepresentable`(`TripNoteApp.swift` の `DarkWindow`)で `window.overrideUserInterfaceStyle = .dark` を指定して解決
+  - **iOS の一覧**: 行ごとに MapKit を並べると重いので、地図タイルを読まず座標の形だけを `Canvas` で描く `RouteThumbnail` を新設(記録があれば軌跡を 60 点に間引き、無ければプランのチェックポイント)。Web も同じ規則で `route-thumbnail.tsx`(SVG)
+  - **Web**: PC は全面地図 + 左の固定パネル(440px)、モバイルは地図(sticky) + せり上がるパネル。日の見出しを押すとその日の範囲へ `fitBounds` で寄る(`trip-canvas.tsx` が選択状態を持つ)
+  - **日カードのミニ地図は廃止**し、画面いっぱいの地図 1 枚に集約(iOS・Web とも)。`day-map.tsx` / `use-lazy-mount.ts` を削除。走行距離の計算には `dayMapPoints` を引き続き使う
+  - **地図スタイル**: OpenFreeMap の `styles/dark` は陸地に塗りが無く、旅行全体のような低ズームでは一面が黒くなる。スタイルに含まれる Natural Earth の陰影(zoom 7 まで)を `withShadedRelief` で敷いて形が見えるようにした
+  - **MapLibre の落とし穴 2 つ**: 加工したスタイルオブジェクトを複数の地図で使い回すと 2 つ目以降が読み込めない(内部で書き換えられる)ので `structuredClone` を地図ごとに渡す。またスタイルを URL でなくオブジェクトで渡すと `style.load` の購読前に読み込みが終わることがあるので `isStyleLoaded()` を見て直接呼ぶ
+  - **表示情報を揃えた**: Web の一覧に総距離とプラン期間(「Sep 1 から 6 日間」)を追加(iOS の `TripRow` と同じ項目に)。一覧の集計は `lib/trip-list.ts` に集約し、記録点は 1 クエリでまとめて読む。チェックポイントの種別色は iOS(`CheckpointStyle.swift`)と Web(`checkpoint-style.ts`)で同じ値のダーク向けパレットへ
+  - ルートの色分けは iOS・Web 共通で **記録済み = 緑の実線 / これから = 青の破線**。旅行全体の地図ではチェックポイントを小さな点にして、ピンが団子になるのを避けた
+  - 検証: iOS ビルド + 144 テスト、シミュレータで一覧・旅行画面・日詳細を目視。Web は lint + build、Chrome で PC 幅の一覧・旅行詳細・設定・作成を目視(**モバイル幅はブラウザのウィンドウをリサイズできず未確認**)
+  - 積み残し: Web のチェックポイントに到着予想時刻が無い(iOS の `ArrivalEstimator` 相当の移植が要るので TODO に分離)
+
 - Web の地図にプランのルート(道路形状)を表示する [plan](docs/plans/archive/web-plan-route.md)
   - 道路ルーティング(OSRM プロキシ + `route_legs` キャッシュ)はサーバに実装済みだったが使っているのは iOS だけで、Web の地図にはプランのルート線が 1 本も無かった。iOS と同じレグ単位でルートを引き、日カードの距離も直線距離から道路距離へ差し替えた
   - `lib/route-legs.ts` を新設して `legKey` / `buildLegs` / `totalLegMeters` / `legLines` を集約(`routing.ts` は `node:net` と better-sqlite3 依存でクライアントから import できないため)。**キー規約は iOS の `Domain/RouteLegs.swift` と同じ**なので `route_legs` キャッシュを iOS と共有する。`routing.ts` の `legKey` はここへ移設し再エクスポート

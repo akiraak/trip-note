@@ -14,7 +14,7 @@ import { useRouteLegs } from "./use-route-legs";
 import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { boundingBox, splitByTimeGap } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
-import { MAP_STYLE_URL } from "@/lib/maplibre-setup";
+import { mapStyle } from "@/lib/maplibre-setup";
 import {
   buildLegs,
   legLines,
@@ -60,6 +60,8 @@ export function TripMap({
   checkpoints = [],
   planRoute = [],
   cachedLegs,
+  focus = null,
+  className = "h-80 w-full",
 }: {
   points: TrackPoint[];
   media?: MediaMarker[];
@@ -68,6 +70,9 @@ export function TripMap({
   planRoute?: RoutePoint[];
   /** SSR 時点でキャッシュ済みだったレグ(page.tsx の readCachedLegs) */
   cachedLegs?: Record<string, ResolvedLeg>;
+  /** 寄せたい範囲(日を選んだときのその日の範囲)。null なら旅行全体のまま */
+  focus?: [[number, number], [number, number]] | null;
+  className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -88,21 +93,35 @@ export function TripMap({
       return;
     }
 
-    const map = new MapLibreMap({
-      container,
-      style: MAP_STYLE_URL,
-      bounds,
-      fitBoundsOptions: { padding: 48, maxZoom: 16 },
-      attributionControl: { compact: true },
+    // スタイルは加工済みのものを使う(取得は初回だけ。maplibre-setup を参照)
+    let map: MapLibreMap | null = null;
+    let cancelled = false;
+    void mapStyle().then((style) => {
+      if (cancelled) return;
+      map = new MapLibreMap({
+        container,
+        style,
+        bounds,
+        fitBoundsOptions: { padding: 48, maxZoom: 16 },
+        attributionControl: { compact: true },
+        // モバイルは地図が画面上部を占めるので、1 本指のスワイプはページのスクロールに渡す
+        cooperativeGestures:
+          typeof window !== "undefined" && window.innerWidth < 1024,
+      });
+      setup(map);
     });
+
+    function setup(map: MapLibreMap) {
     mapRef.current = map;
     map.addControl(new NavigationControl({ showCompass: false }));
 
     map.on("error", (e) => console.error("[TripMap]", e.error ?? e));
 
     // load はタイルが出そろうまで発火しないので、ソース/レイヤの追加は
-    // スタイルが使えるようになった時点(style.load)で行う
-    map.on("style.load", () => {
+    // スタイルが使えるようになった時点で行う。スタイルを URL ではなく
+    // オブジェクトで渡すと style.load が購読前に終わっていることがあるため、
+    // 済んでいれば直接呼ぶ
+    const addRouteLayers = () => {
       // これからのプラン(破線)。実績トラック(実線)より先に追加して下に敷く。
       // レグごとに、解決済みなら道路形状・未解決なら端点を結ぶ直線を描く。
       // 中身は下の effect が ready を見て入れる(planLines をこの effect の依存に
@@ -117,9 +136,10 @@ export function TripMap({
         source: PLAN_SOURCE,
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "line-color": "#2563eb",
-          "line-width": 3,
-          "line-opacity": 0.55,
+          // これからのプランは accent(青)の破線、記録済みは done(緑)の実線
+          "line-color": "#5AA9E6",
+          "line-width": 3.5,
+          "line-opacity": 0.9,
           "line-dasharray": [2, 2],
         },
       });
@@ -142,19 +162,24 @@ export function TripMap({
         type: "line",
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#2563eb", "line-width": 4 },
+        paint: { "line-color": "#7BD389", "line-width": 4 },
       });
       setReady(true);
-    });
+    };
+    if (map.isStyleLoaded()) {
+      addRouteLayers();
+    } else {
+      map.on("style.load", addRouteLayers);
+    }
 
     if (points.length > 0) {
       const start = points[0];
-      new Marker({ color: "#16a34a" })
+      new Marker({ color: "#7BD389" })
         .setLngLat([start.longitude, start.latitude])
         .addTo(map);
       if (points.length >= 2) {
         const end = points[points.length - 1];
-        new Marker({ color: "#dc2626" })
+        new Marker({ color: "#FF7C6B" })
           .setLngLat([end.longitude, end.latitude])
           .addTo(map);
       }
@@ -199,18 +224,20 @@ export function TripMap({
         anchor.appendChild(img);
       } else {
         anchor.className =
-          "flex h-10 w-10 items-center justify-center rounded-md border-2 border-white bg-zinc-900/80 text-white shadow-md";
+          "flex h-10 w-10 items-center justify-center rounded-md border-2 border-white bg-background/80 text-white shadow-md";
         anchor.textContent = "▶";
       }
       new Marker({ element: anchor })
         .setLngLat([m.longitude, m.latitude])
         .addTo(map);
     }
+    }
 
     return () => {
+      cancelled = true;
       setReady(false);
       mapRef.current = null;
-      map.remove();
+      map?.remove();
     };
   }, [points, media, checkpoints]);
 
@@ -223,10 +250,14 @@ export function TripMap({
     }
   }, [ready, planLines]);
 
-  return (
-    <div
-      ref={containerRef}
-      className="h-80 w-full overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800"
-    />
-  );
+  // 日を選んだらその日の範囲へ寄る(選択を外したら旅行全体へ戻す)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const bounds = focus ?? boundingBox([...points, ...checkpoints]);
+    if (!bounds) return;
+    map.fitBounds(bounds, { padding: 56, maxZoom: 14, duration: 600 });
+  }, [ready, focus, points, checkpoints]);
+
+  return <div ref={containerRef} className={className} />;
 }

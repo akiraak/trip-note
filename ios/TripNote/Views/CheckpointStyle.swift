@@ -26,15 +26,17 @@ extension CheckpointType {
         }
     }
 
+    /// 暗い地図・パネルの上で読める彩度に寄せた種別色
+    /// (Web 側 web/src/lib/checkpoint-style.ts の CHECKPOINT_COLORS と同じ値)
     var tint: Color {
         switch self {
-        case .departure: .green
-        case .destination: .red
-        case .sightseeing: .orange
-        case .cafe: .brown
-        case .restaurant: .pink
-        case .lodging: .indigo
-        case .other: .gray
+        case .departure: Theme.done
+        case .destination: Theme.danger
+        case .sightseeing: Color(hex: 0xF2A0_3D)
+        case .cafe: Color(hex: 0xC99B_6A)
+        case .restaurant: Color(hex: 0xF274_A6)
+        case .lodging: Color(hex: 0x8CA0_FF)
+        case .other: Theme.muted
         }
     }
 }

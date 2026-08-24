@@ -8,7 +8,7 @@ import { updateTripAction } from "./actions";
 // (trips/new/trip-create-form.tsx と同じ扱い。ローカル TZ で解釈すると日付がずれ得るため)
 
 const inputClass =
-  "w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700";
+  "w-full rounded-md border border-border bg-background px-2 py-1 text-sm";
 
 export function EditTrip({
   tripId,
@@ -95,14 +95,14 @@ function EditTripForm({
 
   return (
     <form
-      className="mb-4 flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800"
+      className="mb-4 flex flex-col gap-3 rounded-lg border border-border p-3 text-sm"
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
       <label className="flex flex-col gap-1">
-        <span className="text-zinc-500 dark:text-zinc-400">タイトル</span>
+        <span className="text-muted">タイトル</span>
         <input
           type="text"
           value={title}
@@ -119,7 +119,7 @@ function EditTripForm({
             checked={hasDeparture}
             onChange={(event) => setHasDeparture(event.target.checked)}
           />
-          <span className="text-zinc-500 dark:text-zinc-400">
+          <span className="text-muted">
             出発日時を設定
           </span>
         </label>
@@ -141,7 +141,7 @@ function EditTripForm({
                 className={inputClass}
               />
             </div>
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="text-xs text-muted">
               {timeZone} の時刻として保存します(プランの日付は動きません)
             </span>
           </>
@@ -149,7 +149,7 @@ function EditTripForm({
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-zinc-500 dark:text-zinc-400">目的地(任意)</span>
+        <span className="text-muted">目的地(任意)</span>
         <input
           type="text"
           value={destination}
@@ -159,20 +159,20 @@ function EditTripForm({
         />
       </label>
 
-      {error && <p className="text-red-600">{error}</p>}
+      {error && <p className="text-danger">{error}</p>}
 
       <div className="flex gap-2">
         <button
           type="submit"
           disabled={pending || !title.trim()}
-          className="rounded-md bg-zinc-800 px-3 py-1 text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className="rounded-md bg-accent px-3 py-1 font-medium text-background disabled:opacity-50"
         >
           {pending ? "保存中…" : "保存"}
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md border border-zinc-300 px-3 py-1 dark:border-zinc-700"
+          className="rounded-md border border-border px-3 py-1"
         >
           キャンセル
         </button>

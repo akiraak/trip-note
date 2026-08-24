@@ -52,7 +52,7 @@ export function CheckpointForm({
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+      className="flex flex-col gap-2 rounded-md border border-border p-3"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit({
@@ -69,7 +69,7 @@ export function CheckpointForm({
         <select
           value={type}
           onChange={(event) => setType(event.target.value as CheckpointType)}
-          className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+          className="rounded-md border border-border bg-background px-2 py-1 text-sm"
         >
           {CHECKPOINT_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -83,16 +83,16 @@ export function CheckpointForm({
           onChange={(event) => setName(event.target.value)}
           placeholder="名前"
           required
-          className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+          className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm"
         />
       </div>
-      <label className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+      <label className="flex items-center gap-2 text-sm text-muted">
         予定時刻
         <input
           type="datetime-local"
           value={plannedTime}
           onChange={(event) => setPlannedTime(event.target.value)}
-          className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+          className="rounded-md border border-border bg-background px-2 py-1 text-sm"
         />
         {plannedTime && (
           <button
@@ -109,10 +109,10 @@ export function CheckpointForm({
         onChange={(event) => setNote(event.target.value)}
         placeholder="メモ"
         rows={2}
-        className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+        className="rounded-md border border-border bg-background px-2 py-1 text-sm"
       />
       <div className="flex flex-col gap-1 text-sm">
-        <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
+        <div className="flex items-center gap-2 text-muted">
           位置
           {latitude !== null && longitude !== null ? (
             <>
@@ -159,14 +159,14 @@ export function CheckpointForm({
         <button
           type="submit"
           disabled={pending || !name.trim()}
-          className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-background disabled:opacity-50"
         >
           {submitLabel}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700"
+          className="rounded-md border border-border px-3 py-1 text-sm"
         >
           キャンセル
         </button>

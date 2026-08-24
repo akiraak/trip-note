@@ -17,7 +17,7 @@ export default function NewTripPage() {
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
         <Link
           href="/"
-          className="text-sm text-zinc-500 hover:underline dark:text-zinc-400"
+          className="text-sm text-muted hover:underline"
         >
           ← 旅行一覧
         </Link>

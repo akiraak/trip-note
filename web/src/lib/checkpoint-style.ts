@@ -23,15 +23,16 @@ export const CHECKPOINT_ICONS: Record<CheckpointType, string> = {
   other: "📍",
 };
 
-// 地図ピンの色(iOS の tint と対応させる)
+// 地図ピン・一覧の点の色(iOS の CheckpointType.tint と同じ値)。
+// 暗い地図・パネルの上で読める彩度に寄せてある
 export const CHECKPOINT_COLORS: Record<CheckpointType, string> = {
-  departure: "#16a34a", // green-600
-  destination: "#dc2626", // red-600
-  sightseeing: "#ea580c", // orange-600
-  cafe: "#a16207", // yellow-700 (brown 相当)
-  restaurant: "#db2777", // pink-600
-  lodging: "#4f46e5", // indigo-600
-  other: "#71717a", // zinc-500
+  departure: "#7BD389",
+  destination: "#FF7C6B",
+  sightseeing: "#F2A03D",
+  cafe: "#C99B6A",
+  restaurant: "#F274A6",
+  lodging: "#8CA0FF",
+  other: "#93A0AE",
 };
 
 export const TRANSPORT_LABELS: Record<string, string> = {

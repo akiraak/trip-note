@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Header } from "../../header";
 import { DeleteTrip } from "./delete-trip";
 import { EditTrip } from "./edit-trip";
 import { EndTrip } from "./end-trip";
-import { PlanSection, type PlanDay } from "./plan-section";
-import { TripMap } from "./trip-map";
+import { type PlanDay } from "./plan-section";
+import { TripCanvas } from "./trip-canvas";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime, TIME_ZONE } from "@/lib/format";
 import { dateStringOf, timeStringOf } from "@/lib/plan";
@@ -127,109 +126,63 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
         longitude: c.longitude as number,
       })),
   );
-  // 日カードのレグ(前泊地起点 + その日の訪問順)は、この全体レグ列の部分集合になる。
+  // 日ごとのレグ(前泊地起点 + その日の訪問順)は、この全体レグ列の部分集合になる。
   // キャッシュ済みの分を初期値として渡し、初回描画から道路形状で描く(OSRM は呼ばない)
   const cachedLegs = readCachedLegs(
     buildLegs({ points: planRoute }).map((leg) => legKey(leg.from, leg.to)),
   );
 
-  return (
-    <>
-      <Header />
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
+  // パネル上部: 旅行の情報(iOS の旅行画面と同じ項目)と編集導線
+  const header = (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h1 className="truncate text-lg font-semibold">{trip.title}</h1>
         <Link
           href="/"
-          className="text-sm text-zinc-500 hover:underline dark:text-zinc-400"
+          className="tabular shrink-0 text-[11px] tracking-[0.18em] text-muted uppercase hover:text-foreground"
         >
-          ← 旅行一覧
+          旅ログ
         </Link>
-        <h1 className="mt-2 mb-4 flex items-center gap-2 text-xl font-semibold">
-          {trip.title}
-          {status === "in_progress" && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">
-              進行中
-            </span>
+      </div>
+      <EditTrip tripId={trip.id} initial={editInitial} timeZone={TIME_ZONE} />
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+        <Stat label="開始">
+          {trip.started_at ? (
+            formatDateTime(trip.started_at)
+          ) : (
+            <span className="text-accent">未出発</span>
           )}
-          {status === "planning" && (
-            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-              プラン中
-            </span>
-          )}
-        </h1>
-        <EditTrip tripId={trip.id} initial={editInitial} timeZone={TIME_ZONE} />
-        {(points.length > 0 || checkpointMarkers.length > 0) && (
-          <div className="mb-6">
-            <TripMap
-              points={points.map((p) => ({
-                latitude: p.latitude,
-                longitude: p.longitude,
-                recorded_at: p.recorded_at,
-              }))}
-              media={mediaMarkers}
-              checkpoints={checkpointMarkers}
-              planRoute={planRoute}
-              cachedLegs={cachedLegs}
-            />
-          </div>
-        )}
-        <dl className="mb-8 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">開始</dt>
-            <dd>
-              {trip.started_at ? formatDateTime(trip.started_at) : "未出発"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">終了</dt>
-            <dd>
-              {trip.ended_at
-                ? formatDateTime(trip.ended_at)
-                : status === "in_progress"
-                  ? "進行中"
-                  : "—"}
-            </dd>
-          </div>
-          {trip.departure_at && (
-            <div>
-              <dt className="text-zinc-500 dark:text-zinc-400">出発予定</dt>
-              <dd>{formatDateTime(trip.departure_at)}</dd>
-            </div>
-          )}
-          {trip.destination && (
-            <div>
-              <dt className="text-zinc-500 dark:text-zinc-400">目的地</dt>
-              <dd>{trip.destination}</dd>
-            </div>
-          )}
-          <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">地点数</dt>
-            <dd>{points.length}</dd>
-          </div>
-          <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">総距離</dt>
-            <dd>{formatDistance(distance)}</dd>
-          </div>
-        </dl>
-        {/* 終了は進行中のときだけ(iOS の TripDetailView と同じ条件・同じ位置) */}
-        {status === "in_progress" && <EndTrip tripId={trip.id} />}
-        <h2 className="mb-2 font-medium">プラン</h2>
-        <div className="mb-8">
-          <PlanSection
-            tripId={trip.id}
-            days={planDays}
-            // 移動手段は車に固定(古い旅行の null も car として AI に渡す)
-            transport={trip.transport ?? "car"}
-            aiDefaults={aiDefaults}
-            cachedLegs={cachedLegs}
-          />
-        </div>
-        <h2 className="mb-2 font-medium">メディア</h2>
+        </Stat>
+        <Stat label="終了">
+          {trip.ended_at
+            ? formatDateTime(trip.ended_at)
+            : status === "in_progress"
+              ? "進行中"
+              : "—"}
+        </Stat>
+        <Stat label="出発予定">
+          {trip.departure_at ? formatDateTime(trip.departure_at) : "—"}
+        </Stat>
+        <Stat label="目的地">{trip.destination ?? "—"}</Stat>
+        <Stat label="地点数">{points.length}</Stat>
+        <Stat label="総距離">{formatDistance(distance)}</Stat>
+      </dl>
+      {/* 終了は進行中のときだけ(iOS の TripDetailView と同じ条件・同じ位置) */}
+      {status === "in_progress" && <EndTrip tripId={trip.id} />}
+    </section>
+  );
+
+  // パネル下部: メディア・タイムライン・削除
+  const footer = (
+    <>
+      <section className="flex flex-col gap-2">
+        <h2 className="tabular text-xs tracking-[0.18em] text-muted uppercase">
+          Media
+        </h2>
         {media.length === 0 ? (
-          <p className="mb-8 text-zinc-500 dark:text-zinc-400">
-            写真・動画がありません
-          </p>
+          <p className="text-sm text-muted">写真・動画がありません</p>
         ) : (
-          <ul className="mb-8 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          <ul className="grid grid-cols-3 gap-2">
             {media.map((m) => (
               <li key={m.id}>
                 {m.type === "photo" ? (
@@ -257,24 +210,28 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
                     className="aspect-square w-full rounded-md bg-black object-cover"
                   />
                 )}
-                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                <p className="tabular mt-0.5 text-[11px] text-muted">
                   {formatPointTime(m.taken_at)}
                 </p>
               </li>
             ))}
           </ul>
         )}
-        <h2 className="mb-2 font-medium">タイムライン</h2>
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="tabular text-xs tracking-[0.18em] text-muted uppercase">
+          Timeline
+        </h2>
         {points.length === 0 ? (
-          <p className="text-zinc-500 dark:text-zinc-400">
-            位置情報がありません
-          </p>
+          <p className="text-sm text-muted">位置情報がありません</p>
         ) : (
-          <ol className="divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
+          <ol className="divide-y divide-border text-sm">
             {points.map((point) => (
               <li key={point.id} className="flex flex-col gap-0.5 py-2">
-                <span>{formatPointTime(point.recorded_at)}</span>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                <span className="tabular">
+                  {formatPointTime(point.recorded_at)}
+                </span>
+                <span className="tabular text-xs text-muted">
                   {point.latitude.toFixed(5)}, {point.longitude.toFixed(5)}
                   {point.altitude !== null &&
                     ` · 高度 ${Math.round(point.altitude)} m`}
@@ -285,8 +242,48 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
             ))}
           </ol>
         )}
-        <DeleteTrip tripId={trip.id} />
-      </main>
+      </section>
+      <DeleteTrip tripId={trip.id} />
     </>
+  );
+
+  return (
+    <TripCanvas
+      title={trip.title}
+      status={status}
+      points={points.map((p) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        recorded_at: p.recorded_at,
+      }))}
+      media={mediaMarkers}
+      checkpoints={checkpointMarkers}
+      planRoute={planRoute}
+      cachedLegs={cachedLegs}
+      tripId={trip.id}
+      days={planDays}
+      // 移動手段は車に固定(古い旅行の null も car として AI に渡す)
+      transport={trip.transport ?? "car"}
+      aiDefaults={aiDefaults}
+      header={header}
+      footer={footer}
+    />
+  );
+}
+
+function Stat({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <dt className="tabular text-[11px] tracking-[0.1em] text-muted uppercase">
+        {label}
+      </dt>
+      <dd className="tabular mt-0.5">{children}</dd>
+    </div>
   );
 }
