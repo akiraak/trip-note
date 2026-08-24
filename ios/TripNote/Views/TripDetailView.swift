@@ -16,7 +16,6 @@ struct TripDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedMedia: MediaEntity?
-    @State private var showsCamera = false
     @State private var showsEndConfirmation = false
     @State private var showsDeleteConfirmation = false
     /// スワイプで削除しようとしているプラン日(確認ダイアログの対象)
@@ -46,6 +45,8 @@ struct TripDetailView: View {
         .navigationTitle(trip.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        // 記録バーの対象をこの旅行にする(撮影・記録の開始はバーから行う)
+        .activeTrip(trip)
         .navigationDestination(for: TripDayEntity.self) { day in
             TripDayDetailView(day: day)
         }
@@ -72,17 +73,10 @@ struct TripDetailView: View {
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
             pickerItems = []
-            Task { await importPicked(items) }
+            Task { await importer.importPicked(items, into: trip) }
         }
         .fullScreenCover(item: $selectedMedia) { media in
             MediaViewerView(media: media, store: importer.store)
-        }
-        .fullScreenCover(isPresented: $showsCamera) {
-            CameraPicker { result in
-                showsCamera = false
-                handleCapture(result)
-            }
-            .ignoresSafeArea()
         }
         .confirmationDialog(
             "この旅行を終了しますか?",
@@ -314,7 +308,8 @@ struct TripDetailView: View {
         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 10, trailing: 16))
     }
 
-    /// この旅行への記録の開始/停止と記録中の撮影(記録はこの旅行に対して行う)
+    /// 記録の状況と操作(開始・停止・撮影)は画面下の記録バーが持つ。
+    /// ここにはバーに載せない補足と、権限まわりの案内だけを残す
     @ViewBuilder
     private var recordingSection: some View {
         if trip.isRecordingActive {
@@ -322,37 +317,10 @@ struct TripDetailView: View {
                 Label("記録中", systemImage: "location.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.done)
-                HStack(spacing: 14) {
-                    Text("\(recorder.recordedPointCount) 地点")
-                    Text(ContentView.formatDistance(recorder.totalDistanceMeters))
-                }
-                .font(Theme.numeric(.caption))
-                .foregroundStyle(Theme.muted)
-                Text("画面を閉じても記録は続きます")
+                Text("画面を閉じても記録は続きます。停止しても旅行は終了しません。")
                     .font(.caption)
                     .foregroundStyle(Theme.muted)
-            }
-            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-            if CameraPicker.isAvailable {
-                Button {
-                    showsCamera = true
-                } label: {
-                    Label("写真・動画を撮影", systemImage: "camera")
-                }
-                .font(.subheadline)
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.accent)
-                .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Button("記録を停止") {
-                    recorder.stopRecording()
-                    Task { await sync.syncNow() }
-                }
-                .font(.subheadline)
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.danger)
-                Text("停止しても旅行は終了しません。")
+                Text("地点数・距離の確認と、撮影・停止は画面下のバーから行えます。")
                     .font(.caption)
                     .foregroundStyle(Theme.muted)
             }
@@ -363,15 +331,10 @@ struct TripDetailView: View {
                 .foregroundStyle(Theme.muted)
                 .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
         } else {
-            Button {
-                recorder.startRecording(trip: trip)
-            } label: {
-                Label("記録を開始", systemImage: "record.circle")
-            }
-            .font(.subheadline)
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.accent)
-            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+            Text("記録していません。画面下のバーから開始できます。")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
         }
 
         if let error = recorder.lastError {
@@ -484,18 +447,6 @@ struct TripDetailView: View {
         return isLast ? base : base + "以降の日は 1 日前にずれます。"
     }
 
-    private func handleCapture(_ result: CameraPicker.CaptureResult?) {
-        guard let result else { return }
-        Task {
-            switch result {
-            case .photo(let image):
-                await importer.importPhoto(image, into: trip, takenAt: Date())
-            case .video(let url):
-                await importer.importVideo(at: url, into: trip, takenAt: Date())
-            }
-        }
-    }
-
     /// 旅行を削除(tombstone)する。この旅行を記録中なら記録を止めてから削除する
     private func deleteTrip() {
         if trip.persistentModelID == recorder.activeTrip?.persistentModelID {
@@ -560,19 +511,6 @@ struct TripDetailView: View {
                     longitude: point.longitude
                 )
             )
-        }
-    }
-
-    private func importPicked(_ items: [PhotosPickerItem]) async {
-        for item in items {
-            let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
-            if isVideo {
-                if let picked = try? await item.loadTransferable(type: PickedVideo.self) {
-                    await importer.importVideo(at: picked.url, into: trip, takenAt: nil)
-                }
-            } else if let data = try? await item.loadTransferable(type: Data.self) {
-                await importer.importPhoto(data: data, into: trip)
-            }
         }
     }
 }

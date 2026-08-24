@@ -105,6 +105,9 @@ struct RouteSheet<Content: View>: View {
 struct SheetList<Content: View>: View {
     @ViewBuilder var content: Content
 
+    /// 画面下に浮いている記録バーの高さ(出ていなければ 0)
+    @Environment(\.recordingBarInset) private var recordingBarInset
+
     var body: some View {
         List {
             content
@@ -115,7 +118,7 @@ struct SheetList<Content: View>: View {
         .scrollContentBackground(.hidden)
         .background(Theme.panel)
         .environment(\.defaultMinListRowHeight, 0)
-        // ホームインジケータに最後の行が重ならないようにする
-        .safeAreaPadding(.bottom, 28)
+        // ホームインジケータと記録バーに最後の行が重ならないようにする
+        .safeAreaPadding(.bottom, 28 + recordingBarInset)
     }
 }

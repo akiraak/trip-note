@@ -41,6 +41,8 @@ struct TripDayDetailView: View {
         .navigationTitle(dayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        // 日詳細を見ている間も、記録バーの対象はこの日の旅行のまま
+        .activeTrip(day.trip)
         .toolbar {
             // チェックポイントの並べ替え用
             EditButton()

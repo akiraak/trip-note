@@ -8,6 +8,8 @@ struct TripNoteApp: App {
     @State private var recorder: LocationRecorder
     @State private var sync: SyncEngine
     @State private var importer: MediaImporter
+    /// 記録バーの対象を決めるための「いま開いている旅行」
+    @State private var activeTrip = ActiveTripContext()
 
     init() {
         do {
@@ -34,6 +36,7 @@ struct TripNoteApp: App {
                 .environment(recorder)
                 .environment(sync)
                 .environment(importer)
+                .environment(activeTrip)
                 // デザインは案 C「ルートキャンバス」でダーク固定
                 // (OS がライトでもダークで出す。docs/plans/design-refresh.md)
                 .preferredColorScheme(.dark)

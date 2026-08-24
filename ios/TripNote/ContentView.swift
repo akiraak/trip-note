@@ -1,9 +1,12 @@
+import PhotosUI
 import SwiftData
 import SwiftUI
 
 struct ContentView: View {
     @Environment(LocationRecorder.self) private var recorder
     @Environment(SyncEngine.self) private var sync
+    @Environment(MediaImporter.self) private var importer
+    @Environment(ActiveTripContext.self) private var activeTrip
     @Environment(\.scenePhase) private var scenePhase
     // 削除済み(tombstone)は表示しない。未出発(startedAt nil)は先頭に来る
     @Query(
@@ -21,46 +24,47 @@ struct ContentView: View {
     @State private var pendingShare: PendingShare?
     /// 取り込みシートが閉じたあとに遷移する追加先の日
     @State private var shareDestinationDay: TripDayEntity?
+    /// 記録バーからの撮影(カメラは画面の階層に 1 つだけ持つ)
+    @State private var showsCamera = false
+    /// カメラを開いたときの取り込み先(開いている間に対象が変わっても取り違えない)
+    @State private var captureTrip: TripEntity?
+    /// カメラの無い環境で記録バーの撮影ボタンの代わりに出る PhotosPicker の選択
+    @State private var barPickerItems: [PhotosPickerItem] = []
 
     var body: some View {
-        NavigationStack(path: $path) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    syncBar
-                    PanelLabel(text: "TRIPS")
-                        .padding(.top, 6)
-                        .padding(.leading, 4)
-                    if trips.isEmpty {
-                        Text("まだ記録がありません")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.muted)
-                            .padding(.vertical, 24)
-                            .frame(maxWidth: .infinity)
+        ZStack(alignment: .bottom) {
+            navigationStack
+            if let bar = barContent {
+                RecordingBar(
+                    content: bar,
+                    pickerItems: $barPickerItems,
+                    onOpenTrip: { open(bar.trip) },
+                    onCamera: {
+                        captureTrip = bar.trip
+                        showsCamera = true
+                    },
+                    onStart: { recorder.startRecording(trip: bar.trip) },
+                    onStop: {
+                        recorder.stopRecording()
+                        Task { await sync.syncNow() }
                     }
-                    ForEach(trips) { trip in
-                        NavigationLink(value: trip) {
-                            TripCard(trip: trip)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .background(Theme.canvas)
-            .navigationTitle("旅ログ")
-            .navigationDestination(for: TripEntity.self) { trip in
-                TripDetailView(trip: trip)
+        }
+        .animation(.snappy(duration: 0.25), value: barContent != nil)
+        .fullScreenCover(isPresented: $showsCamera) {
+            CameraPicker { result in
+                showsCamera = false
+                handleCapture(result)
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsTripCreate = true
-                    } label: {
-                        Label("旅行を作成", systemImage: "plus")
-                    }
-                }
-            }
+            .ignoresSafeArea()
+        }
+        .onChange(of: barPickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            barPickerItems = []
+            guard let trip = barContent?.trip else { return }
+            Task { await importer.importPicked(items, into: trip) }
         }
         .sheet(
             isPresented: $showsTripCreate,
@@ -119,6 +123,95 @@ struct ContentView: View {
             loadPendingShare()
             if !recorder.isRecording {
                 await sync.syncNow()
+            }
+        }
+    }
+
+    private var navigationStack: some View {
+        NavigationStack(path: $path) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    syncBar
+                    PanelLabel(text: "TRIPS")
+                        .padding(.top, 6)
+                        .padding(.leading, 4)
+                    if trips.isEmpty {
+                        Text("まだ記録がありません")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.muted)
+                            .padding(.vertical, 24)
+                            .frame(maxWidth: .infinity)
+                    }
+                    ForEach(trips) { trip in
+                        NavigationLink(value: trip) {
+                            TripCard(trip: trip)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+                // 最後の旅行が記録バーに隠れないようにする
+                .padding(.bottom, 24 + barInset)
+            }
+            .background(Theme.canvas)
+            .navigationTitle("旅ログ")
+            .navigationDestination(for: TripEntity.self) { trip in
+                TripDetailView(trip: trip)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsTripCreate = true
+                    } label: {
+                        Label("旅行を作成", systemImage: "plus")
+                    }
+                }
+            }
+        }
+        // 遷移先(旅行画面・日詳細)にもバーぶんの余白を配る
+        .environment(\.recordingBarInset, barInset)
+    }
+
+    // MARK: - 記録バー
+
+    /// バーに出す内容。nil ならバーを出さない
+    private var barContent: RecordingBarState.Content? {
+        RecordingBarState.content(
+            for: RecordingBarState.Input(
+                trips: trips,
+                recordingTrip: recorder.isRecording ? recorder.activeTrip : nil,
+                openTrip: activeTrip.trip,
+                recordedPointCount: recorder.recordedPointCount,
+                totalDistanceMeters: recorder.totalDistanceMeters,
+                locationError: recorder.lastError,
+                isLocationDenied: recorder.authorizationStatus == .denied
+                    || recorder.authorizationStatus == .restricted,
+                isImporting: importer.isImporting
+            )
+        )
+    }
+
+    private var barInset: CGFloat {
+        barContent == nil ? 0 : RecordingBar.inset
+    }
+
+    /// バーのタップ。対象の旅行の画面へ移動する(日詳細に居たら旅行画面まで戻る)
+    private func open(_ trip: TripEntity) {
+        var next = NavigationPath()
+        next.append(trip)
+        path = next
+    }
+
+    private func handleCapture(_ result: CameraPicker.CaptureResult?) {
+        let target = captureTrip ?? barContent?.trip
+        captureTrip = nil
+        guard let result, let trip = target else { return }
+        Task {
+            switch result {
+            case .photo(let image):
+                await importer.importPhoto(image, into: trip, takenAt: Date())
+            case .video(let url):
+                await importer.importVideo(at: url, into: trip, takenAt: Date())
             }
         }
     }

@@ -2,8 +2,12 @@ import AVFoundation
 import Foundation
 import ImageIO
 import Observation
+// PhotosPickerItem(PhotosUI の SwiftUI オーバーレイ)を使うため SwiftUI も要る
+import PhotosUI
 import SwiftData
+import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// 撮影・ライブラリ取り込みされた写真/動画を圧縮・変換してローカル保存し、
 /// 撮影時刻に最も近い記録点に紐付けて MediaEntity を作るサービス。
@@ -108,6 +112,23 @@ final class MediaImporter {
                    thumbnailFileName: thumbnailFileName, takenAt: resolvedTakenAt, trip: trip)
         } catch {
             lastError = "動画の保存に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - ライブラリ
+
+    /// PhotosPicker で選ばれた項目をまとめて取り込む
+    /// (旅行画面のツールバーと記録バーの両方から使う)
+    func importPicked(_ items: [PhotosPickerItem], into trip: TripEntity) async {
+        for item in items {
+            let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
+            if isVideo {
+                if let picked = try? await item.loadTransferable(type: PickedVideo.self) {
+                    await importVideo(at: picked.url, into: trip, takenAt: nil)
+                }
+            } else if let data = try? await item.loadTransferable(type: Data.self) {
+                await importPhoto(data: data, into: trip)
+            }
         }
     }
 
