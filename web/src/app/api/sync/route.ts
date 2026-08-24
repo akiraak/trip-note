@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorized } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { relinkTripMedia } from "@/lib/media-link";
 import { CHECKPOINT_TYPES } from "@/lib/types";
 
 // iOS アプリからの同期エンドポイント。API_SHARED_SECRET の Bearer で保護する
@@ -242,6 +243,7 @@ export async function POST(request: Request) {
   let skippedDays = 0;
   let skippedCheckpoints = 0;
   let skippedPoints = 0;
+  let relinkedMedia = 0;
   db.transaction(() => {
     for (const trip of trips) {
       upsertTrip.run({
@@ -290,6 +292,7 @@ export async function POST(request: Request) {
         deleted_at: checkpoint.deleted_at ?? null,
       });
     }
+    const pointTripIds = new Set<string>();
     for (const point of points) {
       if (!tripExists.get(point.trip_id)) {
         skippedPoints++;
@@ -300,6 +303,12 @@ export async function POST(request: Request) {
         altitude: point.altitude ?? null,
         accuracy: point.accuracy ?? null,
       });
+      pointTripIds.add(point.trip_id);
+    }
+    // 点が増えた旅行は、取り込み時に点が無くて位置が付かなかったメディアを紐付け直す
+    // (media は不変・一方向アップロードなので iOS から送り直せない。詳細は lib/media-link.ts)
+    for (const tripId of pointTripIds) {
+      relinkedMedia += relinkTripMedia(db, tripId);
     }
   })();
 
@@ -312,5 +321,6 @@ export async function POST(request: Request) {
     skippedDays,
     skippedCheckpoints,
     skippedPoints,
+    relinkedMedia,
   });
 }

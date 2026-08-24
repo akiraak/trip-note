@@ -151,6 +151,13 @@ const MIGRATIONS: string[] = [
   `
   alter table media add column deleted_at text;
   `,
+  // 写真・動画自身が持つ撮影位置(EXIF GPS / 動画メタデータの location)。
+  // GPS 記録の無い旅行や他端末で撮ったメディアは location_point_id が付かないため、
+  // 地図にはこちらを優先して出す(記録点への紐付けは従来どおり残す)
+  `
+  alter table media add column latitude real;
+  alter table media add column longitude real;
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

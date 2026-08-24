@@ -2,6 +2,26 @@
 
 ## 2026-08-24
 
+- 写真・動画と GPS の紐付けの取りこぼしを減らす [plan](docs/plans/archive/media-gps-linkage-fix.md)（調査: [media-gps-linkage-check.md](docs/plans/archive/media-gps-linkage-check.md)）
+  - **Phase 1: EXIF 日時のタイムゾーン + 時間差の上限**（iOS）
+    - `MediaCaptureTime`(新規) が EXIF の `DateTimeOriginal`(タイムゾーンを持たない壁時計時刻)を ① `OffsetTimeOriginal` ② GPS の `GPSDateStamp`/`GPSTimeStamp`(UTC)との差から推定(15 分単位に丸め、測位が 2 分以上ずれていれば不採用)③ 端末 TZ、の順に補って絶対時刻にする。**旅行先で撮った写真を帰宅後に取り込んでも時差分ずれない**(米国旅行 → 日本で 16 時間ずれていた)
+    - `MediaAttachment.nearestIndex` に許容時間差を追加。**記録範囲の内側は時間差で弾かず、外側にはみ出した分だけ 30 分まで**(静止中は `distanceFilter = 10m` + `LocationPointFilter` で点が増えないので、正しい紐付けでも数十分空く)。上限が無いと記録と無関係な写真が端の点に引き寄せられて**嘘の位置で地図に出ていた**
+  - **Phase 2: 後追いの再紐付け**（iOS + Web）
+    - GPS 記録を始める前に取り込んだ写真は `locationPoint = nil` で固定されていた。iOS は同期のたびに `SyncEngine.relinkMedia` が未紐付けメディアを再評価し、サーバは `POST /api/sync` で点を受けた後に `lib/media-link.ts` が同じルールで埋め直す
+    - **両側が独立に同じ結果へ収束させる方式**にした理由: media は不変・一方向アップロード(`insert or ignore`)なので、iOS がローカルで紐付け直しても送り直しでは反映されない。サーバ側だけの修復では iOS のローカル表示が直らない
+  - **Phase 3: メディア自身の EXIF GPS を使う**（iOS + Web、スキーマ変更あり）
+    - `media` に `latitude` / `longitude` を追加（マイグレーション。**本番反映時は起動時に自動適用**）。`POST /api/media` に任意クエリ `latitude` / `longitude`（範囲外・片方だけは 400）
+    - iOS は写真の EXIF GPS・動画 common メタデータの location(ISO 6709)を `MediaCoordinate`(新規) で読む。ライブラリ取り込みは JPEG 再エンコードで EXIF が落ちるため元データから、動画は mp4 変換前の元ファイルから読む
+    - **地図はメディア自身の位置を優先し、無ければ記録点**（iOS `MediaEntity.displayCoordinate` / Web `coalesce(m.latitude, p.latitude)`）。GPS 記録の無い旅行や他端末で撮った写真も地図に出る
+    - アプリ内カメラ撮影は UIImage 経由で EXIF を持たないため対象外（記録中なら従来どおり記録点に紐付く）
+  - 判定ルールは iOS(`Domain/MediaAttachment.swift`)と Web(`lib/media-link.ts`)で同じ値を持つ。片方だけ変えない
+  - 検証: iOS 194 テスト / Web 191 テスト（`plan.test.ts` の 1 件は今回と無関係の既存の赤。TODO に切り出した）/ lint + build
+
+- 撮影された写真・動画と GPS 情報が連携できるかの調査 [plan](docs/plans/archive/media-gps-linkage-check.md)
+  - **結論: 連携できている**。`media.location_point_id` → `location_points.id` の紐付けは実装済みで、本番の「テスト」旅行（GPS 687 点)のメディア 4 件はすべて点に紐付いていた(時間差 3 秒〜3 分 48 秒。開いている分は静止中で点が間引かれたためで、座標はずれていない)
+  - 仕組み: iOS の `MediaImporter.insert()` が保存時に `MediaAttachment.nearestIndex()` で撮影時刻に最も近い記録点を選ぶ → `SyncEngine` が points → media の順に送る → サーバは id が実在すれば保存(無ければ null) → iOS `TripDetailView` と Web `trips/[id]` が地図マーカーに使う
+  - 見つかった限界は直さず記録に留めた(時間差の上限なし / 後追いの再紐付けなし / 写真の EXIF GPS 未使用 / EXIF 日時のタイムゾーン解釈 / サーバ側の修復なし)。追随タスクは `TODO.md` へ
+
 - 旅行ページの TIMELINE(GPS 記録点の一覧)表示を iOS・Web とも消す [plan](docs/plans/archive/remove-timeline-section.md)
   - 記録点をそのまま全件並べるだけのセクションで、長時間記録した旅行では数百行になり読み物にならなかった(同じ点は地図の軌跡として描かれ、件数と総距離は統計に出ている)
   - **表示だけを消し、データは残す**: location_points の記録・同期・地図の軌跡・地点数/総距離の統計は変更なし。iOS の `timelineSection` と `PointRow`、Web の Timeline セクションを削除(points の取得は距離計算と地図に使うので残す)

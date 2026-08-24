@@ -42,9 +42,31 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
 ### 位置情報・時刻の紐付け
 
 - `MediaEntity`: id / type(photo|video) / fileName / thumbnailFileName / takenAt /
-  trip(cascade で削除)/ locationPoint(nullify)/ needsSync
+  trip(cascade で削除)/ locationPoint(nullify)/ latitude・longitude / needsSync
+- **メディア自身の撮影位置**(`latitude` / `longitude`): 写真は EXIF GPS、動画は common
+  メタデータの location(ISO 6709)から読む(`Domain/MediaCoordinate.swift`)。
+  GPS 記録の無い旅行や他端末で撮ったメディアはこれだけが手がかりになるため、
+  **地図では記録点への紐付けよりこちらを優先する**(iOS は `MediaEntity.displayCoordinate`、
+  Web は `coalesce(m.latitude, p.latitude)`)。
+  ライブラリ取り込みは JPEG 再エンコードで EXIF が落ちるので元データから先に読み、
+  動画は mp4 変換前の元ファイルから読む。アプリ内カメラ撮影は UIImage 経由で
+  EXIF を持たないため位置は付かない(記録中なら記録点に紐付く)
 - 紐付け先の点は「その trip の記録点のうち takenAt に最も近いもの」
   (`Domain/MediaAttachment.swift` の純関数。記録中の撮影なら実質直近の点)。点が無ければ nil
+- **記録範囲の外は 30 分まで**(`MediaAttachment.outsideTolerance`)。記録の
+  最初〜最後の点の**内側は時間差で弾かない**(静止中は `distanceFilter = 10m` +
+  `LocationPointFilter` で点が増えず、正しい紐付けでも数十分空くため)が、
+  範囲の外にはみ出した撮影(記録前・記録後に取り込んだ写真)は上限を超えると紐付けない。
+  上限が無いと、記録と無関係な写真が端の点に引き寄せられて嘘の位置で地図に出る
+- **後追いの紐付け直し**: 取り込み時に点が無かったメディア(GPS 記録を始める前に取り込んだ写真)は
+  `locationPoint = nil` で確定してしまうため、同期のたびに iOS 側(`SyncEngine.relinkMedia`)と
+  サーバ側(`POST /api/sync` → `lib/media-link.ts`)が同じルールで紐付け直す。
+  media は不変・`insert or ignore` で iOS から送り直せないため、両側が独立に同じ結果へ収束させる
+- **撮影時刻のタイムゾーン**: EXIF の `DateTimeOriginal` はタイムゾーンを持たない壁時計時刻。
+  `Domain/MediaCaptureTime.swift` が ① `OffsetTimeOriginal`(EXIF 2.31)②
+  GPS の `GPSDateStamp`/`GPSTimeStamp`(UTC)との差から推定(15 分単位に丸め)③
+  端末のタイムゾーン、の順に補って絶対時刻にする。旅行先で撮った写真を帰宅後に
+  取り込んでも時差分ずれない
 
 ### 削除
 
@@ -71,7 +93,7 @@ iOS → サーバの一方向アップロードのまま、削除だけ双方向
 ### 同期
 
 - `SyncEngine` の同期順: trips → points → media(needsSync == true を takenAt 順に 1 件ずつ)
-- `POST /api/media?id=&trip_id=&location_point_id=&type=&taken_at=&ext=` に
+- `POST /api/media?id=&trip_id=&location_point_id=&type=&taken_at=&ext=&latitude=&longitude=` に
   `application/octet-stream` でファイル本体を送る(`URLSession.upload(fromFile:)`。
   multipart を組まないのでメモリにファイル全体を載せない)
 - 成功(2xx)で needsSync = false。409(trip 未同期)含む失敗時は下ろさず次回再送

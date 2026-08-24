@@ -43,8 +43,14 @@ final class MediaImporter {
 
     // MARK: - 写真
 
-    /// カメラ撮影した写真を保存する
-    func importPhoto(_ image: UIImage, into trip: TripEntity, takenAt: Date) async {
+    /// カメラ撮影した写真を保存する。
+    /// `coordinate` は写真自身が持つ撮影位置(カメラ撮影は UIImage なので持たない)
+    func importPhoto(
+        _ image: UIImage,
+        into trip: TripEntity,
+        takenAt: Date,
+        coordinate: MediaCoordinate.Coordinate? = nil
+    ) async {
         isImporting = true
         defer { isImporting = false }
         do {
@@ -56,19 +62,27 @@ final class MediaImporter {
             try store.write(full, fileName: fileName)
             try store.write(thumbnail, fileName: thumbnailFileName)
             insert(id: id, type: .photo, fileName: fileName,
-                   thumbnailFileName: thumbnailFileName, takenAt: takenAt, trip: trip)
+                   thumbnailFileName: thumbnailFileName, takenAt: takenAt, trip: trip,
+                   coordinate: coordinate)
         } catch {
             lastError = "写真の保存に失敗しました: \(error.localizedDescription)"
         }
     }
 
-    /// ライブラリから取り込んだ写真を保存する(撮影時刻は EXIF から。無ければ現在時刻)
+    /// ライブラリから取り込んだ写真を保存する(撮影時刻・位置は EXIF から。
+    /// 日時が無ければ現在時刻、位置が無ければ記録点への紐付けだけ)
     func importPhoto(data: Data, into trip: TripEntity) async {
         guard let image = UIImage(data: data) else {
             lastError = "画像を読み込めませんでした"
             return
         }
-        await importPhoto(image, into: trip, takenAt: Self.exifDate(from: data) ?? Date())
+        // JPEG に再エンコードすると EXIF が落ちるため、元データから先に読む
+        await importPhoto(
+            image,
+            into: trip,
+            takenAt: Self.exifDate(from: data) ?? Date(),
+            coordinate: Self.exifCoordinate(from: data)
+        )
     }
 
     // MARK: - 動画
@@ -91,6 +105,8 @@ final class MediaImporter {
             } else {
                 resolvedTakenAt = await Self.videoCreationDate(url: held) ?? Date()
             }
+            // 撮影位置は mp4 への変換で落ちることがあるため、変換前の元ファイルから読む
+            let coordinate = await Self.videoCoordinate(url: held)
 
             // H.264 mp4(720p)へ変換。失敗時は元ファイル(mov)のまま保存する
             try store.ensureDirectory()
@@ -109,7 +125,8 @@ final class MediaImporter {
                 try store.write(thumbnail, fileName: thumbnailFileName)
             }
             insert(id: id, type: .video, fileName: fileName,
-                   thumbnailFileName: thumbnailFileName, takenAt: resolvedTakenAt, trip: trip)
+                   thumbnailFileName: thumbnailFileName, takenAt: resolvedTakenAt, trip: trip,
+                   coordinate: coordinate)
         } catch {
             lastError = "動画の保存に失敗しました: \(error.localizedDescription)"
         }
@@ -157,7 +174,8 @@ final class MediaImporter {
         fileName: String,
         thumbnailFileName: String,
         takenAt: Date,
-        trip: TripEntity
+        trip: TripEntity,
+        coordinate: MediaCoordinate.Coordinate?
     ) {
         let points = trip.sortedPoints
         let nearest = MediaAttachment
@@ -170,7 +188,9 @@ final class MediaImporter {
             thumbnailFileName: thumbnailFileName,
             takenAt: takenAt,
             trip: trip,
-            locationPoint: nearest
+            locationPoint: nearest,
+            latitude: coordinate?.latitude,
+            longitude: coordinate?.longitude
         )
         modelContext.insert(media)
         do {
@@ -210,7 +230,8 @@ final class MediaImporter {
         return data
     }
 
-    /// EXIF の撮影日時(タイムゾーン情報が無いため現地時刻とみなす)
+    /// EXIF の撮影日時。日時そのものはタイムゾーンを持たないため、
+    /// オフセットの補い方は `MediaCaptureTime` に任せる
     nonisolated static func exifDate(from data: Data) -> Date? {
         guard
             let source = CGImageSourceCreateWithData(data as CFData, nil),
@@ -218,11 +239,44 @@ final class MediaImporter {
             let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
             let value = exif[kCGImagePropertyExifDateTimeOriginal] as? String
         else { return nil }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-        formatter.timeZone = .current
-        return formatter.date(from: value)
+        let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any]
+        return MediaCaptureTime.date(
+            dateTimeOriginal: value,
+            offsetTimeOriginal: exif[kCGImagePropertyExifOffsetTimeOriginal] as? String,
+            gpsTimestamp: MediaCaptureTime.gpsDate(
+                dateStamp: gps?[kCGImagePropertyGPSDateStamp] as? String,
+                timeStamp: gps?[kCGImagePropertyGPSTimeStamp] as? String
+            )
+        )
+    }
+
+    /// 写真自身の撮影位置(EXIF GPS)
+    nonisolated static func exifCoordinate(from data: Data) -> MediaCoordinate.Coordinate? {
+        guard
+            let source = CGImageSourceCreateWithData(data as CFData, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any]
+        else { return nil }
+        return MediaCoordinate.fromExif(
+            latitude: gps[kCGImagePropertyGPSLatitude] as? Double,
+            latitudeRef: gps[kCGImagePropertyGPSLatitudeRef] as? String,
+            longitude: gps[kCGImagePropertyGPSLongitude] as? Double,
+            longitudeRef: gps[kCGImagePropertyGPSLongitudeRef] as? String
+        )
+    }
+
+    /// 動画自身の撮影位置(common メタデータの location。ISO 6709 文字列)
+    nonisolated static func videoCoordinate(url: URL) async -> MediaCoordinate.Coordinate? {
+        let asset = AVURLAsset(url: url)
+        guard let metadata = try? await asset.load(.commonMetadata) else { return nil }
+        let items = AVMetadataItem.metadataItems(
+            from: metadata, filteredByIdentifier: .commonIdentifierLocation
+        )
+        // try? がネストした Optional を平坦化するので 1 段の束縛でよい
+        guard let item = items.first, let value = try? await item.load(.stringValue) else {
+            return nil
+        }
+        return MediaCoordinate.fromISO6709(value)
     }
 
     nonisolated static func videoCreationDate(url: URL) async -> Date? {

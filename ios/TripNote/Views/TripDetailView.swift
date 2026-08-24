@@ -526,12 +526,13 @@ struct TripDetailView: View {
 
     private var mediaAnnotations: [TripMediaAnnotation] {
         trip.sortedMedia.compactMap { media in
-            guard let point = media.locationPoint else { return nil }
+            // メディア自身の撮影位置を優先し、無ければ紐付いた記録点(displayCoordinate)
+            guard let coordinate = media.displayCoordinate else { return nil }
             return TripMediaAnnotation(
                 media: media,
                 coordinate: CLLocationCoordinate2D(
-                    latitude: point.latitude,
-                    longitude: point.longitude
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude
                 )
             )
         }

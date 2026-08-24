@@ -17,6 +17,14 @@ const UUID_RE =
 const MEDIA_TYPES = ["photo", "video"];
 const EXTENSIONS = ["jpg", "mp4", "mov"];
 
+/// 任意の座標クエリ。未指定は null、範囲外・数値でない場合は undefined(= 400)
+function parseCoordinate(value: string | null, limit: number) {
+  if (value === null) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || Math.abs(parsed) > limit) return undefined;
+  return parsed;
+}
+
 export async function POST(request: NextRequest) {
   if (!authorized(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -29,13 +37,20 @@ export async function POST(request: NextRequest) {
   const type = query.get("type") ?? "";
   const takenAt = query.get("taken_at") ?? "";
   const ext = query.get("ext") ?? "";
+  // メディア自身の撮影位置(EXIF GPS / 動画メタデータ)。無い写真も多いため任意
+  const latitude = parseCoordinate(query.get("latitude"), 90);
+  const longitude = parseCoordinate(query.get("longitude"), 180);
   if (
     !UUID_RE.test(id) ||
     !UUID_RE.test(tripId) ||
     (locationPointId !== null && !UUID_RE.test(locationPointId)) ||
     !MEDIA_TYPES.includes(type) ||
     !EXTENSIONS.includes(ext) ||
-    Number.isNaN(Date.parse(takenAt))
+    Number.isNaN(Date.parse(takenAt)) ||
+    latitude === undefined ||
+    longitude === undefined ||
+    // 片方だけでは地図に出せない
+    (latitude === null) !== (longitude === null)
   ) {
     return NextResponse.json({ error: "invalid query" }, { status: 400 });
   }
@@ -79,8 +94,9 @@ export async function POST(request: NextRequest) {
 
   db.prepare(
     `insert or ignore into media
-       (id, trip_id, location_point_id, type, storage_path, taken_at)
-     values (@id, @trip_id, @location_point_id, @type, @storage_path, @taken_at)`,
+       (id, trip_id, location_point_id, type, storage_path, taken_at, latitude, longitude)
+     values (@id, @trip_id, @location_point_id, @type, @storage_path, @taken_at,
+             @latitude, @longitude)`,
   ).run({
     id,
     trip_id: tripId,
@@ -88,6 +104,8 @@ export async function POST(request: NextRequest) {
     type,
     storage_path: storagePath,
     taken_at: takenAt,
+    latitude,
+    longitude,
   });
 
   return NextResponse.json({ ok: true });

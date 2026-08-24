@@ -15,6 +15,7 @@
 - プラン系(trips / trip_days / checkpoints)は iOS と双方向同期する。
   `updated_at` はクライアントの編集時刻(LWW の基準)、`deleted_at` は tombstone。
   location_points / media は従来通り不変・一方向アップロード
+  (例外として media の `location_point_id` だけはサーバが埋め直す。POST /api/sync 参照)
 - 競合解決は行単位の LWW: push(POST /api/sync)は `updated_at` が既存より新しい
   ときだけ上書きし、pull(GET /api/sync/pull)は `updated_at > since` の行を
   tombstone 含めて返す。同時刻は既存を保持(単一ユーザーなのでこれで十分)
@@ -75,12 +76,17 @@ iOS アプリからのアップロード(push)。upsert で冪等(id はクラ�
 - 親が存在しない行(days の trip_id、checkpoints の trip_id / trip_day_id、points の
   trip_id が未知)は FK 違反で全体を失敗させず、スキップして skipped 数で返す。
   同一ペイロード内の親は先に upsert されるため参照できる
+- **メディアの紐付け直し**: 点が入った旅行について、`location_point_id` が null の
+  メディアを撮影時刻の最近傍の点へ埋め直す(`lib/media-link.ts`。同じトランザクション内)。
+  GPS 記録を始める前に取り込んだ写真は iOS 側で null 固定になり、media は不変・
+  `INSERT OR IGNORE` で送り直しても反映できないため、点が届いたサーバ側で修復する。
+  判定ルール(記録範囲の内側は無条件、外側は 30 分まで)は iOS の `MediaAttachment` と同じ
 - どのキーも省略可(iOS は trips → days → checkpoints → points 500 件ずつの順で送る)
 
 レスポンス:
 
 - `200 {"ok":true,"trips":N,"days":N,"checkpoints":N,"points":M,
-  "skippedDays":K,"skippedCheckpoints":K,"skippedPoints":K}`
+  "skippedDays":K,"skippedCheckpoints":K,"skippedPoints":K,"relinkedMedia":K}`
 - `401 {"error":"unauthorized"}` / `400 {"error":"invalid json"|"invalid payload"}`
 
 ## GET /api/sync/pull
@@ -352,7 +358,10 @@ iOS アプリからのメディアアップロード(1 リクエスト 1 ファ�
 [phase4-media.md](phase4-media.md)。
 
 - クエリ: `id` / `trip_id` / `type`(photo|video)/ `taken_at`(ISO8601)/
-  `ext`(jpg|mp4|mov)/ `location_point_id`(任意)
+  `ext`(jpg|mp4|mov)/ `location_point_id`(任意)/ `latitude` `longitude`(任意)
+- `latitude` / `longitude` は**メディア自身の撮影位置**(写真の EXIF GPS・動画メタデータ)。
+  地図では記録点(`location_point_id`)よりこちらを優先する。範囲外(±90 / ±180)や
+  片方だけの指定は 400
 - ボディ: ファイルバイナリ(`application/octet-stream`、上限 200MB)
 - ファイルは `<dataDir>/media/<id>.<ext>`、行は `insert or ignore` で冪等。
   trip が無ければ `409 {"error":"unknown trip"}`(クライアントは trips → points → media の順に送る)。

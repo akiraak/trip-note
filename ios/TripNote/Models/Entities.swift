@@ -225,6 +225,10 @@ final class MediaEntity {
     var trip: TripEntity?
     /// 撮影時刻に最も近い記録点(MediaAttachment)。点が無い trip では nil
     var locationPoint: LocationPointEntity?
+    /// メディア自身の撮影位置(写真の EXIF GPS / 動画メタデータ。MediaCoordinate)。
+    /// 位置情報を持たないメディアでは nil
+    var latitude: Double?
+    var longitude: Double?
     /// 削除済みの目印。ローカルのファイルは削除時にすぐ消し、この行は
     /// サーバへ DELETE を送るまで残す(送信できたら行も物理削除する)
     var deletedAt: Date?
@@ -239,7 +243,9 @@ final class MediaEntity {
         thumbnailFileName: String,
         takenAt: Date,
         trip: TripEntity? = nil,
-        locationPoint: LocationPointEntity? = nil
+        locationPoint: LocationPointEntity? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil
     ) {
         self.id = id
         self.typeRawValue = type.rawValue
@@ -248,7 +254,22 @@ final class MediaEntity {
         self.takenAt = takenAt
         self.trip = trip
         self.locationPoint = locationPoint
+        self.latitude = latitude
+        self.longitude = longitude
     }
 
     var type: MediaType { MediaType(rawValue: typeRawValue) ?? .photo }
+
+    /// 地図に出す座標。メディア自身の撮影位置を優先し、無ければ紐付いた記録点。
+    /// どちらも無ければ nil(地図には出さずグリッドにだけ出る)
+    var displayCoordinate: MediaCoordinate.Coordinate? {
+        if let latitude, let longitude {
+            return MediaCoordinate.Coordinate(latitude: latitude, longitude: longitude)
+        }
+        guard let locationPoint else { return nil }
+        return MediaCoordinate.Coordinate(
+            latitude: locationPoint.latitude,
+            longitude: locationPoint.longitude
+        )
+    }
 }

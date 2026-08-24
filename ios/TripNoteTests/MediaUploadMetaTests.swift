@@ -51,6 +51,52 @@ struct MediaUploadMetaTests {
         #expect(!meta.queryItems.contains { $0.name == "location_point_id" })
     }
 
+    @Test func メディア自身の座標を送る() throws {
+        let trip = TripEntity(title: "t")
+        let media = MediaEntity(
+            type: .photo, fileName: "a.jpg", thumbnailFileName: "a-thumb.jpg",
+            takenAt: Date(), trip: trip, latitude: 47.6205, longitude: -122.3493
+        )
+        let meta = try #require(MediaUploadMeta(media))
+        let items = Dictionary(uniqueKeysWithValues: meta.queryItems.map { ($0.name, $0.value) })
+        #expect(items["latitude"] == "47.6205")
+        #expect(items["longitude"] == "-122.3493")
+    }
+
+    @Test func 座標が無ければ送らない() throws {
+        let trip = TripEntity(title: "t")
+        let media = MediaEntity(
+            type: .photo, fileName: "a.jpg", thumbnailFileName: "a-thumb.jpg",
+            takenAt: Date(), trip: trip
+        )
+        let meta = try #require(MediaUploadMeta(media))
+        #expect(!meta.queryItems.contains { $0.name == "latitude" })
+        #expect(!meta.queryItems.contains { $0.name == "longitude" })
+    }
+
+    @Test func 地図の座標は自身の位置を優先し無ければ記録点を使う() {
+        let trip = TripEntity(title: "t")
+        let point = LocationPointEntity(
+            latitude: 35, longitude: 135, recordedAt: Date(), trip: trip
+        )
+        let own = MediaEntity(
+            type: .photo, fileName: "a.jpg", thumbnailFileName: "a-thumb.jpg",
+            takenAt: Date(), trip: trip, locationPoint: point,
+            latitude: 47.6205, longitude: -122.3493
+        )
+        #expect(own.displayCoordinate?.latitude == 47.6205)
+        let linked = MediaEntity(
+            type: .photo, fileName: "b.jpg", thumbnailFileName: "b-thumb.jpg",
+            takenAt: Date(), trip: trip, locationPoint: point
+        )
+        #expect(linked.displayCoordinate == MediaCoordinate.Coordinate(latitude: 35, longitude: 135))
+        let neither = MediaEntity(
+            type: .photo, fileName: "c.jpg", thumbnailFileName: "c-thumb.jpg",
+            takenAt: Date(), trip: trip
+        )
+        #expect(neither.displayCoordinate == nil)
+    }
+
     @Test func tripと関連が切れたメディアはメタにならない() {
         let media = MediaEntity(
             type: .photo, fileName: "a.jpg", thumbnailFileName: "a-thumb.jpg", takenAt: Date()

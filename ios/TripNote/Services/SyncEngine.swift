@@ -62,6 +62,7 @@ final class SyncEngine {
             try await pushDays(client)
             try await pushCheckpoints(client)
             try await pushPoints(client)
+            try relinkMedia()
             try await pushMedia(client)
             lastSyncedAt = Date()
         } catch {
@@ -204,6 +205,42 @@ final class SyncEngine {
             for point in points {
                 point.needsSync = false
             }
+            try modelContext.save()
+        }
+    }
+
+    /// 取り込み時に点が無くて位置が付かなかったメディア(GPS 記録を始める前に
+    /// 取り込んだ写真など)を、その後に増えた点へ紐付け直す。
+    ///
+    /// `needsSync` は動かさない。未アップロードならこの後の `pushMedia` が新しい
+    /// 紐付けごと送るし、アップロード済みのものはサーバが `/api/sync` で同じルールの
+    /// 修復をする(media は不変・`insert or ignore` で送り直しても反映されないため)。
+    private func relinkMedia() throws {
+        // to-one 関連の nil は #Predicate に載せられないため、取得後に絞る
+        let unlinked = try modelContext.fetch(FetchDescriptor<MediaEntity>())
+            .filter { $0.locationPoint == nil && $0.deletedAt == nil }
+        guard !unlinked.isEmpty else { return }
+
+        var pointsByTrip: [UUID: [LocationPointEntity]] = [:]
+        var didLink = false
+        for media in unlinked {
+            guard let trip = media.trip else { continue }
+            let points: [LocationPointEntity]
+            if let cached = pointsByTrip[trip.id] {
+                points = cached
+            } else {
+                points = trip.sortedPoints
+                pointsByTrip[trip.id] = points
+            }
+            guard
+                let index = MediaAttachment.nearestIndex(
+                    recordedTimes: points.map(\.recordedAt), to: media.takenAt
+                )
+            else { continue }
+            media.locationPoint = points[index]
+            didLink = true
+        }
+        if didLink {
             try modelContext.save()
         }
     }

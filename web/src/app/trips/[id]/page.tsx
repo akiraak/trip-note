@@ -37,22 +37,28 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
     )
     .all(id) as LocationPoint[];
   const distance = totalDistance(points);
-  // 地図マーカー用に紐付いた点の座標も引く(点が無いメディアはグリッドのみ)
+  // 地図マーカー用の座標。メディア自身の撮影位置(EXIF GPS)を優先し、
+  // 無ければ紐付いた記録点を使う(どちらも無いメディアはグリッドのみ)
   const media = db
     .prepare(
-      `select m.*, p.latitude, p.longitude
+      `select m.*,
+              coalesce(m.latitude, p.latitude) as marker_latitude,
+              coalesce(m.longitude, p.longitude) as marker_longitude
        from media m
        left join location_points p on p.id = m.location_point_id
        where m.trip_id = ? and m.deleted_at is null order by m.taken_at`,
     )
-    .all(id) as (Media & { latitude: number | null; longitude: number | null })[];
+    .all(id) as (Media & {
+    marker_latitude: number | null;
+    marker_longitude: number | null;
+  })[];
   const mediaMarkers = media
-    .filter((m) => m.latitude !== null && m.longitude !== null)
+    .filter((m) => m.marker_latitude !== null && m.marker_longitude !== null)
     .map((m) => ({
       id: m.id,
       type: m.type,
-      latitude: m.latitude as number,
-      longitude: m.longitude as number,
+      latitude: m.marker_latitude as number,
+      longitude: m.marker_longitude as number,
     }));
 
   // プラン(日別チェックポイント)。tombstone は表示しない

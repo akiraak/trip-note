@@ -237,6 +237,9 @@ struct MediaUploadMeta: Sendable {
     let type: String
     let takenAt: Date
     let ext: String
+    /// メディア自身の撮影位置(EXIF GPS / 動画メタデータ)。無ければ送らない
+    let latitude: Double?
+    let longitude: Double?
 
     /// trip との関連が切れたメディアは同期できないため nil を返す
     init?(_ media: MediaEntity) {
@@ -247,6 +250,8 @@ struct MediaUploadMeta: Sendable {
         type = media.typeRawValue
         takenAt = media.takenAt
         ext = (media.fileName as NSString).pathExtension
+        latitude = media.latitude
+        longitude = media.longitude
     }
 
     var queryItems: [URLQueryItem] {
@@ -259,6 +264,11 @@ struct MediaUploadMeta: Sendable {
         ]
         if let locationPointId {
             items.append(URLQueryItem(name: "location_point_id", value: locationPointId.uuidString))
+        }
+        // サーバは片方だけの座標を 400 で弾くため、両方揃っているときだけ付ける
+        if let latitude, let longitude {
+            items.append(URLQueryItem(name: "latitude", value: String(latitude)))
+            items.append(URLQueryItem(name: "longitude", value: String(longitude)))
         }
         return items
     }

@@ -79,6 +79,10 @@ export type Media = {
   type: "photo" | "video";
   storage_path: string;
   taken_at: string;
+  /// メディア自身の撮影位置(EXIF GPS / 動画メタデータ)。地図では
+  /// location_point_id 経由の記録点よりこちらを優先する
+  latitude: number | null;
+  longitude: number | null;
   /// 削除済み(tombstone)。ファイルは物理削除済みで、行は iOS の pull に
   /// 削除を伝えるためだけに残っている
   deleted_at: string | null;
