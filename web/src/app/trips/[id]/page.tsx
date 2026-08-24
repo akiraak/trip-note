@@ -145,7 +145,12 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
           旅ログ
         </Link>
       </div>
-      <EditTrip tripId={trip.id} initial={editInitial} timeZone={TIME_ZONE} />
+      <EditTrip
+        tripId={trip.id}
+        initial={editInitial}
+        timeZone={TIME_ZONE}
+        firstDayDate={days[0]?.date ?? null}
+      />
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
         <Stat label="開始">
           {trip.started_at ? (

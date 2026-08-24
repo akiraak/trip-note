@@ -442,6 +442,12 @@ struct TripEditView: View {
                 Toggle("出発日時を設定", isOn: $hasDeparture.animation())
                 if hasDeparture {
                     DatePicker("出発日時", selection: $departureAt)
+                    // 保存でプランの日付も動くので、動く量を先に見せる
+                    if let notice = planShiftNotice {
+                        Text(notice)
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
                 }
                 TextField("目的地", text: $destination)
             }
@@ -467,7 +473,22 @@ struct TripEditView: View {
         destination.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// 保存したときにプランの日付が動く量(動かないなら nil)
+    private var planShiftDays: Int {
+        PlanEditor.departureShiftDays(
+            from: trip.departureAt,
+            to: hasDeparture ? departureAt : nil,
+            firstDayDate: trip.sortedDays.first?.date
+        )
+    }
+
+    private var planShiftNotice: String? {
+        PlanEditor.planShiftNotice(days: planShiftDays)
+    }
+
     private func save() {
+        // 出発日の変更にプランの各日を追従させる(上書き前に差分を出す)
+        let shiftDays = planShiftDays
         trip.title = trimmedTitle
         // 移動手段は車に固定。過去の旅行も編集のたびに car へ正規化する
         trip.transport = Transport.car.rawValue
@@ -475,6 +496,7 @@ struct TripEditView: View {
         trip.destination = trimmedDestination.isEmpty ? nil : trimmedDestination
         trip.updatedAt = Date()
         trip.needsSync = true
+        PlanEditor.shiftAllDays(of: trip, by: shiftDays)
         try? modelContext.save()
         dismiss()
         Task { await sync.syncNow() }

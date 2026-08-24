@@ -2,6 +2,15 @@
 
 ## 2026-08-24
 
+- 旅行の出発日を変えたらプランの各日付も一緒に動かす [plan](docs/plans/archive/departure-date-shifts-plan.md)
+  - 出発予定日を編集してもプランの日付は据え置きで(Web の編集フォームにも「プランの日付は動きません」と明記していた)、出発が 1 日ずれるだけで日ごとのチェックポイントを手で直す必要があった
+  - **ずらす量の規則**(iOS `PlanEditor.departureShiftDays` / Web `lib/plan-dates.ts` で同じ): 旧出発日があれば「旧 → 新」の**日付部分**の差、旧出発日が無ければ**1 日目が新しい出発日になる**差。出発日を消した / 時刻だけ変えた / 日が 1 つも無い場合は動かさない
+  - **チェックポイントの `planned_time` も同じ日数動かす**(日付だけの `date` と絶対時刻がずれないように。日の挿入・削除と同じ扱い)。**動かした行だけ** `updated_at` を進める(触らない行の updated_at を進めると LWW でもう一方の編集を潰すため)
+  - iOS は既存の `shiftDays(after:by:)` と共通の内部処理に整理して `shiftAllDays` を追加。Web は `shiftDaysAfter` を任意日数に一般化し、`updateTrip` をトランザクションの中で日ずらしまで行うようにした
+  - **編集フォームで予告する**: 「プランの日付も N 日うしろ/まえへ動きます」を保存前に出す(iOS の `TripEditView` と Web の `edit-trip.tsx`。文言も同じ)
+  - 検証: iOS 173 テスト(`departureShiftDays` の 旧あり/旧なし/消去/時刻だけ/日なし、`shiftAllDays`、予告文言)/ Web lint + build / ブラウザで実操作(9/1 → 9/4 で 3 日うしろ、9/4 → 9/2 で 2 日まえ。DB で日付と planned_time が一緒に動くことを確認)
+  - iOS の編集シートでの操作は未目視(TODO に残した)。ロジックは純関数側でテスト済み
+
 - Web からも写真・動画を削除できるようにする [plan](docs/plans/archive/web-media-delete.md)
   - 同日の削除実装は iOS 限定だったため、Web の閲覧中に消したいものを見つけても消せなかった。**media の「削除だけ」を双方向**にした(ファイル本体は従来どおり iOS → サーバの一方向アップロードのまま)
   - サーバは `media.deleted_at`(tombstone)を追加し、削除では**ファイルを物理削除・行は tombstone として残す**。削除の実処理は `web/src/lib/media.ts` に集約して、**Web の Server Action と `DELETE /api/media`(iOS)が同じ関数**を呼ぶ

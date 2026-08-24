@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { updateTripAction } from "./actions";
+import { departureShiftDays, planShiftNotice } from "@/lib/plan-dates";
 
 // 旅行のタイトル・出発予定・目的地の編集(iOS の TripEditView と同じ項目。移動手段は車固定)。
 // 出発日時は日付と時刻を分けて送り、サーバ側で表示タイムゾーンの壁時計として解釈する
@@ -14,6 +15,7 @@ export function EditTrip({
   tripId,
   initial,
   timeZone,
+  firstDayDate,
 }: {
   tripId: string;
   /** 出発予定は表示 TZ の壁時計に割った日付・時刻(未設定なら null) */
@@ -24,6 +26,8 @@ export function EditTrip({
     destination: string;
   };
   timeZone: string;
+  /** プラン 1 日目の日付(YYYY-MM-DD)。出発日を変えたときに動く量の予告に使う */
+  firstDayDate: string | null;
 }) {
   const [open, setOpen] = useState(false);
   if (!open) {
@@ -44,6 +48,7 @@ export function EditTrip({
       tripId={tripId}
       initial={initial}
       timeZone={timeZone}
+      firstDayDate={firstDayDate}
       onClose={() => setOpen(false)}
     />
   );
@@ -53,6 +58,7 @@ function EditTripForm({
   tripId,
   initial,
   timeZone,
+  firstDayDate,
   onClose,
 }: {
   tripId: string;
@@ -63,6 +69,7 @@ function EditTripForm({
     destination: string;
   };
   timeZone: string;
+  firstDayDate: string | null;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(initial.title);
@@ -75,6 +82,13 @@ function EditTripForm({
   const [destination, setDestination] = useState(initial.destination);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const shiftNotice = planShiftNotice(
+    departureShiftDays(
+      initial.departureDate,
+      hasDeparture ? date : null,
+      firstDayDate,
+    ),
+  );
 
   const submit = async () => {
     setPending(true);
@@ -142,8 +156,12 @@ function EditTripForm({
               />
             </div>
             <span className="text-xs text-muted">
-              {timeZone} の時刻として保存します(プランの日付は動きません)
+              {timeZone} の時刻として保存します
             </span>
+            {/* 保存でプランの日付も動くので、動く量を先に見せる(iOS の TripEditView と同じ) */}
+            {shiftNotice && (
+              <span className="text-xs text-accent">{shiftNotice}</span>
+            )}
           </>
         )}
       </div>

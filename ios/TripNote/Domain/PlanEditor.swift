@@ -142,17 +142,72 @@ enum PlanEditor {
         calendar: Calendar = .current,
         now: Date = Date()
     ) {
-        guard offsetDays != 0, let trip = day.trip else { return }
+        guard let trip = day.trip else { return }
         // date は YYYY-MM-DD なので文字列比較で日付順になる
-        for following in trip.sortedDays where following.date > day.date {
+        shift(
+            trip.sortedDays.filter { $0.date > day.date },
+            by: offsetDays,
+            calendar: calendar,
+            now: now
+        )
+    }
+
+    /// 出発日の変更に合わせてプランをずらす日数を出す。
+    /// - 旧出発日あり: 「旧 → 新」の日数差(時刻だけの変更は 0)
+    /// - 旧出発日なし: 1 日目が新しい出発日になる日数差
+    /// - 新しい出発日が無い(消した)/ 日が 1 つも無い: 0
+    static func departureShiftDays(
+        from oldDeparture: Date?,
+        to newDeparture: Date?,
+        firstDayDate: String?,
+        calendar: Calendar = .current
+    ) -> Int {
+        guard let newDeparture, let firstDayDate else { return 0 }
+        let anchor = oldDeparture.map { dateString($0, calendar: calendar) } ?? firstDayDate
+        guard
+            let from = parseDate(anchor, calendar: calendar),
+            let to = parseDate(dateString(newDeparture, calendar: calendar), calendar: calendar)
+        else { return 0 }
+        return calendar.dateComponents([.day], from: from, to: to).day ?? 0
+    }
+
+    /// 編集フォームで出す予告文言(動かないなら nil)。
+    /// Web の lib/plan-dates.ts の planShiftNotice と同じ文言にする
+    static func planShiftNotice(days offsetDays: Int) -> String? {
+        guard offsetDays != 0 else { return nil }
+        return offsetDays > 0
+            ? "プランの日付も \(offsetDays) 日うしろへ動きます"
+            : "プランの日付も \(-offsetDays) 日まえへ動きます"
+    }
+
+    /// trip のすべてのプラン日を offsetDays ずらす(出発日の変更に追従させる用)
+    static func shiftAllDays(
+        of trip: TripEntity,
+        by offsetDays: Int,
+        calendar: Calendar = .current,
+        now: Date = Date()
+    ) {
+        shift(trip.sortedDays, by: offsetDays, calendar: calendar, now: now)
+    }
+
+    /// 渡された日を offsetDays ずらす(その日のチェックポイントの plannedTime も同じだけ)。
+    /// ずらした行だけ updatedAt を進め needsSync を立てる
+    private static func shift(
+        _ days: [TripDayEntity],
+        by offsetDays: Int,
+        calendar: Calendar,
+        now: Date
+    ) {
+        guard offsetDays != 0 else { return }
+        for day in days {
             guard
-                let date = parseDate(following.date, calendar: calendar),
+                let date = parseDate(day.date, calendar: calendar),
                 let shifted = calendar.date(byAdding: .day, value: offsetDays, to: date)
             else { continue }
-            following.date = dateString(shifted, calendar: calendar)
-            following.updatedAt = now
-            following.needsSync = true
-            for checkpoint in following.sortedCheckpoints {
+            day.date = dateString(shifted, calendar: calendar)
+            day.updatedAt = now
+            day.needsSync = true
+            for checkpoint in day.sortedCheckpoints {
                 guard
                     let plannedTime = checkpoint.plannedTime,
                     let shiftedTime = calendar.date(

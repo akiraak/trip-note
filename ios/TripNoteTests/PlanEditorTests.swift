@@ -317,6 +317,104 @@ struct PlanEditorTests {
         #expect(lodging.needsSync)
     }
 
+    // MARK: - 出発日の変更にプランを追従させる
+
+    @Test func departureShiftDaysは出発日の差だけずらす() {
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: date("2026-09-01T08:00:00+09:00"),
+                to: date("2026-09-04T08:00:00+09:00"),
+                firstDayDate: "2026-09-01",
+                calendar: calendar
+            ) == 3
+        )
+        // 前倒しはマイナス
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: date("2026-09-04T08:00:00+09:00"),
+                to: date("2026-09-01T08:00:00+09:00"),
+                firstDayDate: "2026-09-04",
+                calendar: calendar
+            ) == -3
+        )
+    }
+
+    @Test func departureShiftDaysは時刻だけの変更ではずらさない() {
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: date("2026-09-01T08:00:00+09:00"),
+                to: date("2026-09-01T21:30:00+09:00"),
+                firstDayDate: "2026-09-01",
+                calendar: calendar
+            ) == 0
+        )
+    }
+
+    @Test func departureShiftDaysは旧出発日が無ければ1日目を新しい出発日に合わせる() {
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: nil,
+                to: date("2026-09-05T08:00:00+09:00"),
+                firstDayDate: "2026-09-01",
+                calendar: calendar
+            ) == 4
+        )
+    }
+
+    @Test func departureShiftDaysは出発日を消したときと日が無いときは0() {
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: date("2026-09-01T08:00:00+09:00"),
+                to: nil,
+                firstDayDate: "2026-09-01",
+                calendar: calendar
+            ) == 0
+        )
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: date("2026-09-01T08:00:00+09:00"),
+                to: date("2026-09-04T08:00:00+09:00"),
+                firstDayDate: nil,
+                calendar: calendar
+            ) == 0
+        )
+    }
+
+    @Test func planShiftNoticeは動く向きと日数を出す() {
+        #expect(PlanEditor.planShiftNotice(days: 3) == "プランの日付も 3 日うしろへ動きます")
+        #expect(PlanEditor.planShiftNotice(days: -2) == "プランの日付も 2 日まえへ動きます")
+        #expect(PlanEditor.planShiftNotice(days: 0) == nil)
+    }
+
+    @Test func shiftAllDaysは全日とplannedTimeを動かす() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (trip, days) = makeTripWithDays(
+            ["2026-09-01", "2026-09-02", "2026-09-03"], updatedAt: old
+        )
+        let lodging = makeCheckpoint(
+            plannedTime: date("2026-09-01T17:00:00+09:00"), in: days[0], updatedAt: old
+        )
+
+        PlanEditor.shiftAllDays(of: trip, by: 2, calendar: calendar, now: now)
+
+        #expect(days.map(\.date) == ["2026-09-03", "2026-09-04", "2026-09-05"])
+        #expect(days.allSatisfy { $0.updatedAt == now && $0.needsSync })
+        #expect(lodging.plannedTime == date("2026-09-03T17:00:00+09:00"))
+        #expect(lodging.needsSync)
+    }
+
+    @Test func shiftAllDaysは0日なら何も触らない() {
+        let old = date("2026-08-20T00:00:00+09:00")
+        let now = date("2026-08-21T10:00:00+09:00")
+        let (trip, days) = makeTripWithDays(["2026-09-01", "2026-09-02"], updatedAt: old)
+
+        PlanEditor.shiftAllDays(of: trip, by: 0, calendar: calendar, now: now)
+
+        #expect(days.map(\.date) == ["2026-09-01", "2026-09-02"])
+        #expect(days.allSatisfy { $0.updatedAt == old && !$0.needsSync })
+    }
+
     @Test func insertedDayは最終日ではずらす対象が無い() {
         let old = date("2026-08-20T00:00:00+09:00")
         let now = date("2026-08-21T10:00:00+09:00")

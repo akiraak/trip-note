@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "./db";
 import { TIME_ZONE } from "./format";
+import { departureShiftDays } from "./plan-dates";
 import {
   CHECKPOINT_TYPES,
   type Checkpoint,
@@ -271,31 +272,45 @@ export type TripEditInput = {
 };
 
 /** 旅行のタイトル・出発予定・目的地を編集する(iOS 側 TripEditView.save と対応)。
- *  プランの日付は動かさない(1 日目の日付は作成時に決まる。iOS も同じ) */
+ *  **出発日を変えたらプランの各日も同じ日数だけ動く**(チェックポイントの
+ *  planned_time も一緒に動く。規則は lib/plan-dates.ts の departureShiftDays) */
 export function updateTrip(tripId: string, input: TripEditInput): Trip {
-  getTrip(tripId);
+  const trip = getTrip(tripId);
   const title = input.title.trim();
   if (!title) throw new Error("タイトルを入力してください");
   // 出発日時は日付 + 時刻を表示 TZ の壁時計として解釈する(createTrip と同じ)
   const departureAt = input.departure_date
     ? isoFromLocalWallClock(input.departure_date, input.departure_time || "00:00")
     : null;
-  getDb()
+  const db = getDb();
+  const firstDay = db
     .prepare(
+      "select min(date) as date from trip_days where trip_id = ? and deleted_at is null",
+    )
+    .get(tripId) as { date: string | null };
+  const offsetDays = departureShiftDays(
+    trip.departure_at ? dateStringOf(new Date(trip.departure_at)) : null,
+    departureAt ? dateStringOf(new Date(departureAt)) : null,
+    firstDay.date,
+  );
+  const now = nowIso();
+  db.transaction(() => {
+    db.prepare(
       `update trips set
          title = @title, transport = @transport, departure_at = @departure_at,
          destination = @destination, updated_at = @now
        where id = @id`,
-    )
-    .run({
+    ).run({
       id: tripId,
       title,
       // 移動手段は車固定。古い旅行の null もここで揃える(iOS の TripEditView と同じ)
       transport: DEFAULT_TRANSPORT,
       departure_at: departureAt,
       destination: input.destination?.trim() || null,
-      now: nowIso(),
+      now,
     });
+    shiftAllDays(tripId, offsetDays, now);
+  })();
   return getTrip(tripId);
 }
 
@@ -343,7 +358,7 @@ export function addTripDay(tripId: string): TripDay {
 function shiftDaysAfter(
   tripId: string,
   afterDate: string,
-  offsetDays: 1 | -1,
+  offsetDays: number,
   now: string,
 ): void {
   const db = getDb();
@@ -353,7 +368,24 @@ function shiftDaysAfter(
        where trip_id = ? and date > ? and deleted_at is null`,
     )
     .all(tripId, afterDate) as { id: string }[];
-  if (days.length === 0) return;
+  shiftDays(days, offsetDays, now);
+}
+
+/** trip のすべてのプラン日を offsetDays 日ずらす(出発日の変更に追従させる用) */
+function shiftAllDays(tripId: string, offsetDays: number, now: string): void {
+  const days = getDb()
+    .prepare("select id from trip_days where trip_id = ? and deleted_at is null")
+    .all(tripId) as { id: string }[];
+  shiftDays(days, offsetDays, now);
+}
+
+function shiftDays(
+  days: { id: string }[],
+  offsetDays: number,
+  now: string,
+): void {
+  const db = getDb();
+  if (days.length === 0 || offsetDays === 0) return;
   const modifier = offsetDays > 0 ? `+${offsetDays} day` : `${offsetDays} day`;
   const shiftDay = db.prepare(
     "update trip_days set date = date(date, @modifier), updated_at = @now where id = @id",
