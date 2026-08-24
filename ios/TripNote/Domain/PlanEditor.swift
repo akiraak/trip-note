@@ -153,9 +153,9 @@ enum PlanEditor {
     }
 
     /// 出発日の変更に合わせてプランをずらす日数を出す。
-    /// - 旧出発日あり: 「旧 → 新」の日数差(時刻だけの変更は 0)
-    /// - 旧出発日なし: 1 日目が新しい出発日になる日数差
-    /// - 新しい出発日が無い(消した)/ 日が 1 つも無い: 0
+    /// **出発日を変えたら 1 日目がその日になるようにそろえる**(元からずれていた分も直る)。
+    /// 日どうしの間隔は保つ(2 日目以降も同じ日数だけ動く)。
+    /// 日付が変わっていない(時刻だけの変更)/ 出発日が無い(消した)/ 日が 1 つも無い場合は 0
     static func departureShiftDays(
         from oldDeparture: Date?,
         to newDeparture: Date?,
@@ -163,10 +163,15 @@ enum PlanEditor {
         calendar: Calendar = .current
     ) -> Int {
         guard let newDeparture, let firstDayDate else { return 0 }
-        let anchor = oldDeparture.map { dateString($0, calendar: calendar) } ?? firstDayDate
+        let newDate = dateString(newDeparture, calendar: calendar)
+        // 出発日そのものが変わっていなければ触らない(時刻だけ直したときに
+        // プランが動くと驚くため。ずれの是正は出発日を変えたときだけ行う)
+        if let oldDeparture, dateString(oldDeparture, calendar: calendar) == newDate {
+            return 0
+        }
         guard
-            let from = parseDate(anchor, calendar: calendar),
-            let to = parseDate(dateString(newDeparture, calendar: calendar), calendar: calendar)
+            let from = parseDate(firstDayDate, calendar: calendar),
+            let to = parseDate(newDate, calendar: calendar)
         else { return 0 }
         return calendar.dateComponents([.day], from: from, to: to).day ?? 0
     }

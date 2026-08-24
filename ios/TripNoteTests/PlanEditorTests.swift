@@ -350,6 +350,29 @@ struct PlanEditorTests {
         )
     }
 
+    @Test func departureShiftDaysは1日目が出発日とずれていてもそろえる() {
+        // 出発 9/1 なのに 1 日目が 8/31 だった旅行で、出発を 9/4 にしたら 1 日目も 9/4 にする
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: date("2026-09-01T08:00:00+09:00"),
+                to: date("2026-09-04T08:00:00+09:00"),
+                firstDayDate: "2026-08-31",
+                calendar: calendar
+            ) == 4
+        )
+    }
+
+    @Test func departureShiftDaysはずれていても時刻だけの変更なら動かさない() {
+        #expect(
+            PlanEditor.departureShiftDays(
+                from: date("2026-09-01T08:00:00+09:00"),
+                to: date("2026-09-01T21:30:00+09:00"),
+                firstDayDate: "2026-08-31",
+                calendar: calendar
+            ) == 0
+        )
+    }
+
     @Test func departureShiftDaysは旧出発日が無ければ1日目を新しい出発日に合わせる() {
         #expect(
             PlanEditor.departureShiftDays(

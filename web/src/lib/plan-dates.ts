@@ -10,17 +10,18 @@ export function dayDifference(from: string, to: string): number {
 }
 
 /** 出発日の変更に合わせてプランをずらす日数(iOS の PlanEditor.departureShiftDays と同じ規則)。
- *  - 旧出発日あり: 「旧 → 新」の日数差(時刻だけの変更は 0)
- *  - 旧出発日なし: 1 日目が新しい出発日になる日数差
- *  - 新しい出発日が無い(消した)/ 日が 1 つも無い: 0
- *  日付はすべて表示タイムゾーンの壁時計の YYYY-MM-DD で渡す */
+ *  **出発日を変えたら 1 日目がその日になるようにそろえる**(元からずれていた分も直る)。
+ *  日どうしの間隔は保つ。日付が変わっていない(時刻だけの変更)/ 出発日が無い(消した)/
+ *  日が 1 つも無い場合は 0。日付はすべて表示タイムゾーンの壁時計の YYYY-MM-DD で渡す */
 export function departureShiftDays(
   oldDepartureDate: string | null,
   newDepartureDate: string | null,
   firstDayDate: string | null,
 ): number {
   if (!newDepartureDate || !firstDayDate) return 0;
-  return dayDifference(oldDepartureDate ?? firstDayDate, newDepartureDate);
+  // 出発日そのものが変わっていなければ触らない(時刻だけ直したときに動くと驚くため)
+  if (oldDepartureDate === newDepartureDate) return 0;
+  return dayDifference(firstDayDate, newDepartureDate);
 }
 
 /** 編集フォームで出す予告文言(動かないなら null) */
