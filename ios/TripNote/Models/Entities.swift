@@ -20,8 +20,9 @@ final class TripEntity {
     /// 編集時刻。双方向同期の LWW の基準になるため、同期対象フィールドの変更時は必ず更新する
     /// (isRecordingActive / needsSync などローカル専用フィールドの変更では更新しない)
     var updatedAt: Date = Date()
-    /// この旅行を現在記録中か(ローカル専用・同期しない)。
-    /// アプリがシステムに終了された後の記録再開(resumeIfNeeded)の目印になる
+    /// この旅行の記録が ON か(記録の意思。ローカル専用・同期しない)。
+    /// アプリの終了・権限の一時失効・位置情報の途切れからの自動復帰
+    /// (LocationRecorder.ensureRecording)の目印になる
     var isRecordingActive: Bool = false
     /// サーバへ未同期の変更があるか
     var needsSync: Bool = true

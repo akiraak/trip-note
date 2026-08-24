@@ -14,6 +14,8 @@ final class LocationRecorder: NSObject {
     private(set) var recordedPointCount = 0
     private(set) var totalDistanceMeters = 0.0
     private(set) var lastError: String?
+    /// 記録中のはずが更新が長く途切れている(入れ直しても戻らなかった)。記録バーの表示に使う
+    private(set) var isStalled = false
 
     private let manager = CLLocationManager()
     private let modelContext: ModelContext
@@ -22,16 +24,22 @@ final class LocationRecorder: NSObject {
     private var lastRecorded: LocationSample?
     /// 権限リクエストの応答待ちで記録開始が保留されている trip
     private var pendingTrip: TripEntity?
+    /// 位置情報の更新を最後に受け取った時刻(点として保存したかは問わない)
+    private var lastLocationUpdateAt: Date?
+    /// 権限ダイアログの応答待ち。待っている間は要求を重ねない
+    private var isRequestingAuthorization = false
+    /// フォアグラウンドの間だけ回す定期チェック
+    private var watchdogTask: Task<Void, Never>?
+
+    static let deniedMessage = "位置情報へのアクセスが許可されていません。設定アプリから許可してください。"
+    /// 定期チェックの間隔
+    private static let watchdogInterval: TimeInterval = 60
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
         super.init()
         manager.delegate = self
         authorizationStatus = manager.authorizationStatus
-    }
-
-    var isAuthorized: Bool {
-        authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways
     }
 
     // MARK: - 記録の開始 / 停止
@@ -44,9 +52,10 @@ final class LocationRecorder: NSObject {
         switch manager.authorizationStatus {
         case .notDetermined:
             pendingTrip = trip
+            isRequestingAuthorization = true
             manager.requestWhenInUseAuthorization()
         case .denied, .restricted:
-            lastError = "位置情報へのアクセスが許可されていません。設定アプリから許可してください。"
+            lastError = Self.deniedMessage
         default:
             begin(trip: trip)
         }
@@ -58,11 +67,20 @@ final class LocationRecorder: NSObject {
         guard isRecording, let trip = activeTrip else { return }
         trip.isRecordingActive = false
         saveContext()
+        suspendRecording()
+    }
+
+    /// 権限が無くなったなど、ユーザーの停止操作でない理由で記録を中断する。
+    /// 記録の意思(isRecordingActive)は残すので、条件が戻れば ensureRecording() が再開する
+    private func suspendRecording() {
+        guard isRecording else { return }
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
         isRecording = false
         activeTrip = nil
         lastRecorded = nil
+        lastLocationUpdateAt = nil
+        isStalled = false
     }
 
     /// 旅行を明示的に終了する。この旅行を記録中なら記録も停止する。
@@ -76,16 +94,87 @@ final class LocationRecorder: NSObject {
         saveContext()
     }
 
-    /// 起動時に呼ぶ。記録中のまま終了された trip があれば記録を再開する。
+    // MARK: - 自動復帰(watchdog)
+
+    /// 記録の意思(`TripEntity.isRecordingActive`)と実動を突き合わせ、ずれていれば直す。
+    /// 起動時・フォアグラウンド復帰・記録中の定期チェック・権限の変化から呼ぶ。
     /// バックグラウンドでの再起動(significant location change)時にも UI なしで動く。
-    func resumeIfNeeded() {
-        guard !isRecording, isAuthorized else { return }
+    func ensureRecording() {
+        let intended = intendedTrip()
+        let now = Date()
+        let action = RecordingWatchdog.decide(
+            RecordingWatchdog.Input(
+                isIntended: intended != nil,
+                isRecording: isRecording,
+                authorization: manager.authorizationStatus,
+                isRequestingAuthorization: isRequestingAuthorization,
+                lastUpdateAt: lastLocationUpdateAt,
+                now: now
+            )
+        )
+        switch action {
+        case .none:
+            break
+        case .requestAuthorization:
+            isRequestingAuthorization = true
+            manager.requestWhenInUseAuthorization()
+        case .resume:
+            if let intended {
+                resume(trip: intended)
+            }
+        case .restart:
+            restartUpdates()
+        case .denied:
+            // 意思は消さない。設定で許可し直せば権限の変化から自動で再開する。
+            // 既に出ている理由(中断の経緯など)は上書きしない
+            if lastError == nil {
+                lastError = Self.deniedMessage
+            }
+        }
+        let stalled = isRecording
+            && RecordingWatchdog.isStalled(lastUpdateAt: lastLocationUpdateAt, now: now)
+        if isStalled != stalled {
+            isStalled = stalled
+        }
+    }
+
+    /// フォアグラウンドの間だけ定期チェックを回す(何度呼んでも 1 本だけ動く)。
+    /// 背面は「更新が来ている ＝ 生きている」で、来ない間はアプリ自身も動けないため回さない
+    func startWatchdog() {
+        guard watchdogTask == nil else { return }
+        watchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.watchdogInterval))
+                guard !Task.isCancelled else { return }
+                self?.ensureRecording()
+            }
+        }
+    }
+
+    func stopWatchdog() {
+        watchdogTask?.cancel()
+        watchdogTask = nil
+    }
+
+    /// 記録 ON の意思を持つ旅行。記録中ならその旅行がそのまま意思にあたる
+    private func intendedTrip() -> TripEntity? {
+        if isRecording {
+            return activeTrip
+        }
         var descriptor = FetchDescriptor<TripEntity>(
-            predicate: #Predicate { $0.isRecordingActive && $0.deletedAt == nil }
+            predicate: #Predicate {
+                $0.isRecordingActive && $0.deletedAt == nil && $0.endedAt == nil
+            }
         )
         descriptor.fetchLimit = 1
-        guard let trip = try? modelContext.fetch(descriptor).first else { return }
-        resume(trip: trip)
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    /// 位置情報の購読を入れ直す。記録データにも記録の意思にも触らない
+    private func restartUpdates() {
+        manager.stopUpdatingLocation()
+        manager.stopMonitoringSignificantLocationChanges()
+        startUpdates()
     }
 
     // MARK: - 内部処理
@@ -104,6 +193,8 @@ final class LocationRecorder: NSObject {
     }
 
     private func resume(trip: TripEntity) {
+        // 中断していた間のエラー(権限が無い等)は、再開できた時点で用済み
+        lastError = nil
         activeTrip = trip
         let points = trip.sortedPoints
         recordedPointCount = points.count
@@ -122,6 +213,9 @@ final class LocationRecorder: NSObject {
     }
 
     private func startUpdates() {
+        // 開始直後は更新がまだ届かないので、ここを起点に途切れを測る
+        // (入れ直した直後にまた入れ直さないためのクールダウンも兼ねる)
+        lastLocationUpdateAt = Date()
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = 10
         manager.activityType = .otherNavigation
@@ -136,6 +230,11 @@ final class LocationRecorder: NSObject {
 
     fileprivate func process(_ samples: [LocationSample]) {
         guard isRecording, let trip = activeTrip else { return }
+        // 記録が生きている印。フィルタで点を捨てても「更新が届いた」ことは変わらないのでここで更新する
+        lastLocationUpdateAt = Date()
+        if isStalled {
+            isStalled = false
+        }
         var didInsert = false
         for sample in samples where LocationPointFilter.shouldRecord(sample, after: lastRecorded) {
             let point = LocationPointEntity(
@@ -164,6 +263,9 @@ final class LocationRecorder: NSObject {
 
     fileprivate func handleAuthorizationChange(_ status: CLAuthorizationStatus) {
         authorizationStatus = status
+        if status != .notDetermined {
+            isRequestingAuthorization = false
+        }
         switch status {
         case .authorizedWhenInUse:
             // 画面 OFF 中も確実に記録するため Always への昇格を促す(表示可否はシステム判断)
@@ -174,8 +276,9 @@ final class LocationRecorder: NSObject {
         case .denied, .restricted:
             pendingTrip = nil
             if isRecording {
-                stopRecording()
-                lastError = "位置情報へのアクセスが取り消されたため記録を停止しました。"
+                // 意思は残したまま中断する(許可し直せば自動で再開する)
+                suspendRecording()
+                lastError = "位置情報が使えず記録を中断中です"
             }
         default:
             break
@@ -187,7 +290,7 @@ final class LocationRecorder: NSObject {
             pendingTrip = nil
             begin(trip: trip)
         } else {
-            resumeIfNeeded()
+            ensureRecording()
         }
     }
 

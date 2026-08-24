@@ -121,6 +121,39 @@ struct RecordingBarStateTests {
         #expect(content.detail == .error(message: "保存に失敗しました", showsSettings: false))
     }
 
+    @Test func 位置情報が長く途切れていれば再取得中と出す() throws {
+        let recording = trip("記録中", startedAt: Date())
+        let content = try #require(
+            RecordingBarState.content(
+                for: .init(recordingTrip: recording, recordedPointCount: 12, isStalled: true)
+            )
+        )
+        #expect(content.detail == .stalled)
+        #expect(content.isRecording)
+    }
+
+    @Test func 記録していなければ途切れていても再取得中とは出さない() throws {
+        let ongoing = trip("進行中", startedAt: Date())
+        let content = try #require(
+            RecordingBarState.content(for: .init(trips: [ongoing], isStalled: true))
+        )
+        #expect(content.detail == .idle)
+    }
+
+    @Test func 途切れていてもエラーがあればエラーを優先して出す() throws {
+        let recording = trip("記録中", startedAt: Date())
+        let content = try #require(
+            RecordingBarState.content(
+                for: .init(
+                    recordingTrip: recording,
+                    locationError: "保存に失敗しました",
+                    isStalled: true
+                )
+            )
+        )
+        #expect(content.detail == .error(message: "保存に失敗しました", showsSettings: false))
+    }
+
     @Test func 取り込み中は記録中でも取り込みを優先して出す() throws {
         let recording = trip("記録中", startedAt: Date())
         let content = try #require(

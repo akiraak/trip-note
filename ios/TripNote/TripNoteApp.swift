@@ -24,7 +24,7 @@ struct TripNoteApp: App {
             _importer = State(initialValue: MediaImporter(modelContext: container.mainContext))
             // significant location change によるバックグラウンド再起動時も
             // UI 表示を待たずに記録を再開する
-            recorder.resumeIfNeeded()
+            recorder.ensureRecording()
         } catch {
             fatalError("ModelContainer の初期化に失敗しました: \(error)")
         }

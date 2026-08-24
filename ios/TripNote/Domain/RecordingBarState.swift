@@ -7,6 +7,8 @@ enum RecordingBarState {
     enum Detail: Equatable {
         /// 記録中の実績(経過時間は時計に合わせて表示側が作る)
         case recording(pointCount: Int, distanceMeters: Double)
+        /// 記録中のはずが位置情報が長く途切れている(自動で入れ直しても戻らない)
+        case stalled
         /// 対象の旅行はあるが記録していない
         case idle
         /// メディアの取り込み中
@@ -38,11 +40,14 @@ enum RecordingBarState {
         var locationError: String?
         var isLocationDenied: Bool = false
         var isImporting: Bool = false
+        /// 記録中だが位置情報が長く途切れている(LocationRecorder.isStalled)
+        var isStalled: Bool = false
     }
 
     static let idleText = "記録していません"
     static let importingText = "取り込み中…"
     static let deniedText = "位置情報が許可されていません"
+    static let stalledText = "記録中(位置情報を再取得中)"
 
     /// バーに出す内容。対象の旅行が決まらないときは nil(= バーを出さない)
     static func content(for input: Input) -> Content? {
@@ -87,6 +92,10 @@ enum RecordingBarState {
             return .error(message: deniedText, showsSettings: true)
         }
         if isRecording {
+            // 自動の入れ直しでも戻らないときだけ知らせる(短い途切れは黙って直すので出さない)
+            if input.isStalled {
+                return .stalled
+            }
             return .recording(
                 pointCount: input.recordedPointCount,
                 distanceMeters: input.totalDistanceMeters

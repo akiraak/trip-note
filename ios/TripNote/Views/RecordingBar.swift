@@ -88,6 +88,18 @@ struct RecordingBar: View {
             .foregroundStyle(Theme.muted)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
+        case .stalled:
+            // エラーではなく回復待ち。危険色ではなくアクセント色で出す
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(Theme.accent)
+                Text(RecordingBarState.stalledText)
+            }
+            .font(.caption)
+            .foregroundStyle(Theme.accent)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
         case .idle:
             Text(RecordingBarState.idleText)
                 .font(.caption)

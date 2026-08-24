@@ -154,7 +154,7 @@ struct TripDetailView: View {
         } else {
             TripMapView(
                 segments: segments,
-                isActive: trip.isRecordingActive,
+                isActive: isRecordingThisTrip,
                 mediaAnnotations: mediaAnnotations,
                 checkpointAnnotations: checkpointPins,
                 compactCheckpoints: true,
@@ -212,9 +212,15 @@ struct TripDetailView: View {
         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
     }
 
+    /// この旅行を「今まさに」記録しているか。記録の意思(trip.isRecordingActive)だけでは
+    /// 実際に位置情報が動いているとは限らないため、表示には実動の方を使う
+    private var isRecordingThisTrip: Bool {
+        recorder.isRecording && recorder.activeTrip?.id == trip.id
+    }
+
     @ViewBuilder
     private var statusTag: some View {
-        if trip.isRecordingActive {
+        if isRecordingThisTrip {
             StatusTag(label: "記録中", color: Theme.done)
         } else if trip.status == .inProgress {
             StatusTag(label: "進行中", color: Theme.done)
@@ -321,15 +327,29 @@ struct TripDetailView: View {
     /// ここにはバーに載せない補足と、権限まわりの案内だけを残す
     @ViewBuilder
     private var recordingSection: some View {
-        if trip.isRecordingActive {
+        if isRecordingThisTrip {
             VStack(alignment: .leading, spacing: 6) {
-                Label("記録中", systemImage: "location.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.done)
+                Label(
+                    recorder.isStalled ? "記録中(位置情報を再取得中)" : "記録中",
+                    systemImage: "location.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(recorder.isStalled ? Theme.accent : Theme.done)
                 Text("画面を閉じても記録は続きます。停止しても旅行は終了しません。")
                     .font(.caption)
                     .foregroundStyle(Theme.muted)
                 Text("地点数・距離の確認と、撮影・停止は画面下のバーから行えます。")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+            }
+            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+        } else if trip.isRecordingActive {
+            // 記録 ON のまま止まっている状態。意思は残っているので、条件が戻れば自動で再開する
+            VStack(alignment: .leading, spacing: 6) {
+                Label("記録の再開を待っています", systemImage: "location.slash")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                Text("記録は ON のままです。位置情報が使えるようになると自動で再開します。")
                     .font(.caption)
                     .foregroundStyle(Theme.muted)
             }

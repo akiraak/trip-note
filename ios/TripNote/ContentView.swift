@@ -113,13 +113,20 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             // 記録中はローカル優先(自動同期しない)。復帰時に未同期分をまとめて送る
             if newPhase == .active {
+                // 記録 ON のまま止まっていたら戻す(記録中でも生きているか確かめる)
+                recorder.ensureRecording()
+                recorder.startWatchdog()
                 loadPendingShare()
                 if !recorder.isRecording {
                     Task { await sync.syncNow() }
                 }
+            } else {
+                recorder.stopWatchdog()
             }
         }
         .task {
+            recorder.ensureRecording()
+            recorder.startWatchdog()
             loadPendingShare()
             if !recorder.isRecording {
                 await sync.syncNow()
@@ -144,7 +151,7 @@ struct ContentView: View {
                     }
                     ForEach(trips) { trip in
                         NavigationLink(value: trip) {
-                            TripCard(trip: trip)
+                            TripCard(trip: trip, isRecording: isRecording(trip))
                         }
                         .buttonStyle(.plain)
                     }
@@ -186,13 +193,20 @@ struct ContentView: View {
                 locationError: recorder.lastError,
                 isLocationDenied: recorder.authorizationStatus == .denied
                     || recorder.authorizationStatus == .restricted,
-                isImporting: importer.isImporting
+                isImporting: importer.isImporting,
+                isStalled: recorder.isStalled
             )
         )
     }
 
     private var barInset: CGFloat {
         barContent == nil ? 0 : RecordingBar.inset
+    }
+
+    /// この旅行を「今まさに」記録しているか。記録の意思(isRecordingActive)だけでは
+    /// 実際に位置情報が動いているとは限らないため、表示には実動の方を使う
+    private func isRecording(_ trip: TripEntity) -> Bool {
+        recorder.isRecording && recorder.activeTrip?.id == trip.id
     }
 
     /// バーのタップ。対象の旅行の画面へ移動する(日詳細に居たら旅行画面まで戻る)
@@ -302,6 +316,8 @@ struct ContentView: View {
 /// 一覧の 1 行。左にルートのサムネイル、右にタイトルと状態・実績の数値
 private struct TripCard: View {
     let trip: TripEntity
+    /// 記録の意思ではなく実際に記録が動いているか(ContentView が判定して渡す)
+    let isRecording: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -334,7 +350,7 @@ private struct TripCard: View {
 
     @ViewBuilder
     private var statusTag: some View {
-        if trip.isRecordingActive {
+        if isRecording {
             StatusTag(label: "記録中", color: Theme.done)
         } else if trip.status == .inProgress {
             StatusTag(label: "進行中", color: Theme.done)
