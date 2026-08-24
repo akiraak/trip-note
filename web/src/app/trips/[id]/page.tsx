@@ -37,7 +37,8 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
     )
     .all(id) as LocationPoint[];
   const distance = totalDistance(points);
-  // 地図マーカー用の座標。メディア自身の撮影位置(EXIF GPS)を優先し、
+  // 一覧は撮影・追加時刻の新しい順(iOS の TripEntity.sortedMedia と揃える)。
+  // 地図マーカー用の座標は、メディア自身の撮影位置(EXIF GPS)を優先し、
   // 無ければ紐付いた記録点を使う(どちらも無いメディアはグリッドのみ)
   const media = db
     .prepare(
@@ -46,7 +47,8 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
               coalesce(m.longitude, p.longitude) as marker_longitude
        from media m
        left join location_points p on p.id = m.location_point_id
-       where m.trip_id = ? and m.deleted_at is null order by m.taken_at`,
+       where m.trip_id = ? and m.deleted_at is null
+       order by m.taken_at desc, m.id desc`,
     )
     .all(id) as (Media & {
     marker_latitude: number | null;

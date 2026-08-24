@@ -61,9 +61,14 @@ final class TripEntity {
         points.sorted { $0.recordedAt < $1.recordedAt }
     }
 
-    /// 削除済み(tombstone)を除いた撮影時刻順のメディア
+    /// 削除済み(tombstone)を除いた、撮影・追加時刻の新しい順のメディア
+    /// (同時刻は id で決めて並びが実行ごとに揺れないようにする)
     var sortedMedia: [MediaEntity] {
-        media.filter { $0.deletedAt == nil }.sorted { $0.takenAt < $1.takenAt }
+        media.filter { $0.deletedAt == nil }.sorted {
+            $0.takenAt == $1.takenAt
+                ? $0.id.uuidString > $1.id.uuidString
+                : $0.takenAt > $1.takenAt
+        }
     }
 
     /// 削除済み(tombstone)を除いた日付順のプラン日

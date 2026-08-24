@@ -2,6 +2,18 @@
 
 ## 2026-08-24
 
+- 写真・動画の一覧を新しい順にする(iOS / Web) [plan](docs/plans/archive/media-newest-first.md)
+  - 撮影・追加日時(`taken_at` / `takenAt`。EXIF・動画メタデータが無ければ取り込み時刻)の降順にして、
+    撮ったばかりのものが先頭に来るようにした
+  - iOS は `TripEntity.sortedMedia` を降順に（旅行画面のグリッドと地図ピンが同じ並びになる）、
+    Web は旅行詳細のメディア取得 SQL を `order by m.taken_at desc, m.id desc` に変更
+  - 同時刻(バースト撮影など)で並びが揺れないよう、両方とも `id` を第 2 キーにした
+    （Swift の `sorted` は安定ソートではなく、SQL も同値時の順序は未定義）
+  - 同期・紐付け側（`SyncEngine` の `SortDescriptor(\.takenAt)` / `lib/media-link.ts`）は
+    近傍探索で昇順が前提なので触っていない
+  - iOS 195 テスト緑 / Web 213 テスト緑 + lint・build 通過。Web の一覧 SQL は page.tsx から
+    抜き出して一時 DB で並び（新しい順・同時刻は id 降順）を確認した
+
 - Web のチェックポイントに到着予想時刻を出す [plan](docs/plans/archive/web-arrival-estimates.md)
   - iOS の日詳細には「HH:MM 頃」が出るのに Web は予定時刻(`planned_time`)しか出しておらず、
     同じデータを見ているのに Web からは到着予想が見えなかった（parity メモでレグ解決待ちにしていた項目）

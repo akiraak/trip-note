@@ -36,12 +36,22 @@ struct MediaDeletionTests {
         #expect(trip.sortedMedia.map(\.id) == [kept.id])
     }
 
-    @Test func 一覧は撮影時刻順のまま() {
+    @Test func 一覧は新しい順() {
         let trip = TripEntity(title: "t")
         let later = makeMedia(fileName: "b.jpg", takenAt: Date(timeIntervalSince1970: 20))
         let earlier = makeMedia(fileName: "a.jpg", takenAt: Date(timeIntervalSince1970: 10))
-        trip.media = [later, earlier]
-        #expect(trip.sortedMedia.map(\.id) == [earlier.id, later.id])
+        trip.media = [earlier, later]
+        #expect(trip.sortedMedia.map(\.id) == [later.id, earlier.id])
+    }
+
+    @Test func 同時刻の並びはidで決まる() {
+        let trip = TripEntity(title: "t")
+        let sameTime = Date(timeIntervalSince1970: 10)
+        let one = makeMedia(fileName: "a.jpg", takenAt: sameTime)
+        let other = makeMedia(fileName: "b.jpg", takenAt: sameTime)
+        trip.media = [one, other]
+        let ids = trip.sortedMedia.map(\.id.uuidString)
+        #expect(ids == ids.sorted(by: >))
     }
 
     @Test func ストアの削除は本体とサムネイルを消す() throws {
