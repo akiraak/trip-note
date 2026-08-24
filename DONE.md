@@ -2,6 +2,18 @@
 
 ## 2026-08-24
 
+- Web のプラン日付テストを新仕様に追従させる [plan](docs/plans/archive/web-plan-date-shift-tests.md)
+  - 「プランの日付は動かさない(1 日目の日付は作成時に決まる)」が赤いまま残っていた。80f6032 が
+    `lib/plan.ts` を変えたときに Web のテストだけ更新されず（iOS は同コミットで更新済み）、
+    さらに 19a6134 で規則が「1 日目を出発日にそろえる」に変わったのにも追従していなかった
+  - `updateTrip` のテストを新仕様に差し替え（各日と `planned_time` が同じ日数動く / tombstone の日と
+    `planned_time` の無いチェックポイントは触らない / 1 日目がずれていてもそろえる /
+    時刻だけの変更・出発日の削除では動かさない）
+  - `web/test/plan-dates.test.ts` を新設し、`dayDifference` / `departureShiftDays` /
+    `planShiftNotice` を iOS の `PlanEditorTests` とケース対応させた（Web 側は 0 件だった）
+  - 実装は変更なし（テストのみ）。Web 204 テスト緑 + lint 通過。19a6134 前の規則に戻すと
+    新テスト 2 件が落ちることも確認した
+
 - 記録バー（画面下の常駐バー）の実機確認（実装は 2026-08-23 の [recording-status-bar.md](docs/plans/archive/recording-status-bar.md)）
   - シミュレータでは確認できなかった 3 点を実機で確認し、いずれも想定どおりだった
     - 記録開始 → 別画面でバーの📷から撮影 → 撮ったメディアが対象の旅行に入る（シミュレータにカメラが無く、`PhotosPicker` に差し替わるため未確認だった）

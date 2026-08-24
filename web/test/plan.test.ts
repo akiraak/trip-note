@@ -298,11 +298,62 @@ describe("updateTrip", () => {
     );
   });
 
-  it("プランの日付は動かさない(1 日目の日付は作成時に決まる)", () => {
-    seedTrip();
-    seedDay({ date: "2026-09-01" });
+  it("出発日を変えたらプランの各日と planned_time も動く", () => {
+    seedTrip({ departure_at: "2026-09-01T16:00:00.000Z" });
+    seedDay({ id: "day-1", date: "2026-09-01" });
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    seedDay({ id: "day-3", date: "2026-09-05", deleted_at: OLD });
+    // 2026-09-01T17:00Z は表示 TZ (America/Los_Angeles) では 09-01 10:00
+    seedCheckpoint({ id: "cp-1", planned_time: "2026-09-01T17:00:00.000Z" });
+    seedCheckpoint({ id: "cp-2", trip_day_id: "day-2", planned_time: null });
+
     updateTrip("trip-1", editInput({ departure_date: "2026-10-05" }));
+
+    // 1 日目が出発日にそろい、2 日目以降も同じ日数動く(日どうしの間隔は保つ)
+    expect(getDayRow("day-1").date).toBe("2026-10-05");
+    expect(getDayRow("day-2").date).toBe("2026-10-06");
+    expect(getDayRow("day-1").updated_at > OLD).toBe(true);
+    // tombstone の日は動かさない
+    expect(getDayRow("day-3").date).toBe("2026-09-05");
+    expect(getDayRow("day-3").updated_at).toBe(OLD);
+    // planned_time は壁時計の時刻(10:00)を保ったまま同じ日数動く
+    expect(getCheckpointRow("cp-1").planned_time).toBe("2026-10-05T17:00:00.000Z");
+    expect(getCheckpointRow("cp-1").updated_at > OLD).toBe(true);
+    // planned_time を持たないチェックポイントは触らない
+    expect(getCheckpointRow("cp-2").updated_at).toBe(OLD);
+  });
+
+  it("1 日目が出発日とずれていても、出発日を変えたらその日にそろえる", () => {
+    // 出発 9/1 なのに 1 日目が 8/31 という旅行(本番の実データにあった形)
+    seedTrip({ departure_at: "2026-09-01T16:00:00.000Z" });
+    seedDay({ id: "day-1", date: "2026-08-31" });
+    seedDay({ id: "day-2", date: "2026-09-01" });
+
+    updateTrip("trip-1", editInput({ departure_date: "2026-09-04" }));
+
+    expect(getDayRow("day-1").date).toBe("2026-09-04");
+    expect(getDayRow("day-2").date).toBe("2026-09-05");
+  });
+
+  it("出発日が無かった旅行に出発日を入れたら 1 日目をそろえる", () => {
+    seedTrip();
+    seedDay({ date: "2026-09-05" });
+    updateTrip("trip-1", editInput({ departure_date: "2026-09-01" }));
     expect(getDayRow("day-1").date).toBe("2026-09-01");
+  });
+
+  it("時刻だけの変更・出発日の削除ではプランを動かさない", () => {
+    seedTrip({ departure_at: "2026-09-01T16:00:00.000Z" });
+    seedDay({ date: "2026-08-31" });
+
+    // 出発日が変わっていなければ(1 日目がずれていても)動かさない
+    updateTrip("trip-1", editInput({ departure_time: "21:30" }));
+    expect(getDayRow("day-1").date).toBe("2026-08-31");
+    expect(getDayRow("day-1").updated_at).toBe(OLD);
+
+    // 出発日を消したときも動かさない
+    updateTrip("trip-1", editInput({ departure_date: null, departure_time: null }));
+    expect(getDayRow("day-1").date).toBe("2026-08-31");
     expect(getDayRow("day-1").updated_at).toBe(OLD);
   });
 
