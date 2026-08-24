@@ -155,6 +155,8 @@ struct TripDetailView: View {
                 checkpointAnnotations: checkpointPins,
                 compactCheckpoints: true,
                 planRoute: checkpointPins.map(\.coordinate),
+                // シートで隠れる下側を避けて、ルート全体が見えるようにする
+                bottomCoverRatio: detent.coverRatio,
                 onSelectMedia: { selectedMedia = $0 }
             )
             .ignoresSafeArea()

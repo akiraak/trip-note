@@ -9,12 +9,19 @@ enum SheetDetent: CaseIterable {
     /// 行程を読む
     case expanded
 
-    func height(in total: CGFloat) -> CGFloat {
+    /// 画面の下からどれだけを覆うか。地図の初期表示をこのぶん上へ寄せるのに使う
+    var coverRatio: Double {
         switch self {
-        case .collapsed: min(196, total * 0.34)
-        case .medium: total * 0.55
-        case .expanded: total * 0.92
+        case .collapsed: 0.34
+        case .medium: 0.55
+        case .expanded: 0.92
         }
+    }
+
+    func height(in total: CGFloat) -> CGFloat {
+        let height = total * coverRatio
+        // 一番低い段は、小さい端末でも見出しと統計が読める高さで頭打ちにする
+        return self == .collapsed ? min(196, height) : height
     }
 }
 

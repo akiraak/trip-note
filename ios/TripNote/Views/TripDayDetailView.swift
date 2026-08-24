@@ -103,7 +103,9 @@ struct TripDayDetailView: View {
                 segments: [],
                 isActive: false,
                 checkpointAnnotations: pins,
-                planRoute: dayRoute
+                planRoute: dayRoute,
+                // シートで隠れる下側を避けて、その日のルート全体が見えるようにする
+                bottomCoverRatio: detent.coverRatio
             )
             .ignoresSafeArea()
         }

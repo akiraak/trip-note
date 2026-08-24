@@ -60,6 +60,8 @@ struct TripMapView: View {
     /// 記録済みの軌跡(実線)と区別するため破線で描く。レグ(隣接点間)ごとに
     /// 道路形状を非同期で解決し、未取得・失敗レグは従来どおりの直線で描く
     var planRoute: [CLLocationCoordinate2D] = []
+    /// 画面の下側がシートで隠れる割合(0...1)。表示物がその上に収まるよう初期位置をずらす
+    var bottomCoverRatio: Double = 0
     var onSelectMedia: ((MediaEntity) -> Void)?
 
     private let store = MediaStore.makeDefault()
@@ -74,8 +76,50 @@ struct TripMapView: View {
         segments.reduce(0) { $0 + $1.count }
     }
 
+    /// 地図に載せるものすべての座標(軌跡・チェックポイント・メディア・プランのルート)
+    private var displayedCoordinates: [CLLocationCoordinate2D] {
+        segments.flatMap { $0 }
+            + checkpointAnnotations.map(\.coordinate)
+            + mediaAnnotations.map(\.coordinate)
+            + planRoute
+    }
+
+    /// 初期表示範囲。`.automatic` は画面全体に合わせて寄せるので、下half をシートが
+    /// 覆っているとピンがシートの裏に隠れる。隠れるぶんだけ範囲を下へ広げて、
+    /// 表示物が見えている上側に収まるようにする
+    private var initialPosition: MapCameraPosition {
+        let coordinates = displayedCoordinates
+        guard
+            bottomCoverRatio > 0, bottomCoverRatio < 1,
+            let minLatitude = coordinates.map(\.latitude).min(),
+            let maxLatitude = coordinates.map(\.latitude).max(),
+            let minLongitude = coordinates.map(\.longitude).min(),
+            let maxLongitude = coordinates.map(\.longitude).max()
+        else { return .automatic }
+
+        // 見えている高さ(1 - 覆われる割合)に収まるよう緯度方向を広げる。
+        // 経度は MapKit が画面の縦横比に合わせて広げるので、余白ぶんだけ足しておく
+        let visible = 1 - bottomCoverRatio
+        let latitudeSpan = max((maxLatitude - minLatitude) * 1.25, 0.01) / visible
+        // 端のピンとその名前が切れないよう、東西は少し広めに取る
+        let longitudeSpan = max((maxLongitude - minLongitude) * 1.45, 0.01)
+        let center = CLLocationCoordinate2D(
+            // 中心を南へずらすと表示物は北(画面の上)へ寄る
+            latitude: (minLatitude + maxLatitude) / 2 - latitudeSpan * bottomCoverRatio / 2,
+            longitude: (minLongitude + maxLongitude) / 2
+        )
+        return .region(
+            MKCoordinateRegion(
+                center: center,
+                span: MKCoordinateSpan(
+                    latitudeDelta: latitudeSpan, longitudeDelta: longitudeSpan
+                )
+            )
+        )
+    }
+
     var body: some View {
-        Map(initialPosition: .automatic) {
+        Map(initialPosition: initialPosition) {
             // これからのプランは Theme.accent(青)の破線、記録済みは Theme.done(緑)の実線。
             // 暗い地図の上でどちらがどちらか色で分かるようにしている
             ForEach(Array(planLegs.enumerated()), id: \.offset) { _, leg in
