@@ -48,17 +48,25 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
 
 ### 削除
 
-- 削除は **iOS だけの操作**(Web は閲覧のみ)。旅行詳細のメディアグリッドの長押し、
-  またはフルスクリーンビューアのゴミ箱から。どちらも確認ダイアログを挟む
-- `MediaImporter.delete` が**ローカルのファイル(本体・サムネイル)をすぐ消し**、
-  行は `MediaEntity.deletedAt`(tombstone)にする。表示(`TripEntity.sortedMedia`・
-  地図マーカー)は tombstone を除外する
-- 同期(`SyncEngine.pushMedia`)は `deletedAt != nil` のメディアをアップロードの代わりに
-  `DELETE /api/media?id=` で送り、成功したら**ローカル行も物理削除**する
-  (media は pull しないので tombstone を残す必要がない)。オフライン中の削除は
-  tombstone のまま残り次回同期で再送される
-- サーバに行が無い(アップロード前に消した)場合の 404 はクライアント側で成功扱い =
-  削除は冪等
+**iOS / Web のどちらからでも削除でき、もう片方にも伝わる**(メディア本体は従来どおり
+iOS → サーバの一方向アップロードのまま、削除だけ双方向)。
+
+- **サーバ**: 削除は `web/src/lib/media.ts` の `deleteMedia` に集約(Web の Server Action と
+  `DELETE /api/media` が同じ処理を呼ぶ)。**ファイルは物理削除**し、**行は
+  `media.deleted_at` の tombstone として残す**(iOS に「消えた」と伝えるため)。
+  表示・配信(旅行詳細のグリッド、地図マーカー、`GET /media/[id]`)は tombstone を除外する
+- **iOS で削除**: 旅行詳細のメディアグリッドの長押し、またはフルスクリーンビューアの
+  ゴミ箱から(どちらも確認ダイアログ)。`MediaImporter.delete` が**ローカルのファイル
+  (本体・サムネイル)をすぐ消し**、行は `MediaEntity.deletedAt`(tombstone)にする。
+  同期(`SyncEngine.pushMedia`)が `DELETE /api/media?id=` を送り、成功したら
+  **ローカル行も物理削除**する。オフライン中の削除は次回同期で再送される。
+  サーバに行が無い場合の 404 はクライアント側で成功扱い = 削除は冪等
+- **Web で削除**: 旅行詳細のメディアに「削除」(二段階確認の Server Action)。
+  iOS へは `GET /api/sync/pull` の `media`(tombstone のみ)で伝わり、
+  受け取った iOS は**ローカルのファイルと行を消す**(pull で作り直せないので
+  ローカルに tombstone は残さない)
+- 削除済み id への再アップロード(`POST /api/media`)は**ファイルを書かずに 200** を返す。
+  Web で消した直後に iOS が再送してもファイルが復活せず、iOS は次の pull で行を消す
 
 ### 同期
 
@@ -72,9 +80,9 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
 
 ### DELETE /api/media(Bearer 必須)
 
-- クエリ: `id`(UUID)。ファイル(`storage_path`)を消してから行を削除する
+- クエリ: `id`(UUID)。ファイル(`storage_path`)を消し、行は `deleted_at` の tombstone にする
 - レスポンス: `200 {"ok":true}` / `400 invalid query` / `401` / `404 not found`
-  (クライアントは 404 も成功扱い)
+  (行がそもそも無いときだけ 404。クライアントは 404 も成功扱い)
 
 ### POST /api/media(Bearer 必須)
 
@@ -115,7 +123,8 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
 ### Web
 
 - `trips/[id]`: メディアセクション(3 列グリッド)。写真は `/media/[id]` を新しいタブで開く、
-  動画は `<video controls preload="metadata">` でインライン再生
+  動画は `<video controls preload="metadata">` でインライン再生。
+  各メディアの下に撮影時刻と**「削除」**(二段階確認。`delete-media.tsx`)
 - 地図(`trip-map.tsx`): locationPoint を持つメディアをサムネイルマーカー(`<a>` + `<img>`)で
   表示。クリックで原本を開く。Web のサムネイルは原本を CSS 縮小(単一ユーザーで枚数も
   限られるため、サーバ側サムネイル生成は将来課題)
@@ -163,6 +172,22 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
   メディアディレクトリ空(dev サーバのログで POST 200 → DELETE 200 を確認)
   - UI テストは旅行詳細がボトムシートになったため、シートを一番高い段へ上げてから
     リスト内をドラッグして MEDIA セクションまでスクロールする(`scrollToVisible`)
+
+## 検証結果(2026-08-24 / Web からの削除)
+
+- Web `npm run lint` + `npm run build` / iOS 166 テスト成功
+- dev サーバに curl: DELETE 200 → 行が tombstone・ファイル 0 件 → `GET /media/[id]` 404 →
+  pull に media tombstone(`since` 指定で新旧の絞り込みも)→ 再 POST は
+  `{"ok":true,"deleted":true}` でファイルが復活しない → DELETE 再送 200(冪等)
+- Web の削除ボタン: ブラウザで旅行詳細 →「削除」→「本当に削除」で
+  MEDIA が「写真・動画がありません」になり、DB は tombstone・ファイルは削除済み
+- シミュレータ E2E(`MediaImportUITests`):
+  - `testImportPhotoThenSync`: 取り込み → 同期 → 長押し削除 → 同期(iOS 側の削除)
+  - `testServerDeletedMediaDisappearsAfterSync`: 取り込み → 同期 →
+    **サーバ側で削除(= Web の削除)** → 同期 → グリッドから消える(pull 適用)。
+    dev サーバの URL / API キーは **`TEST_RUNNER_` 付きの環境変数**で渡す
+    (`TEST_RUNNER_TRIPNOTE_TEST_SERVER_URL` / `TEST_RUNNER_TRIPNOTE_TEST_API_KEY`。
+    UI テストはシミュレータ内で動くので、付けないと届かず skip される)
 
 ## 将来課題(スコープ外)
 

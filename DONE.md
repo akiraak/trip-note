@@ -2,6 +2,15 @@
 
 ## 2026-08-24
 
+- Web からも写真・動画を削除できるようにする [plan](docs/plans/archive/web-media-delete.md)
+  - 同日の削除実装は iOS 限定だったため、Web の閲覧中に消したいものを見つけても消せなかった。**media の「削除だけ」を双方向**にした(ファイル本体は従来どおり iOS → サーバの一方向アップロードのまま)
+  - サーバは `media.deleted_at`(tombstone)を追加し、削除では**ファイルを物理削除・行は tombstone として残す**。削除の実処理は `web/src/lib/media.ts` に集約して、**Web の Server Action と `DELETE /api/media`(iOS)が同じ関数**を呼ぶ
+  - `GET /api/sync/pull` が media の tombstone(`id` / `trip_id` / `deleted_at`)も返すようにし、iOS は受け取ったらローカルのファイルと行を消す。**pull で作り直せないのでローカルには tombstone を残さない**。旧サーバ互換のため `media` キーが無い応答も受け付ける(`PullResponse.media` は省略可)
+  - 表示・配信は tombstone を除外(旅行詳細のグリッド・地図マーカー、`GET /media/[id]` は 404)。**削除済み id への再アップロードはファイルを書かずに 200** を返し、Web で消した直後に iOS が再送してもファイルが復活しない
+  - Web の UI は各メディアの下に「削除」(二段階確認。`delete-media.tsx`。DeleteTrip と同じ作法)
+  - 検証: Web lint + build / iOS 166 テスト / curl で DELETE → tombstone・ファイル 0 件・`GET /media/[id]` 404・pull の tombstone(since の絞り込み含む)・再 POST でファイルが復活しないこと / ブラウザで削除ボタンを実操作 / シミュレータ E2E に `testServerDeletedMediaDisappearsAfterSync`(サーバ側で削除 → 同期 → iOS から消える)を追加
+  - UI テストからサーバを叩く環境変数は **`TEST_RUNNER_` 付き**で渡す(テストはシミュレータ内で動くため、付けないと届かず skip される)
+
 - 写真・動画の削除と、カメラアプリで撮影したものの取り込み導線 [plan](docs/plans/archive/media-delete-and-import.md)
   - **削除**(これまで iOS / Web / サーバのどこにも無かった): 旅行詳細のメディアグリッドの**長押し**、またはフルスクリーンビューアの**ゴミ箱**から。どちらも確認ダイアログ付きで、文言は「端末とサーバの両方から削除され、Web からも見えなくなります。」
   - 同期モデルは media が不変・一方向アップロード(pull しない)なのに合わせて **push だけで表現**した。`MediaEntity.deletedAt`(tombstone)を追加し、`MediaImporter.delete` が**ローカルのファイル(本体・サムネイル)は即削除**して行だけ残す。`SyncEngine.pushMedia` は `deletedAt != nil` ならアップロードの代わりに `DELETE /api/media?id=` を送り、成功したら**ローカル行も物理削除**する(tombstone を残す先が無いため)。オフライン中の削除は次回同期で再送

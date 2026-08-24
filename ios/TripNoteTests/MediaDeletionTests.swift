@@ -60,6 +60,38 @@ struct MediaDeletionTests {
         #expect(!FileManager.default.fileExists(atPath: store.url(for: "a-thumb.jpg").path))
     }
 
+    // MARK: - pull(Web で削除されたメディア)
+
+    private func decodePull(_ json: String) throws -> PullResponse {
+        try SyncClient.decoder.decode(PullResponse.self, from: Data(json.utf8))
+    }
+
+    @Test func pullの削除メディアをデコードできる() throws {
+        let mediaId = UUID()
+        let tripId = UUID()
+        let response = try decodePull("""
+        {
+          "serverTime": "2026-08-24T10:00:00.000Z",
+          "trips": [], "days": [], "checkpoints": [],
+          "media": [
+            { "id": "\(mediaId.uuidString)", "trip_id": "\(tripId.uuidString)",
+              "deleted_at": "2026-08-24T09:59:00.000Z" }
+          ]
+        }
+        """)
+        #expect(response.deletedMedia.count == 1)
+        #expect(response.deletedMedia.first?.id == mediaId)
+        #expect(response.deletedMedia.first?.tripId == tripId)
+    }
+
+    @Test func mediaを返さない旧サーバの応答も受け付ける() throws {
+        let response = try decodePull("""
+        { "serverTime": "2026-08-24T10:00:00.000Z",
+          "trips": [], "days": [], "checkpoints": [] }
+        """)
+        #expect(response.deletedMedia.isEmpty)
+    }
+
     @Test func 無いファイルの削除は何も起こさない() {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "MediaStoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)

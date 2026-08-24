@@ -44,5 +44,14 @@ export async function GET(request: Request) {
     )
     .all(...params);
 
-  return NextResponse.json({ serverTime, trips, days, checkpoints });
+  // メディアは一方向アップロードなので pull で配るのは削除(tombstone)だけ。
+  // iOS はこれを見てローカルのファイルと行を消す
+  const media = db
+    .prepare(
+      `select id, trip_id, deleted_at from media
+       where deleted_at is not null ${since ? "and deleted_at > ?" : ""}`,
+    )
+    .all(...params);
+
+  return NextResponse.json({ serverTime, trips, days, checkpoints, media });
 }

@@ -145,6 +145,12 @@ const MIGRATIONS: string[] = [
   `
   alter table trip_days add column departure_time text;
   `,
+  // メディアの削除を iOS と Web の双方向にする。ファイルは物理削除するが、
+  // 行は tombstone として残して pull で iOS に「消えた」ことを伝える
+  // (media 自体は従来どおり不変・一方向アップロード)
+  `
+  alter table media add column deleted_at text;
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

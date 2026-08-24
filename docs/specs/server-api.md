@@ -86,10 +86,13 @@ iOS アプリからのアップロード(push)。upsert で冪等(id はクラ�
 ## GET /api/sync/pull
 
 iOS がプラン系(trips / trip_days / checkpoints)の変更を取り込む pull。
-location_points / media は対象外(一方向アップロードのみ)。
+location_points は対象外(一方向アップロードのみ)。media は**削除だけ**を配る
+(本体は一方向アップロードのままなので、返すのは tombstone の
+`id` / `trip_id` / `deleted_at`)。
 
 - クエリ: `since`(ISO8601、任意)。指定時は `updated_at > since` の行のみ、
-  省略時は全件。tombstone(`deleted_at` あり)も含めて返す
+  省略時は全件。tombstone(`deleted_at` あり)も含めて返す。
+  media は `deleted_at > since` で絞る(そもそも tombstone しか返さない)
 - レスポンスの `serverTime` はサーバの現在時刻。クライアントは適用完了後に保存し、
   次回の `since` に使う(行の読み出し前に確定させるため、読み出し中の更新は
   次回も返り得るが LWW なので重複適用は無害)
@@ -106,7 +109,8 @@ location_points / media は対象外(一方向アップロードのみ)。
     "note": null, "departure_time": null, "updated_at": "…", "deleted_at": null } ],
   "checkpoints": [ { "id": "…", "trip_id": "…", "trip_day_id": "…", "type": "…",
     "name": "…", "latitude": null, "longitude": null, "planned_time": null,
-    "note": null, "sort_order": 0, "updated_at": "…", "deleted_at": null } ]
+    "note": null, "sort_order": 0, "updated_at": "…", "deleted_at": null } ],
+  "media": [ { "id": "…", "trip_id": "…", "deleted_at": "…" } ]
 }
 ```
 
@@ -114,6 +118,9 @@ location_points / media は対象外(一方向アップロードのみ)。
 - iOS は起動時・フォアグラウンド復帰時・編集後の同期で pull → push の順に実行し、
   行単位の LWW(`updated_at` の新しい方が勝つ、同時刻はローカル保持)で反映する。
   ローカルに無い tombstone 行は取り込まない
+- `media` は削除の伝搬専用。iOS は受け取った id のローカルのファイル(本体・サムネイル)と
+  行を消す(pull で作り直せないため、ローカルには tombstone を残さない)。
+  旧サーバは `media` を返さないので、クライアントは**キーの無い応答も受け付ける**
 
 ## POST /api/ai/jobs
 
@@ -354,16 +361,18 @@ iOS アプリからのメディアアップロード(1 リクエスト 1 ファ�
 
 ## DELETE /api/media
 
-iOS でメディアを削除したときの伝搬(1 リクエスト 1 件)。media は pull しない
-(一方向アップロード)ため tombstone を持たず、**サーバ側は行とファイルを物理削除する**。
+メディアの削除(1 リクエスト 1 件)。iOS からの同期と Web の削除ボタン
+(Server Action)が同じ処理(`web/src/lib/media.ts` の `deleteMedia`)を使う。
+**ファイルは物理削除、行は `deleted_at` の tombstone として残す**
+(pull で iOS に削除を伝えるため)。
 
 - クエリ: `id`(UUID)
-- ファイル(`storage_path`)を消してから行を削除する。ファイル削除に失敗したら行は残し、
-  クライアントの再送に任せる
 - レスポンス: `200 {"ok":true}` / `400 {"error":"invalid query"}` / `401` /
-  `404 {"error":"not found"}`
-- **クライアントは 404 も成功扱いにする**(アップロード前に削除した場合・再送の場合)。
-  これで削除は冪等になる
+  `404 {"error":"not found"}`(行がそもそも無いときだけ)
+- **クライアントは 404 も成功扱いにする**(アップロード前に削除した場合)。
+  tombstone 済みの id への再送も 200 なので、削除は冪等
+- 削除済み id への `POST /api/media`(再アップロード)は**ファイルを書かずに
+  `200 {"ok":true,"deleted":true}`**。Web で消した直後の再送でファイルが復活しない
 
 ## GET /media/[id]
 

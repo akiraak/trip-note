@@ -108,6 +108,14 @@ final class SyncEngine {
                 modelContext.insert(PlanPull.makeCheckpoint(record, trip: trip, day: day))
             }
         }
+        // Web で削除されたメディアはローカルのファイルごと消す(行は残さない。
+        // メディアは pull で作り直せないので tombstone にする意味が無い)
+        for record in response.deletedMedia {
+            guard let media = fetchMedia(id: record.id) else { continue }
+            store.remove(fileName: media.fileName)
+            store.remove(fileName: media.thumbnailFileName)
+            modelContext.delete(media)
+        }
         try modelContext.save()
     }
 
@@ -125,6 +133,12 @@ final class SyncEngine {
 
     private func fetchCheckpoint(id: UUID) -> CheckpointEntity? {
         var descriptor = FetchDescriptor<CheckpointEntity>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    private func fetchMedia(id: UUID) -> MediaEntity? {
+        var descriptor = FetchDescriptor<MediaEntity>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return try? modelContext.fetch(descriptor).first
     }

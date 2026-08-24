@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 import { authorized } from "@/lib/auth";
 import { getDb, getMediaDir } from "@/lib/db";
+import { deleteMedia, isDeleted } from "@/lib/media";
 
 // iOS アプリからのメディアアップロード。メタデータはクエリ、ボディはファイルバイナリ。
 // 行は immutable なので insert or ignore、ファイルは上書きで再送は冪等
@@ -56,6 +57,11 @@ export async function POST(request: NextRequest) {
   if (!db.prepare("select 1 from trips where id = ?").get(tripId)) {
     return NextResponse.json({ error: "unknown trip" }, { status: 409 });
   }
+  // Web から削除済みのメディアはファイルを復活させない。クライアントには成功を返し、
+  // 次の pull で tombstone を受け取ってローカルからも消してもらう
+  if (isDeleted(id)) {
+    return NextResponse.json({ ok: true, deleted: true });
+  }
   // 点が未同期の場合は null で保存する(points の skip と同じ寛容方針)
   const pointId =
     locationPointId &&
@@ -87,8 +93,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// iOS でメディアを削除したときの伝搬。media は pull しない(一方向)ので、
-// 削除は tombstone を持たずサーバ側も行とファイルを物理削除する。
+// iOS でメディアを削除したときの伝搬。ファイルは物理削除、行は tombstone
+// (Web からの削除と同じ `lib/media.ts` の処理)。
 // クライアントは 404 も成功扱いにするため再送は冪等
 export async function DELETE(request: NextRequest) {
   if (!authorized(request.headers.get("authorization"))) {
@@ -99,21 +105,9 @@ export async function DELETE(request: NextRequest) {
   if (!UUID_RE.test(id)) {
     return NextResponse.json({ error: "invalid query" }, { status: 400 });
   }
-
-  const db = getDb();
-  const row = db.prepare("select storage_path from media where id = ?").get(id) as
-    | { storage_path: string }
-    | undefined;
-  if (!row) {
+  if (!deleteMedia(id)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-
-  // 配信元は実行時にしか決まらないため Turbopack のファイルトレースから除外する。
-  // ファイルを先に消す(失敗したら行を残してクライアントの再送に任せる)
-  fs.rmSync(path.join(/*turbopackIgnore: true*/ getMediaDir(), row.storage_path), {
-    force: true,
-  });
-  db.prepare("delete from media where id = ?").run(id);
 
   return NextResponse.json({ ok: true });
 }

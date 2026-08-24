@@ -7,6 +7,7 @@ import {
   resolveGoogleMapsLink,
   type ResolvedGoogleMapsPlace,
 } from "@/lib/google-maps-share";
+import { deleteMedia } from "@/lib/media";
 import * as plan from "@/lib/plan";
 import type { AdoptDay, CheckpointInput } from "@/lib/plan";
 
@@ -110,6 +111,23 @@ export async function deleteDayAction(dayId: string): Promise<ActionResult> {
   try {
     const day = plan.deleteTripDay(dayId);
     revalidateTrip(day.trip_id);
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/// 写真・動画の削除。ファイルは消え、行は tombstone として残って
+/// 次の pull で iOS のローカルからも消える(docs/specs/phase4-media.md)
+export async function deleteMediaAction(
+  tripId: string,
+  mediaId: string,
+): Promise<ActionResult> {
+  try {
+    if (!deleteMedia(mediaId)) {
+      return { ok: false, error: "このメディアは見つかりませんでした" };
+    }
+    revalidateTrip(tripId);
     return { ok: true };
   } catch (error) {
     return failure(error);

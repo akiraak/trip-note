@@ -20,7 +20,8 @@ export async function GET(request: Request, ctx: RouteContext<"/media/[id]">) {
   const row = db.prepare("select * from media where id = ?").get(id) as
     | Media
     | undefined;
-  if (!row) {
+  // 削除済み(tombstone)は行だけ残っていてファイルは無い
+  if (!row || row.deleted_at) {
     return new Response("not found", { status: 404 });
   }
   // 配信元は実行時にしか決まらないため Turbopack のファイルトレースから除外する

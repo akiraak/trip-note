@@ -8,6 +8,25 @@ struct PullResponse: Decodable, Sendable {
     let trips: [TripPullRecord]
     let days: [TripDayPullRecord]
     let checkpoints: [CheckpointPullRecord]
+    /// 削除されたメディア(tombstone のみ)。メディア本体は一方向アップロードなので
+    /// pull で配るのは削除だけ。旧サーバは返さないため省略可
+    let media: [MediaPullRecord]?
+
+    /// 削除されたメディア(旧サーバの応答でも空配列として扱えるようにする)
+    var deletedMedia: [MediaPullRecord] { media ?? [] }
+}
+
+/// 削除されたメディア。Web で消したものを iOS のローカルからも消すために使う
+struct MediaPullRecord: Decodable, Sendable {
+    let id: UUID
+    let tripId: UUID
+    let deletedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case tripId = "trip_id"
+        case deletedAt = "deleted_at"
+    }
 }
 
 struct TripPullRecord: Decodable, Sendable {

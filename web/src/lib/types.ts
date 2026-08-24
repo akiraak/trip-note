@@ -79,6 +79,9 @@ export type Media = {
   type: "photo" | "video";
   storage_path: string;
   taken_at: string;
+  /// 削除済み(tombstone)。ファイルは物理削除済みで、行は iOS の pull に
+  /// 削除を伝えるためだけに残っている
+  deleted_at: string | null;
   created_at: string;
 };
 

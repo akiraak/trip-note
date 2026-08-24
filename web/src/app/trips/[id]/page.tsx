@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DeleteMedia } from "./delete-media";
 import { DeleteTrip } from "./delete-trip";
 import { EditTrip } from "./edit-trip";
 import { EndTrip } from "./end-trip";
@@ -42,7 +43,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       `select m.*, p.latitude, p.longitude
        from media m
        left join location_points p on p.id = m.location_point_id
-       where m.trip_id = ? order by m.taken_at`,
+       where m.trip_id = ? and m.deleted_at is null order by m.taken_at`,
     )
     .all(id) as (Media & { latitude: number | null; longitude: number | null })[];
   const mediaMarkers = media
@@ -210,9 +211,12 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
                     className="aspect-square w-full rounded-md bg-black object-cover"
                   />
                 )}
-                <p className="tabular mt-0.5 text-[11px] text-muted">
-                  {formatPointTime(m.taken_at)}
-                </p>
+                <div className="mt-0.5 flex items-start justify-between gap-2">
+                  <p className="tabular text-[11px] text-muted">
+                    {formatPointTime(m.taken_at)}
+                  </p>
+                  <DeleteMedia tripId={trip.id} mediaId={m.id} />
+                </div>
               </li>
             ))}
           </ul>
