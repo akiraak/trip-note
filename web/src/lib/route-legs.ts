@@ -32,7 +32,7 @@ export function legKey(from: RoutePoint, to: RoutePoint): string {
 }
 
 /** 丸め粒度で同一地点になるレグ(距離ほぼ 0)。解決を頼む意味が無い */
-function isDegenerate({ from, to }: Leg): boolean {
+export function isDegenerate({ from, to }: Leg): boolean {
   return (
     rounded(from.latitude) === rounded(to.latitude) &&
     rounded(from.longitude) === rounded(to.longitude)

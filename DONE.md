@@ -2,6 +2,19 @@
 
 ## 2026-08-24
 
+- Web のチェックポイントに到着予想時刻を出す [plan](docs/plans/archive/web-arrival-estimates.md)
+  - iOS の日詳細には「HH:MM 頃」が出るのに Web は予定時刻(`planned_time`)しか出しておらず、
+    同じデータを見ているのに Web からは到着予想が見えなかった（parity メモでレグ解決待ちにしていた項目）
+  - iOS の `Domain/ArrivalEstimator.swift` を `web/src/lib/arrival.ts` に移植（出発時刻を anchor に
+    解決済みレグの `durationS` を累積 / `planned_time` のある CP で再アンカーしその CP は予想なし /
+    未解決レグ以降は打ち切り / 座標なし CP は飛ばして連鎖）。レグキーの丸め規約は
+    `lib/route-legs.ts` を共有（`isDegenerate` を export）
+  - 日カード（`plan-section.tsx`）で `useRouteLegs` の解決済みレグから予想を出し、
+    チェックポイント行に「HH:MM 頃」を表示。予定時刻がある CP はこれまでどおり予定時刻を出す
+  - `test/arrival.test.ts` を新設し iOS の `ArrivalEstimatorTests` とケース対応させた
+    （Web 213 テスト緑 + lint / build 通過）。ブラウザでも 2 日目（出発 08:30）に
+    09:10 頃 / 09:25 頃 / 10:15 頃 が出ることを確認（hydration 警告なし）
+
 - Web のプラン日付テストを新仕様に追従させる [plan](docs/plans/archive/web-plan-date-shift-tests.md)
   - 「プランの日付は動かさない(1 日目の日付は作成時に決まる)」が赤いまま残っていた。80f6032 が
     `lib/plan.ts` を変えたときに Web のテストだけ更新されず（iOS は同コミットで更新済み）、

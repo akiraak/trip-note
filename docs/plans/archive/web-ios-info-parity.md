@@ -80,6 +80,9 @@ Web に日詳細が無いぶんの写像(iOS の日詳細 → Web の日カー�
 - **走行距離「約 N km」**(日行)と**到着予想「到着 HH:MM 頃」**(チェックポイント行)、
   **トップ地図の破線プランルート** → いずれもレグ解決が要るので
   `docs/plans/web-plan-route.md`(Step 4)で入れる
+  > 追記(2026-08-24): **到着予想も対応済み**。iOS の `ArrivalEstimator` を
+  > `web/src/lib/arrival.ts` に移し、日カードのチェックポイント行に「HH:MM 頃」を出した
+  > (`docs/plans/archive/web-arrival-estimates.md`)
 - **操作の差**(表示情報ではないもの): 旅行の編集(タイトル・出発予定・目的地)、旅行を終了、
   日の出発時刻の編集、GPS 記録・撮影(iOS 固有)。TODO に別項目として残す
 - 旅行一覧(`/`)と iOS の `ContentView` の突き合わせ

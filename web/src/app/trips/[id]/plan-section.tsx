@@ -16,6 +16,7 @@ import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
 import { PlaceLink } from "./place-link";
 import { useRouteLegs } from "./use-route-legs";
+import { arrivalEstimates } from "@/lib/arrival";
 import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
 import { formatDayWithWeekday } from "@/lib/format";
 import { formatDistance } from "@/lib/geo";
@@ -193,6 +194,19 @@ function DayCard({
   // 走行距離は解決済みレグが道路距離・未解決レグが直線距離の概算なので常に「約」
   // (iOS の TripDayRow と同じ)
   const distanceMeters = totalLegMeters(legs, resolved);
+  // 到着予想(出発時刻 + 解決済みレグの所要時間。iOS の日詳細と同じ規則)。
+  // 予定時刻が手入力されている CP には出ない
+  const estimates = useMemo(
+    () =>
+      arrivalEstimates({
+        dayDate: day.date,
+        departureTime: day.departure_time,
+        routeStart: map.anchor,
+        checkpoints: day.checkpoints,
+        resolved,
+      }),
+    [day.date, day.departure_time, day.checkpoints, map.anchor, resolved],
+  );
   // 経由地は座標の有無に関わらず訪問順に全部並べる(iOS の TripDayRow と同じ)
   const waypoints = day.checkpoints.map((c) => c.name).join(" → ");
 
@@ -320,6 +334,7 @@ function DayCard({
                 <CheckpointRow
                   key={checkpoint.id}
                   checkpoint={checkpoint}
+                  estimatedArrival={estimates[checkpoint.id]}
                   isFirst={index === 0}
                   isLast={index === day.checkpoints.length - 1}
                   pending={pending}
@@ -476,8 +491,17 @@ function DayForm({
   );
 }
 
+/** 時刻はブラウザのローカル TZ で出す(iOS の端末基準と同じ。SSR とはずれ得る) */
+function formatLocalTime(date: Date): string {
+  return date.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function CheckpointRow({
   checkpoint,
+  estimatedArrival,
   isFirst,
   isLast,
   pending,
@@ -485,6 +509,8 @@ function CheckpointRow({
   onEdit,
 }: {
   checkpoint: PlanCheckpoint;
+  /** 到着予想時刻(手入力の予定時刻がある CP は予想を出さず予定時刻を表示する) */
+  estimatedArrival?: Date;
   isFirst: boolean;
   isLast: boolean;
   pending: boolean;
@@ -505,14 +531,19 @@ function CheckpointRow({
         <span className="block truncate">{checkpoint.name}</span>
         <span className="tabular flex flex-wrap items-baseline gap-2 text-xs text-muted">
           <span>{CHECKPOINT_LABELS[checkpoint.type]}</span>
-          {checkpoint.planned_time && (
-            // 予定時刻はブラウザのローカル TZ で表示する(SSR とはずれ得るので警告を抑止)
+          {/* 予定時刻はブラウザのローカル TZ で表示する(SSR とはずれ得るので警告を抑止) */}
+          {checkpoint.planned_time ? (
             <span suppressHydrationWarning>
-              {new Date(checkpoint.planned_time).toLocaleTimeString("ja-JP", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {formatLocalTime(new Date(checkpoint.planned_time))}
             </span>
+          ) : (
+            estimatedArrival && (
+              // OSRM の自由流走行時間ベースで渋滞・休憩を含まない概算なので常に「頃」
+              // (iOS の CheckpointRow と同じ文言)
+              <span suppressHydrationWarning>
+                {formatLocalTime(estimatedArrival)} 頃
+              </span>
+            )
           )}
           {checkpoint.latitude === null && <span>座標未設定</span>}
         </span>
