@@ -2,6 +2,26 @@
 
 ## 2026-08-24
 
+- クライアント側で GPS の on/off を保存し、on なのに動いていなければ自動で再開する(iOS)
+  [plan](docs/plans/archive/gps-recording-auto-resume.md)
+  - 記録 ON の意思(`TripEntity.isRecordingActive`)の保存と起動時の再開は既にあったが、
+    「ON なのに実際は止まっている」を検知する仕組みが無く、表示も意思だけを見て「記録中」と
+    出していたため、止まったことに気づけなかった
+  - `Domain/RecordingWatchdog.swift`(新規)に判定を純関数で置いた。意思・実動・権限・
+    位置情報の最終受信時刻から `none / requestAuthorization / resume / restart / denied` を決める。
+    点の増減では判定しない（`distanceFilter` + `LocationPointFilter` で静止中は正常でも
+    点が増えないため、生死の目印は `didUpdateLocations` の受信時刻にした）
+  - `LocationRecorder.resumeIfNeeded()` を `ensureRecording()` に置き換え、起動時・権限変化に加えて
+    フォアグラウンド復帰・初回表示・フォアグラウンド中 60 秒周期の定期チェックからも呼ぶようにした
+  - 更新が 10 分途切れたら位置情報の購読を入れ直す（記録データにも意思にも触らない）
+  - 権限を取り消されたときに意思まで消えて再開できなくなっていた(`stopRecording` を呼んでいた)のを、
+    意思を残す `suspendRecording` に分けた。許可し直せば自動で再開する
+  - 表示を実動基準に変更（「記録中」タグ・地図の `isActive`）。20 分戻らないときは記録バーに
+    「記録中(位置情報を再取得中)」、意思 ON で未復帰なら旅行画面に再開待ちの案内を出す
+  - iOS 209 テスト緑（`RecordingWatchdogTests` 新規 11 件 + 記録バーの stalled 分岐 3 件を含む）。
+    実機で「強制終了からの再開 / 背面で移動して復帰 / 位置情報を拒否→許可で自動再開」を確認済み
+  - Web は変更なし（`isRecordingActive` はローカル専用で同期せず、Web に記録状態の表示も無い）
+
 - 写真・動画の一覧を新しい順にする(iOS / Web) [plan](docs/plans/archive/media-newest-first.md)
   - 撮影・追加日時(`taken_at` / `takenAt`。EXIF・動画メタデータが無ければ取り込み時刻)の降順にして、
     撮ったばかりのものが先頭に来るようにした
