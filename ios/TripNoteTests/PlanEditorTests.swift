@@ -548,127 +548,6 @@ struct PlanEditorTests {
         #expect(PlanEditor.nextSortOrder(in: day) == 4)
     }
 
-    // MARK: - AI 提案の採用
-
-    private func suggestion(_ days: [AISuggestedDay]) -> AIPlanSuggestion {
-        AIPlanSuggestion(days: days)
-    }
-
-    @Test func adoptは日とチェックポイントを座標未定で作る() {
-        let now = date("2026-08-21T10:00:00+09:00")
-        let trip = TripEntity(title: "t")
-        let made = PlanEditor.adopt(
-            suggestion([
-                AISuggestedDay(
-                    date: "2026-09-01",
-                    title: "松本周辺を観光して泊",
-                    area: "松本市",
-                    checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "departure", name: "東京駅", note: nil, latitude: nil, longitude: nil),
-                        AISuggestedCheckpoint(typeRawValue: "sightseeing", name: "松本城", note: "国宝", latitude: nil, longitude: nil),
-                    ]
-                ),
-                AISuggestedDay(
-                    date: "2026-09-02",
-                    title: "帰路",
-                    area: "松本市",
-                    checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "destination", name: "自宅", note: nil, latitude: nil, longitude: nil)
-                    ]
-                ),
-            ]),
-            into: trip,
-            now: now
-        )
-        #expect(made.days.map(\.date) == ["2026-09-01", "2026-09-02"])
-        #expect(made.days.map(\.title) == ["松本周辺を観光して泊", "帰路"])
-        #expect(made.days.allSatisfy { $0.updatedAt == now && $0.needsSync })
-        #expect(made.checkpoints.map(\.name) == ["東京駅", "松本城", "自宅"])
-        #expect(made.checkpoints.map(\.sortOrder) == [0, 1, 0])
-        #expect(made.checkpoints.allSatisfy { $0.latitude == nil && $0.longitude == nil })
-        #expect(made.checkpoints.allSatisfy { $0.updatedAt == now && $0.needsSync })
-        #expect(made.checkpoints[1].note == "国宝")
-        #expect(made.checkpoints.first?.tripDay === made.days.first)
-    }
-
-    @Test func adoptは同じ日付の既存日へ末尾追記しtitleを保つ() {
-        let old = date("2026-08-20T00:00:00+09:00")
-        let now = date("2026-08-21T10:00:00+09:00")
-        let trip = TripEntity(title: "t")
-        let existing = TripDayEntity(date: "2026-09-01", title: "既存タイトル", updatedAt: old)
-        existing.checkpoints = [CheckpointEntity(type: .sightseeing, name: "既存", sortOrder: 0)]
-        trip.days = [existing]
-
-        let made = PlanEditor.adopt(
-            suggestion([
-                AISuggestedDay(
-                    date: "2026-09-01",
-                    title: "新タイトル",
-                    area: "松本市",
-                    checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "喫茶店", note: nil, latitude: nil, longitude: nil)
-                    ]
-                )
-            ]),
-            into: trip,
-            now: now
-        )
-        #expect(made.days.isEmpty)  // 日は増えない
-        #expect(existing.title == "既存タイトル")
-        #expect(existing.updatedAt == old)  // 既存日は触らない
-        #expect(made.checkpoints.map(\.name) == ["喫茶店"])
-        #expect(made.checkpoints.first?.sortOrder == 1)  // 既存の末尾に続く
-        #expect(made.checkpoints.first?.tripDay === existing)
-    }
-
-    @Test func adoptは概算座標を保存し片方だけなら捨てる() {
-        let trip = TripEntity(title: "t")
-        let made = PlanEditor.adopt(
-            suggestion([
-                AISuggestedDay(
-                    date: "2026-09-01",
-                    title: "初日",
-                    area: "松本市",
-                    checkpoints: [
-                        AISuggestedCheckpoint(
-                            typeRawValue: "sightseeing", name: "松本城", note: nil,
-                            latitude: 36.2381, longitude: 137.969
-                        ),
-                        AISuggestedCheckpoint(
-                            typeRawValue: "lodging", name: "宿", note: nil,
-                            latitude: 36.26, longitude: nil
-                        ),
-                    ]
-                )
-            ]),
-            into: trip
-        )
-        #expect(made.checkpoints[0].latitude == 36.2381)
-        #expect(made.checkpoints[0].longitude == 137.969)
-        #expect(made.checkpoints[1].latitude == nil)
-        #expect(made.checkpoints[1].longitude == nil)
-    }
-
-    @Test func adoptは空の名前を読み飛ばす() {
-        let trip = TripEntity(title: "t")
-        let made = PlanEditor.adopt(
-            suggestion([
-                AISuggestedDay(
-                    date: "2026-09-01",
-                    title: "初日",
-                    area: "松本市",
-                    checkpoints: [
-                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "  ", note: nil, latitude: nil, longitude: nil),
-                        AISuggestedCheckpoint(typeRawValue: "cafe", name: "喫茶店", note: nil, latitude: nil, longitude: nil),
-                    ]
-                )
-            ]),
-            into: trip
-        )
-        #expect(made.checkpoints.map(\.name) == ["喫茶店"])
-        #expect(made.checkpoints.first?.sortOrder == 0)
-    }
-
     // MARK: - AI 日数・宿泊地候補の採用
 
     @Test func adoptOutlineは日を揃えて各泊にlodgingを追記する() {
@@ -779,6 +658,41 @@ struct PlanEditorTests {
         let made = PlanEditor.adopt(candidate, into: trip, calendar: calendar)
         #expect(made.days.map(\.date) == ["2026-09-01"])
         #expect(made.checkpoints.isEmpty)
+    }
+
+    @Test func adoptOutlineはstartDateから日を張り重なる日は既存を再利用する() {
+        // 既存プランの続き(帰路)を足す想定。最終日と同じ日に出発しても日が二重にならない
+        let old = date("2026-08-20T00:00:00+09:00")
+        let trip = TripEntity(title: "t")
+        trip.departureAt = date("2026-09-01T08:30:00+09:00")
+        trip.destination = "シカゴ"
+        let first = TripDayEntity(date: "2026-09-01", updatedAt: old)
+        let last = TripDayEntity(date: "2026-09-02", updatedAt: old)
+        trip.days = [first, last]
+
+        let candidate = AITripOutlineCandidate(
+            dayCount: 2,
+            title: "1泊2日で帰る",
+            nights: [AISuggestedNight(area: "途中", name: "途中の宿", note: nil, latitude: nil, longitude: nil)]
+        )
+        let made = PlanEditor.adopt(
+            candidate,
+            into: trip,
+            startDate: date("2026-09-02T09:00:00+09:00"),
+            destinationName: "シアトル",
+            calendar: calendar
+        )
+
+        #expect(made.days.map(\.date) == ["2026-09-03"])  // 起点の 2026-09-02 は既存を再利用
+        #expect(last.updatedAt == old)  // 既存日は触らない
+        // 1 泊目は起点の日、到着は最終日で名前は渡した目的地(trip.destination ではない)
+        let lodging = made.checkpoints.first { $0.type == .lodging }
+        #expect(lodging?.tripDay === last)
+        let destination = made.checkpoints.first { $0.type == .destination }
+        #expect(destination?.name == "シアトル")
+        #expect(destination?.tripDay?.date == "2026-09-03")
+        // 起点より前の日には何も足さない
+        #expect(made.checkpoints.allSatisfy { $0.tripDay !== first })
     }
 
     @Test func applyOrderは位置が変わった行だけ更新する() {

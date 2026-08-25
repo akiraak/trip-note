@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { parsePlanInput, suggestPlan, type PlanSuggestion } from "@/lib/ai";
 import {
   parseLinkInput,
   resolveGoogleMapsLink,
@@ -9,7 +8,7 @@ import {
 } from "@/lib/google-maps-share";
 import { deleteMedia } from "@/lib/media";
 import * as plan from "@/lib/plan";
-import type { AdoptDay, CheckpointInput } from "@/lib/plan";
+import type { CheckpointInput } from "@/lib/plan";
 
 // プラン編集の Server Actions。ページと同じ保護範囲(本番は Cloudflare Access)で
 // 動くため Bearer 認証は使わない(/api/* の規約は変えない)。
@@ -195,37 +194,6 @@ export async function resolveGoogleMapsLinkAction(
 ): Promise<ResolveLinkResult> {
   try {
     return { ok: true, place: await resolveGoogleMapsLink(parseLinkInput(link)) };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
-// ---- AI 提案 ----
-// AI 呼び出しの実処理は lib/ai.ts。入力は API route と同じ関数で再検証する
-
-export type PlanSuggestResult =
-  | { ok: true; suggestion: PlanSuggestion }
-  | { ok: false; error: string };
-
-export async function suggestPlanAction(
-  input: unknown,
-): Promise<PlanSuggestResult> {
-  try {
-    return { ok: true, suggestion: await suggestPlan(parsePlanInput(input)) };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
-/** AI 提案の採用。クライアントで確認済みの内容を trip_days / checkpoints にする */
-export async function adoptPlanAction(
-  tripId: string,
-  days: AdoptDay[],
-): Promise<ActionResult> {
-  try {
-    plan.adoptPlanSuggestion(tripId, days);
-    revalidateTrip(tripId);
-    return { ok: true };
   } catch (error) {
     return failure(error);
   }

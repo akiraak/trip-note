@@ -19,10 +19,6 @@ extension SyncClient {
     /// ジョブ全体の待ち時間上限(サーバも 10 分更新の無いジョブは failed に落とす)
     private static let aiJobDeadline: TimeInterval = 600
 
-    func suggestPlan(_ body: AIPlanRequest) async throws -> AIPlanSuggestion {
-        try await runAIJob(kind: "plan", input: body)
-    }
-
     func suggestTripOutline(_ body: AITripOutlineRequest) async throws -> AITripOutlineSuggestion {
         try await runAIJob(kind: "trip_outline", input: body)
     }

@@ -12,8 +12,8 @@ import {
   updateDayAction,
   type ActionResult,
 } from "./actions";
-import { AiPlanSuggest } from "./ai-plan";
 import { CheckpointForm } from "./checkpoint-form";
+import { PlanExtension } from "./plan-extension";
 import { PlaceLink } from "./place-link";
 import { useRouteLegs } from "./use-route-legs";
 import { arrivalEstimates } from "@/lib/arrival";
@@ -51,11 +51,20 @@ export type PlanDay = {
   checkpoints: PlanCheckpoint[];
 };
 
+/** 続きの行程を提案するフォームの初期値(出発地 = 今のプランの最終地点) */
+export type PlanExtensionDefaults = {
+  departure: { name: string; latitude: number | null; longitude: number | null } | null;
+  /** YYYY-MM-DD(最終日の翌日) */
+  departureDate: string;
+  /** HH:MM */
+  departureTime: string;
+};
+
 export function PlanSection({
   tripId,
   days,
   transport,
-  aiDefaults,
+  extensionDefaults,
   cachedLegs,
   selectedDayId,
   onSelectDay,
@@ -63,8 +72,8 @@ export function PlanSection({
   tripId: string;
   days: PlanDay[];
   transport: string | null;
-  /** AI 提案フォームの初期値(page.tsx で計算) */
-  aiDefaults: { startDate: string; dayCount: number; departure: string };
+  /** 続きの行程を提案するフォームの初期値(page.tsx で計算) */
+  extensionDefaults: PlanExtensionDefaults;
   /** SSR 時点でキャッシュ済みだったレグ(page.tsx の readCachedLegs) */
   cachedLegs?: Record<string, ResolvedLeg>;
   /** 地図が寄っている日 */
@@ -73,7 +82,7 @@ export function PlanSection({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [aiOpen, setAiOpen] = useState(false);
+  const [extensionOpen, setExtensionOpen] = useState(false);
   // 日ごとのルート(前泊地起点)。走行距離の計算に使う
   const maps = useMemo(() => dayMapPoints(days), [days]);
 
@@ -116,14 +125,14 @@ export function PlanSection({
           }
         />
       ))}
-      {aiOpen && (
-        <AiPlanSuggest
+      {extensionOpen && (
+        <PlanExtension
           tripId={tripId}
           transport={transport}
-          defaultStartDate={aiDefaults.startDate}
-          defaultDayCount={aiDefaults.dayCount}
-          defaultDeparture={aiDefaults.departure}
-          onDone={() => setAiOpen(false)}
+          departure={extensionDefaults.departure}
+          defaultDepartureDate={extensionDefaults.departureDate}
+          defaultDepartureTime={extensionDefaults.departureTime}
+          onDone={() => setExtensionOpen(false)}
         />
       )}
       <div className="flex gap-2">
@@ -135,13 +144,13 @@ export function PlanSection({
         >
           + 日を追加
         </button>
-        {!aiOpen && (
+        {!extensionOpen && (
           <button
             type="button"
-            onClick={() => setAiOpen(true)}
+            onClick={() => setExtensionOpen(true)}
             className="rounded-md border border-border px-3 py-1 text-sm hover:bg-raised"
           >
-            ✨ AI で行程を提案
+            ✨ 続きの行程を提案
           </button>
         )}
       </div>

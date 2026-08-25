@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
-import { PlanSection, type PlanDay } from "./plan-section";
+import {
+  PlanSection,
+  type PlanDay,
+  type PlanExtensionDefaults,
+} from "./plan-section";
 import { TripMap } from "./trip-map";
 import { boundingBox } from "@/lib/geo";
 import { dayMapPoints } from "@/lib/plan-map";
@@ -24,7 +28,7 @@ export function TripCanvas({
   tripId,
   days,
   transport,
-  aiDefaults,
+  extensionDefaults,
   header,
   footer,
 }: {
@@ -49,7 +53,7 @@ export function TripCanvas({
   tripId: string;
   days: PlanDay[];
   transport: string | null;
-  aiDefaults: { startDate: string; dayCount: number; departure: string };
+  extensionDefaults: PlanExtensionDefaults;
   /** パネルの上部(旅行の情報・編集)。server component 側で組んだものを差す */
   header: ReactNode;
   /** パネルの下部(メディア・タイムライン・削除) */
@@ -128,7 +132,7 @@ export function TripCanvas({
             tripId={tripId}
             days={days}
             transport={transport}
-            aiDefaults={aiDefaults}
+            extensionDefaults={extensionDefaults}
             cachedLegs={cachedLegs}
             selectedDayId={selectedDayId}
             onSelectDay={setSelectedDayId}

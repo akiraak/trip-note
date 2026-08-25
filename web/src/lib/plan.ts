@@ -574,98 +574,6 @@ export function deleteCheckpoint(id: string): Checkpoint {
   return checkpoint;
 }
 
-/** AI 行程提案の採用入力(lib/ai.ts の SuggestedDay に対応) */
-export type AdoptDay = {
-  /** YYYY-MM-DD */
-  date: string;
-  title: string | null;
-  checkpoints: {
-    type: CheckpointType;
-    name: string;
-    note: string | null;
-    /** AI の概算座標(任意)。保存して Google Maps のリンクで具体化したら上書きする */
-    latitude?: number | null;
-    longitude?: number | null;
-  }[];
-};
-
-/** AI 提案を採用して trip_days / checkpoints を作成する。
- *  同じ日付の日が既にあればそこへチェックポイントを末尾追記し(title は上書きしない)、
- *  無ければ日を作る。チェックポイントは AI の概算座標付きで入れる(無ければ null) */
-export function adoptPlanSuggestion(tripId: string, days: AdoptDay[]): Trip {
-  const trip = getTrip(tripId);
-  if (days.length === 0) throw new Error("採用する日がありません");
-  const db = getDb();
-  const now = nowIso();
-  const findDay = db.prepare(
-    "select * from trip_days where trip_id = ? and date = ? and deleted_at is null",
-  );
-  const insertDay = db.prepare(
-    `insert into trip_days (id, trip_id, date, title, updated_at)
-     values (@id, @trip_id, @date, @title, @updated_at)`,
-  );
-  const maxOrder = db.prepare(
-    `select max(sort_order) as max_order from checkpoints
-     where trip_day_id = ? and deleted_at is null`,
-  );
-  const insertCheckpoint = db.prepare(
-    `insert into checkpoints
-       (id, trip_id, trip_day_id, type, name, latitude, longitude,
-        planned_time, note, sort_order, updated_at)
-     values
-       (@id, @trip_id, @trip_day_id, @type, @name, @latitude, @longitude,
-        null, @note, @sort_order, @updated_at)`,
-  );
-  db.transaction(() => {
-    for (const day of days) {
-      if (!DATE_RE.test(day.date)) {
-        throw new Error(`不正な日付です: ${day.date}`);
-      }
-      let dayId = (findDay.get(tripId, day.date) as TripDay | undefined)?.id;
-      if (!dayId) {
-        dayId = randomUUID();
-        insertDay.run({
-          id: dayId,
-          trip_id: tripId,
-          date: day.date,
-          title: day.title?.trim() || null,
-          updated_at: now,
-        });
-      }
-      const { max_order } = maxOrder.get(dayId) as { max_order: number | null };
-      let order = max_order !== null ? max_order + 1 : 0;
-      for (const checkpoint of day.checkpoints) {
-        // 概算座標は片方だけなら両方捨てる(validateInput の対条件に合わせる)
-        const hasCoords =
-          typeof checkpoint.latitude === "number" &&
-          typeof checkpoint.longitude === "number";
-        const valid = validateInput({
-          type: checkpoint.type,
-          name: checkpoint.name,
-          latitude: hasCoords ? (checkpoint.latitude as number) : null,
-          longitude: hasCoords ? (checkpoint.longitude as number) : null,
-          planned_time: null,
-          note: checkpoint.note,
-        });
-        insertCheckpoint.run({
-          id: randomUUID(),
-          trip_id: tripId,
-          trip_day_id: dayId,
-          type: valid.type,
-          name: valid.name,
-          latitude: valid.latitude,
-          longitude: valid.longitude,
-          note: valid.note,
-          sort_order: order,
-          updated_at: now,
-        });
-        order += 1;
-      }
-    }
-  })();
-  return trip;
-}
-
 /** AI の日数・宿泊地候補の採用入力(lib/ai.ts の TripOutlineCandidate に対応) */
 export type AdoptOutline = {
   /** 旅行全体の日数(日帰りは 1) */
@@ -681,6 +589,11 @@ export type AdoptOutline = {
   /** 目的地の概算座標(最終日の destination チェックポイントに使う) */
   destinationLatitude?: number | null;
   destinationLongitude?: number | null;
+  /** 起点にする日 (YYYY-MM-DD)。省略時は既存の最初の日 ?? departure_at ?? 今日。
+   *  既存プランの続きを足すときは、その区間の出発日を渡す */
+  startDate?: string;
+  /** 最終日に置く到着チェックポイントの名前。省略時は trips.destination */
+  destination?: string;
 };
 
 /** 座標は片方だけなら両方捨てる(validateInput の対条件に合わせる) */
@@ -693,11 +606,13 @@ function coordinatePair(
     : { latitude: null, longitude: null };
 }
 
-/** AI の日数・宿泊地候補を採用する。1 日目(既存の最初の日 ?? departure_at ?? 今日)
- *  から dayCount 分の連続した日を揃え(既存の日付は再利用)、最終日に目的地の到着
- *  チェックポイント(trips.destination + 概算座標)を、n 泊目の宿泊チェックポイントを
- *  n 日目に末尾追記する。既存行の updated_at は進めない(LWW で iOS の編集を潰さない
- *  ため)。iOS 側 PlanEditor.adopt(_ candidate:into:) と対応 */
+/** AI の日数・宿泊地候補を採用する。起点(outline.startDate ?? 既存の最初の日 ??
+ *  departure_at ?? 今日)から dayCount 分の連続した日を揃え(既存の日付は再利用)、
+ *  最終日に目的地の到着チェックポイント(outline.destination ?? trips.destination +
+ *  概算座標)を、n 泊目の宿泊チェックポイントを n 日目に末尾追記する。
+ *  既存プランの続きを足すときは startDate / destination にその区間の出発日・目的地を渡す。
+ *  既存行の updated_at は進めない(LWW で iOS の編集を潰さないため)。
+ *  iOS 側 PlanEditor.adopt(_ candidate:into:) と対応 */
 export function adoptTripOutline(tripId: string, outline: AdoptOutline): Trip {
   const trip = getTrip(tripId);
   const dayCount = Math.floor(outline.dayCount);
@@ -711,7 +626,11 @@ export function adoptTripOutline(tripId: string, outline: AdoptOutline): Trip {
       "select * from trip_days where trip_id = ? and deleted_at is null order by date",
     )
     .all(tripId) as TripDay[];
+  if (outline.startDate !== undefined && !DATE_RE.test(outline.startDate)) {
+    throw new Error(`不正な日付です: ${outline.startDate}`);
+  }
   const start =
+    outline.startDate ??
     existingDays[0]?.date ??
     dateStringOf(trip.departure_at ? new Date(trip.departure_at) : new Date());
   const dates = [start];
@@ -779,7 +698,7 @@ export function adoptTripOutline(tripId: string, outline: AdoptOutline): Trip {
       });
     };
 
-    const destination = trip.destination?.trim();
+    const destination = (outline.destination ?? trip.destination)?.trim();
     if (destination) {
       add(dates[dates.length - 1], {
         type: "destination",

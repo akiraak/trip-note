@@ -5,53 +5,6 @@ import Foundation
 /// (iOS 側に API キーや AI 設定は持たない)。日付フィールドが無いので
 /// エンコード/デコードは素の JSONEncoder / JSONDecoder でよい
 
-/// POST /api/ai/plan のリクエスト
-struct AIPlanRequest: Encodable {
-    let departure: String
-    let destination: String
-    /// YYYY-MM-DD
-    let startDate: String
-    let dayCount: Int
-    /// Transport.rawValue(未設定なら nil)
-    let transport: String?
-    /// 自由記述の要望
-    let request: String?
-}
-
-struct AISuggestedCheckpoint: Decodable, Hashable {
-    /// サーバは許可リスト内に寄せて返すが、将来の種別追加に備えて文字列で受ける
-    let typeRawValue: String
-    let name: String
-    let note: String?
-    /// 概算座標(市レベル)。採用時に保存し、Google Maps のリンクで具体化したら上書きする
-    let latitude: Double?
-    let longitude: Double?
-
-    var type: CheckpointType { CheckpointType(rawValue: typeRawValue) ?? .other }
-
-    enum CodingKeys: String, CodingKey {
-        case typeRawValue = "type"
-        case name
-        case note
-        case latitude
-        case longitude
-    }
-}
-
-struct AISuggestedDay: Decodable, Hashable {
-    /// YYYY-MM-DD
-    let date: String
-    let title: String
-    /// 大まかな地域(その日の行程の目安。保存はしない)
-    let area: String
-    let checkpoints: [AISuggestedCheckpoint]
-}
-
-/// POST /api/ai/plan の応答
-struct AIPlanSuggestion: Decodable, Hashable {
-    let days: [AISuggestedDay]
-}
-
 /// POST /api/ai/trip-outline のリクエスト。
 /// 出発日時はタイムゾーン変換を避けるため端末ローカルの日付と時刻に分けて送る
 struct AITripOutlineRequest: Encodable {
@@ -101,14 +54,14 @@ struct AITripOutlineSuggestion: Decodable, Hashable {
 }
 
 // ---- 生成ジョブ (/api/ai/jobs) ----
-// plan / trip-outline の生成は数十秒〜数分かかり、接続を張りっぱなしにすると
+// trip-outline の生成は数十秒〜数分かかり、接続を張りっぱなしにすると
 // アプリ切替で iOS がソケットを切ってしまう。そのためジョブ登録 → ポーリングで
 // 結果を受け取る
 
 /// POST /api/ai/jobs のリクエスト。id はクライアント発行の UUID(再送冪等)
 struct AIJobCreateRequest<Input: Encodable>: Encodable {
     let id: String
-    /// "plan" | "trip_outline"
+    /// "trip_outline"
     let kind: String
     let input: Input
 }

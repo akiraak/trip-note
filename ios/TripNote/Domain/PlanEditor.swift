@@ -74,6 +74,17 @@ enum PlanEditor {
         }
     }
 
+    /// 既存プランの最終地点(最後の日の最後のチェックポイント)。
+    /// 続きの行程を提案するときの出発地に使う。日もチェックポイントも無ければ nil
+    static func lastPlace(of trip: TripEntity) -> DeparturePlace? {
+        guard let last = trip.sortedDays.last?.sortedCheckpoints.last else { return nil }
+        return DeparturePlace(
+            name: last.name,
+            latitude: last.latitude,
+            longitude: last.longitude
+        )
+    }
+
     /// プラン段階の旅行と 1 日目の trip_day、出発地チェックポイントを作る(挿入は呼び出し側)。
     /// startedAt は nil のまま。日数は作成時には決めず、
     /// AI 候補の採用や「日を追加」で後から増やす。
@@ -336,68 +347,13 @@ enum PlanEditor {
         }
     }
 
-    /// AI 提案を旅行に採用する(挿入・保存は呼び出し側)。
-    /// 同じ日付の日が既にあればそこへチェックポイントを末尾追記し(title は上書きしない)、
-    /// 無ければ日を作る。チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
-    /// あとから Google Maps のリンクで具体化したら上書きされる。
-    /// 戻り値は新規作成したエンティティ(呼び出し側で insert する)
-    static func adopt(
-        _ suggestion: AIPlanSuggestion,
-        into trip: TripEntity,
-        now: Date = Date()
-    ) -> (days: [TripDayEntity], checkpoints: [CheckpointEntity]) {
-        var newDays: [TripDayEntity] = []
-        var newCheckpoints: [CheckpointEntity] = []
-        // 未挿入のエンティティは関係の逆参照(day.checkpoints)が更新されないため、
-        // 採番はここで日付ごとに数える
-        var nextOrder: [String: Int] = [:]
-        let existingDays = trip.sortedDays
-        for suggested in suggestion.days {
-            let day: TripDayEntity
-            if let found = existingDays.first(where: { $0.date == suggested.date }) {
-                day = found
-            } else if let created = newDays.first(where: { $0.date == suggested.date }) {
-                day = created
-            } else {
-                day = TripDayEntity(
-                    date: suggested.date,
-                    title: suggested.title.isEmpty ? nil : suggested.title,
-                    updatedAt: now,
-                    trip: trip
-                )
-                newDays.append(day)
-            }
-            var order = nextOrder[suggested.date] ?? nextSortOrder(in: day)
-            for checkpoint in suggested.checkpoints {
-                let name = checkpoint.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !name.isEmpty else { continue }
-                // 概算座標は片方だけなら両方捨てる
-                let hasCoords = checkpoint.latitude != nil && checkpoint.longitude != nil
-                newCheckpoints.append(
-                    CheckpointEntity(
-                        type: checkpoint.type,
-                        name: name,
-                        latitude: hasCoords ? checkpoint.latitude : nil,
-                        longitude: hasCoords ? checkpoint.longitude : nil,
-                        note: checkpoint.note,
-                        sortOrder: order,
-                        updatedAt: now,
-                        trip: trip,
-                        tripDay: day
-                    )
-                )
-                order += 1
-            }
-            nextOrder[suggested.date] = order
-        }
-        return (newDays, newCheckpoints)
-    }
-
     /// AI の日数・宿泊地候補を旅行に採用する(挿入・保存は呼び出し側)。
-    /// 1 日目(既存の最初の日 ?? departureAt ?? now)から dayCount 分の連続した日を
-    /// 揃え(既存の日付は再利用)、最終日に目的地の到着チェックポイント
-    /// (trip.destination + 概算座標)を、n 泊目の宿泊チェックポイントを n 日目に
-    /// 末尾追記する。チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
+    /// 起点(startDate ?? 既存の最初の日 ?? departureAt ?? now)から dayCount 分の
+    /// 連続した日を揃え(既存の日付は再利用)、最終日に目的地の到着チェックポイント
+    /// (destinationName ?? trip.destination + 概算座標)を、n 泊目の宿泊チェックポイントを
+    /// n 日目に末尾追記する。既存プランの続きを足すときは startDate / destinationName に
+    /// その区間の出発日・目的地を渡す。
+    /// チェックポイントは AI の概算座標付きで入れ(無ければ nil)、
     /// あとから Google Maps のリンクで具体化したら上書きされる。
     /// 既存行の updatedAt は進めない(LWW で他方の編集を潰さないため)
     static func adopt(
@@ -405,11 +361,14 @@ enum PlanEditor {
         into trip: TripEntity,
         destinationLatitude: Double? = nil,
         destinationLongitude: Double? = nil,
+        startDate: Date? = nil,
+        destinationName: String? = nil,
         calendar: Calendar = .current,
         now: Date = Date()
     ) -> (days: [TripDayEntity], checkpoints: [CheckpointEntity]) {
         let existingDays = trip.sortedDays
-        let start = existingDays.first.flatMap { parseDate($0.date, calendar: calendar) }
+        let start = startDate
+            ?? existingDays.first.flatMap { parseDate($0.date, calendar: calendar) }
             ?? trip.departureAt
             ?? now
         let dates = dayDates(startingOn: start, count: candidate.dayCount, calendar: calendar)
@@ -433,16 +392,16 @@ enum PlanEditor {
             return order
         }
         // 最終日に目的地の到着チェックポイント(同日に宿泊があれば「到着 → 宿泊」の順)
-        let destinationName = trip.destination?
+        let arrivalName = (destinationName ?? trip.destination)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !destinationName.isEmpty,
+        if !arrivalName.isEmpty,
            let lastDate = dates.last,
            let lastDay = dayByDate[lastDate] {
             let hasCoords = destinationLatitude != nil && destinationLongitude != nil
             newCheckpoints.append(
                 CheckpointEntity(
                     type: .destination,
-                    name: destinationName,
+                    name: arrivalName,
                     latitude: hasCoords ? destinationLatitude : nil,
                     longitude: hasCoords ? destinationLongitude : nil,
                     sortOrder: appendOrder(for: lastDate, in: lastDay),

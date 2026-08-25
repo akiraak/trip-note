@@ -130,7 +130,7 @@ location_points は対象外(一方向アップロードのみ)。media は**削
 
 ## POST /api/ai/jobs
 
-AI 生成ジョブの登録(iOS 向け)。plan / trip-outline の生成は数十秒〜数分かかり、
+AI 生成ジョブの登録(iOS 向け)。trip-outline の生成は数十秒〜数分かかり、
 接続を張りっぱなしにするとアプリ切替で iOS がソケットを切って
 "The network connection was lost" になるため、ジョブ登録 → ポーリングで結果を受け取る。
 実装は `web/src/lib/ai-jobs.ts`(生成は応答送信後に next/server の `after()` で実行し、
@@ -142,8 +142,8 @@ AI 生成ジョブの登録(iOS 向け)。plan / trip-outline の生成は数十
 ```json
 {
   "id": "uuid(クライアント発行)",
-  "kind": "plan | trip_outline",
-  "input": { "…": "kind に応じた /api/ai/plan・/api/ai/trip-outline と同じリクエスト" }
+  "kind": "trip_outline",
+  "input": { "…": "/api/ai/trip-outline と同じリクエスト" }
 }
 ```
 
@@ -162,8 +162,8 @@ AI 生成ジョブの登録(iOS 向け)。plan / trip-outline の生成は数十
 ジョブの状態取得(ポーリング用)。
 
 ```json
-{ "id": "…", "kind": "plan", "status": "succeeded",
-  "result": { "…": "kind に応じた同期版と同じレスポンス。succeeded 以外は null" },
+{ "id": "…", "kind": "trip_outline", "status": "succeeded",
+  "result": { "…": "同期版と同じレスポンス。succeeded 以外は null" },
   "error": "失敗時のメッセージ。failed 以外は null" }
 ```
 
@@ -174,58 +174,19 @@ AI 生成ジョブの登録(iOS 向け)。plan / trip-outline の生成は数十
   (アプリ切替・電波断)は無視して続行し、サーバが明示的にエラーボディを
   返したときだけ失敗にする
 
-## POST /api/ai/plan
+## POST /api/ai/trip-outline
 
-AI 行程提案(**旧クライアント互換の同期版**。現行 iOS は /api/ai/jobs を使う。
-Web は Server Action から `web/src/lib/ai.ts` を直接呼ぶ)。
+日数・宿泊地候補の同期版(現行 iOS は /api/ai/jobs を使う。Web は Server Action から
+`web/src/lib/ai.ts` を直接呼ぶ)。出発地・目的地・出発日時から、日数違いの大枠候補
+(各泊の宿泊地付き)を返す。旅行の作成直後だけでなく、**既存プランの続き(帰路など)を
+足すとき**も同じ入力で使う(出発地に今のプランの最終地点、目的地に次に向かう先を入れる)。
+出発日時はタイムゾーン変換を避けるためクライアントのローカル日付と時刻で送る。
+
 モデルは Web の設定画面(`/settings`)で選択し、サーバの `app_settings`(key `ai_model`)に
 保持する(同期対象外。iOS からの呼び出しにも自動で適用)。許可リストは
 Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 (`web/src/lib/ai.ts` の `AI_MODELS` が正)。API キーは env
 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`(使うプロバイダの分だけ設定)。
-
-リクエスト:
-
-```json
-{
-  "departure": "東京駅",
-  "destination": "自宅",
-  "startDate": "YYYY-MM-DD",
-  "dayCount": 3,
-  "transport": "car|null(省略可)",
-  "request": "要望の自由記述|null(省略可)"
-}
-```
-
-レスポンス(提案のみ。DB には書かない。採用するかはクライアントが決め、
-採用時は通常の同期/Server Action で trip_days / checkpoints を作る):
-
-```json
-{
-  "days": [
-    { "date": "YYYY-MM-DD", "title": "松本周辺を観光して泊", "area": "松本市",
-      "checkpoints": [ { "type": "departure", "name": "東京駅", "note": "…|null",
-        "latitude": 35.68, "longitude": 139.76 } ] }
-  ]
-}
-```
-
-- `type` は checkpoints と同じ 7 種(サーバが許可リスト外を other に寄せる)。
-  `latitude` / `longitude` は概算座標(市レベル。不正・片方だけは null)。
-  採用時にチェックポイントへ保存して地図・ルート表示に使い、
-  Google Maps のリンクで位置を設定したら上書きされる
-- `401` / `400 {"error":"<バリデーションメッセージ>"}` /
-  `500 {"error":"AI (...) の呼び出しに失敗しました: ..."}`(キー未設定・API エラー。
-  502/504 だと Cloudflare がボディを差し替えてメッセージが届かないため 500 を使う)
-- 生成に数十秒〜数分かかるため、現行 iOS は同一のリクエスト/レスポンスを
-  /api/ai/jobs 経由(非同期)で使う
-
-## POST /api/ai/trip-outline
-
-日数・宿泊地候補(**旧クライアント互換の同期版**。現行 iOS は /api/ai/jobs を使う)。
-目的地と出発日時から、日数違いの大枠候補(各泊の宿泊地付き)を返す。
-モデル・認証・エラーは /api/ai/plan と同じ。
-出発日時はタイムゾーン変換を避けるためクライアントのローカル日付と時刻で送る。
 
 リクエスト:
 
@@ -242,8 +203,9 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
 }
 ```
 
-レスポンス(提案のみ。DB には書かない。採用時はクライアントが 1 日目の日付から
-`dayCount` 分の trip_days を揃え、n 泊目の lodging チェックポイントを n 日目に追加する):
+レスポンス(提案のみ。DB には書かない。採用時はクライアントが起点の日(作成直後は
+1 日目、続きの追加は入力した出発日)から `dayCount` 分の trip_days を揃え、
+n 泊目の lodging チェックポイントを n 日目に追加する):
 
 ```json
 {
@@ -262,8 +224,13 @@ Claude Opus 5(既定)/ Claude Sonnet 5 / GPT-5.6 Sol / GPT-5.6 Terra の 4 つ
   候補プレビュー地図に使い、**採用時は宿泊チェックポイントへ概算座標として保存**して
   地図・ルート表示に使う(Google Maps のリンクで位置を設定したら上書きされる)。
   `destinationLatitude` / `destinationLongitude` は目的地の概算座標(候補共通)で、
-  採用時に**最終日の destination チェックポイント**(名前 = 旅行の目的地)を作るのに使う。
+  採用時に**最終日の destination チェックポイント**(名前 = 旅行の目的地。続きの追加では
+  入力した目的地)を作るのに使う。
   `dayCount` が 1〜30 の範囲外の候補はサーバ側で落とす
+
+- `401` / `400 {"error":"<バリデーションメッセージ>"}` /
+  `500 {"error":"AI (...) の呼び出しに失敗しました: ..."}`(キー未設定・API エラー。
+  502/504 だと Cloudflare がボディを差し替えてメッセージが届かないため 500 を使う)
 
 ## POST /api/places/resolve-link
 
@@ -398,7 +365,7 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
   (pull → push の順)。前回 pull の serverTime は UserDefaults(`syncPullSince`)に保存
 - AI(/api/ai/*)は `Services/AIClient.swift`(SyncClient の extension)、
   DTO は `Models/AIRecords.swift`(camelCase)、提案の採用は `Domain/PlanEditor.adopt`。
-  plan / trip-outline はジョブ方式(POST /api/ai/jobs → 3 秒間隔で
+  trip-outline はジョブ方式(POST /api/ai/jobs → 3 秒間隔で
   GET /api/ai/jobs/[id]、全体 10 分で打ち切り)
 - 道路ルート(/api/route)は `Services/RouteClient.swift`(SyncClient の extension)、
   DTO は `Models/RouteRecords.swift`、レグ組み立ては `Domain/RouteLegs.swift`。

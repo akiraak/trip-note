@@ -23,7 +23,7 @@ struct TripDetailView: View {
     /// グリッドの長押しから削除しようとしているメディア(確認ダイアログの対象)
     @State private var mediaPendingDeletion: MediaEntity?
     @State private var showsTripEdit = false
-    @State private var showsAIPlanSuggest = false
+    @State private var showsPlanExtension = false
     @State private var detent: SheetDetent = .medium
     @Environment(\.dismiss) private var dismiss
 
@@ -62,8 +62,8 @@ struct TripDetailView: View {
         .sheet(isPresented: $showsTripEdit) {
             TripEditView(trip: trip)
         }
-        .sheet(isPresented: $showsAIPlanSuggest) {
-            AIPlanSuggestView(trip: trip)
+        .sheet(isPresented: $showsPlanExtension) {
+            PlanExtensionView(trip: trip)
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
@@ -311,9 +311,9 @@ struct TripDetailView: View {
                 Label("日を追加", systemImage: "plus")
             }
             Button {
-                showsAIPlanSuggest = true
+                showsPlanExtension = true
             } label: {
-                Label("AI で行程を提案", systemImage: "sparkles")
+                Label("続きの行程を提案", systemImage: "sparkles")
             }
             Spacer(minLength: 0)
         }

@@ -1,17 +1,12 @@
 import { getDb } from "@/lib/db";
-import {
-  parsePlanInput,
-  parseTripOutlineInput,
-  suggestPlan,
-  suggestTripOutline,
-} from "@/lib/ai";
+import { parseTripOutlineInput, suggestTripOutline } from "@/lib/ai";
 
 // AI 生成の非同期ジョブ(/api/ai/jobs)。生成に数十秒〜数分かかるため、
 // クライアントは接続を張りっぱなしにせず、ジョブ登録 → ポーリングで結果を受け取る。
 // 提案は DB の trip_days / checkpoints には書かず、result 列に JSON で置くだけ
 // (採用するかはクライアントが決める。従来の同期エンドポイントと同じ設計)
 
-export type AiJobKind = "plan" | "trip_outline";
+export type AiJobKind = "trip_outline";
 export type AiJobStatus = "pending" | "running" | "succeeded" | "failed";
 
 export type AiJob = {
@@ -53,11 +48,6 @@ function toJob(row: AiJobRow): AiJob {
   };
 }
 
-/** kind に応じた入力バリデーション(不正なら Error を投げる) */
-function parseInput(kind: AiJobKind, input: unknown): unknown {
-  return kind === "plan" ? parsePlanInput(input) : parseTripOutlineInput(input);
-}
-
 /** ジョブを登録する。id はクライアント発行の UUID で、同 id の再送は
     既存ジョブをそのまま返す(再送冪等。入力の差し替えはしない) */
 export function createAiJob(value: {
@@ -69,8 +59,8 @@ export function createAiJob(value: {
   if (typeof id !== "string" || !UUID_RE.test(id)) {
     throw new Error("id は UUID で指定してください");
   }
-  if (kind !== "plan" && kind !== "trip_outline") {
-    throw new Error("kind は plan または trip_outline を指定してください");
+  if (kind !== "trip_outline") {
+    throw new Error("kind は trip_outline を指定してください");
   }
   const db = getDb();
   const existing = db.prepare("select * from ai_jobs where id = ?").get(id) as
@@ -79,7 +69,7 @@ export function createAiJob(value: {
   if (existing) {
     return toJob(existing);
   }
-  const input = parseInput(kind, value.input);
+  const input = parseTripOutlineInput(value.input);
   db.prepare(
     `delete from ai_jobs
      where created_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${RETENTION_DAYS} days')`,
@@ -117,12 +107,10 @@ export function getAiJob(id: string): AiJob | null {
 
 /** 既定の生成関数(テストではここを差し替える) */
 async function generateSuggestion(
-  kind: AiJobKind,
+  _kind: AiJobKind,
   input: unknown,
 ): Promise<unknown> {
-  return kind === "plan"
-    ? suggestPlan(input as Parameters<typeof suggestPlan>[0])
-    : suggestTripOutline(input as Parameters<typeof suggestTripOutline>[0]);
+  return suggestTripOutline(input as Parameters<typeof suggestTripOutline>[0]);
 }
 
 /** pending のジョブを実行して結果を保存する。応答送信後に after() から呼ぶ。

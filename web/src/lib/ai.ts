@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { getDb } from "./db";
-import { CHECKPOINT_TYPES, type CheckpointType } from "./types";
 
 // AI 提案の共通ロジック。プロバイダは Claude (Anthropic API) と
 // ChatGPT (OpenAI API) の 2 系統で、API キーはサーバ側のみ。
@@ -90,39 +89,6 @@ export function hasApiKey(provider: AiProvider): boolean {
   return Boolean(process.env[API_KEY_ENV[provider]]);
 }
 
-// ---- 行程提案 (/api/ai/plan) ----
-
-export type PlanSuggestionInput = {
-  departure: string;
-  destination: string;
-  /** YYYY-MM-DD */
-  startDate: string;
-  dayCount: number;
-  transport: string | null;
-  /** 自由記述の要望 */
-  request: string | null;
-};
-
-export type SuggestedCheckpoint = {
-  type: CheckpointType;
-  name: string;
-  note: string | null;
-  /** 概算座標(市レベル)。採用時に保存し、Google Maps のリンクで具体化したら上書きされる */
-  latitude: number | null;
-  longitude: number | null;
-};
-
-export type SuggestedDay = {
-  /** YYYY-MM-DD */
-  date: string;
-  title: string;
-  /** 大まかな地域(その日の行程の目安。DB には保存しない) */
-  area: string;
-  checkpoints: SuggestedCheckpoint[];
-};
-
-export type PlanSuggestion = { days: SuggestedDay[] };
-
 // ---- 日数・宿泊地候補 (/api/ai/trip-outline) ----
 // 旅行作成直後に、目的地と出発日時から旅行の大枠(日数と各泊の宿泊地)の候補を出す。
 // 出発日時はタイムゾーン変換を避けるためクライアントのローカル日付と時刻で受ける
@@ -185,35 +151,6 @@ function optionalText(value: unknown): string | null {
   return value.trim() || null;
 }
 
-export function parsePlanInput(value: unknown): PlanSuggestionInput {
-  if (!isRecord(value)) throw new Error("不正な入力です");
-  const departure =
-    typeof value.departure === "string" ? value.departure.trim() : "";
-  const destination =
-    typeof value.destination === "string" ? value.destination.trim() : "";
-  if (!departure) throw new Error("出発地を入力してください");
-  if (!destination) throw new Error("到着予定地を入力してください");
-  if (typeof value.startDate !== "string" || !DATE_RE.test(value.startDate)) {
-    throw new Error("開始日は YYYY-MM-DD で指定してください");
-  }
-  if (
-    typeof value.dayCount !== "number" ||
-    !Number.isInteger(value.dayCount) ||
-    value.dayCount < 1 ||
-    value.dayCount > MAX_DAY_COUNT
-  ) {
-    throw new Error(`日数は 1〜${MAX_DAY_COUNT} で指定してください`);
-  }
-  return {
-    departure,
-    destination,
-    startDate: value.startDate,
-    dayCount: value.dayCount,
-    transport: optionalText(value.transport),
-    request: optionalText(value.request),
-  };
-}
-
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function optionalCoordinate(value: unknown, limit: number): number | null {
@@ -257,57 +194,6 @@ export function parseTripOutlineInput(value: unknown): TripOutlineInput {
 // OpenAI の strict モードは全プロパティ required + additionalProperties: false が必須で
 // nullable の表現もプロバイダ間で差があるため、任意項目は「空文字 = 無し」で表現し、
 // パース時に null へ寄せる
-
-const CHECKPOINT_TYPE_ENUM = [...CHECKPOINT_TYPES];
-
-export const PLAN_SCHEMA: Record<string, unknown> = {
-  type: "object",
-  properties: {
-    days: {
-      type: "array",
-      description: "開始日から日数分、連続した日付の日別行程",
-      items: {
-        type: "object",
-        properties: {
-          date: { type: "string", description: "YYYY-MM-DD" },
-          title: {
-            type: "string",
-            description: "その日の大まかな行程(例: 松本周辺を観光して泊)",
-          },
-          area: { type: "string", description: "その日の大まかな地域" },
-          checkpoints: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                type: { type: "string", enum: CHECKPOINT_TYPE_ENUM },
-                name: {
-                  type: "string",
-                  description: "地図検索でヒットしやすい具体的な施設名・地名",
-                },
-                note: { type: "string", description: "補足。無ければ空文字" },
-                latitude: {
-                  type: "number",
-                  description: "概算緯度(市レベルの精度でよい)",
-                },
-                longitude: {
-                  type: "number",
-                  description: "概算経度",
-                },
-              },
-              required: ["type", "name", "note", "latitude", "longitude"],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["date", "title", "area", "checkpoints"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["days"],
-  additionalProperties: false,
-};
 
 export const TRIP_OUTLINE_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -373,62 +259,8 @@ export const TRIP_OUTLINE_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 };
 
-function isCheckpointType(value: unknown): value is CheckpointType {
-  return (
-    typeof value === "string" &&
-    (CHECKPOINT_TYPES as readonly string[]).includes(value)
-  );
-}
-
 function emptyToNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-/** AI の応答(JSON)を検証して PlanSuggestion にする。構造が不正なら throw */
-export function parsePlanSuggestion(value: unknown): PlanSuggestion {
-  if (!isRecord(value) || !Array.isArray(value.days) || value.days.length === 0) {
-    throw new Error("AI の応答を解釈できませんでした");
-  }
-  const days = value.days.map((day): SuggestedDay => {
-    if (
-      !isRecord(day) ||
-      typeof day.date !== "string" ||
-      !DATE_RE.test(day.date) ||
-      typeof day.title !== "string" ||
-      !day.title.trim() ||
-      typeof day.area !== "string" ||
-      !Array.isArray(day.checkpoints)
-    ) {
-      throw new Error("AI の応答を解釈できませんでした");
-    }
-    const checkpoints = day.checkpoints.map((c): SuggestedCheckpoint => {
-      if (!isRecord(c) || typeof c.name !== "string" || !c.name.trim()) {
-        throw new Error("AI の応答を解釈できませんでした");
-      }
-      // 概算座標(表示・採用用)。不正なら null に寄せ、片方だけなら両方捨てる
-      let latitude = displayCoordinate(c.latitude, 90);
-      let longitude = displayCoordinate(c.longitude, 180);
-      if (latitude === null || longitude === null) {
-        latitude = null;
-        longitude = null;
-      }
-      return {
-        // 許可リスト外の種別が来ても落とさず other に寄せる
-        type: isCheckpointType(c.type) ? c.type : "other",
-        name: c.name.trim(),
-        note: emptyToNull(c.note),
-        latitude,
-        longitude,
-      };
-    });
-    return {
-      date: day.date,
-      title: day.title.trim(),
-      area: day.area.trim(),
-      checkpoints,
-    };
-  });
-  return { days };
 }
 
 /** 表示専用の座標。数値でない・範囲外なら null(エラーにしない) */
@@ -488,32 +320,6 @@ export function parseTripOutlineSuggestion(value: unknown): TripOutlineSuggestio
 }
 
 // ---- プロンプト ----
-
-export function buildPlanPrompt(input: PlanSuggestionInput): {
-  system: string;
-  user: string;
-} {
-  const system = [
-    "あなたは旅行プランナーです。与えられた条件から旅行の日別行程を JSON で作成してください。",
-    "- days は開始日から連続した日付(YYYY-MM-DD)で、必ず指定された日数分作る",
-    "- 各日の title は「松本周辺を観光して泊」のような大まかな行程(地域名を含める)",
-    "- 各日の checkpoints は訪問順に 2〜5 件程度",
-    "- 1 日目の最初は type を departure にして出発地を、最終日の最後は type を destination にして到着予定地を入れる",
-    "- 宿泊する日は最後に lodging(宿の候補または「◯◯周辺の宿」)を入れる",
-    "- name は地図検索でヒットしやすい具体的な施設名・地名にする",
-    "- 各チェックポイントの latitude / longitude は概算座標(市レベルの精度でよい)",
-    "- 移動手段で現実的に回れる範囲・順序にする",
-  ].join("\n");
-  const user = [
-    `出発地: ${input.departure}`,
-    `到着予定地: ${input.destination}`,
-    `開始日: ${input.startDate}`,
-    `日数: ${input.dayCount}日`,
-    `移動手段: ${input.transport ?? "未指定"}`,
-    `要望: ${input.request ?? "特になし"}`,
-  ].join("\n");
-  return { system, user };
-}
 
 export function buildTripOutlinePrompt(input: TripOutlineInput): {
   system: string;
@@ -598,13 +404,6 @@ async function completeJson(
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`AI (${model.label}) の呼び出しに失敗しました: ${message}`);
   }
-}
-
-export async function suggestPlan(
-  input: PlanSuggestionInput,
-): Promise<PlanSuggestion> {
-  const raw = await completeJson(buildPlanPrompt(input), "plan", PLAN_SCHEMA);
-  return parsePlanSuggestion(raw);
 }
 
 export async function suggestTripOutline(

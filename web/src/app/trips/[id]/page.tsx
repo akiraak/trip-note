@@ -4,11 +4,11 @@ import { DeleteMedia } from "./delete-media";
 import { DeleteTrip } from "./delete-trip";
 import { EditTrip } from "./edit-trip";
 import { EndTrip } from "./end-trip";
-import { type PlanDay } from "./plan-section";
+import { type PlanDay, type PlanExtensionDefaults } from "./plan-section";
 import { TripCanvas } from "./trip-canvas";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime, TIME_ZONE } from "@/lib/format";
-import { dateStringOf, timeStringOf } from "@/lib/plan";
+import { dateStringOf, nextDate, timeStringOf } from "@/lib/plan";
 import { formatDistance, totalDistance } from "@/lib/geo";
 import { buildLegs, legKey } from "@/lib/route-legs";
 import { readCachedLegs } from "@/lib/routing";
@@ -97,16 +97,29 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       note: c.note,
     })),
   }));
-  // AI 行程提案フォームの初期値: 開始日 = 既存プランの初日 ?? 出発予定 ?? 開始 ?? 今日、
-  // 出発地 = 1 日目の出発チェックポイント名(iOS の AIPlanSuggestView と同じ。
-  // 到着予定地は終点を書く欄なので初期値を入れない)
-  const aiStart = trip.departure_at ?? trip.started_at;
-  const aiDefaults = {
-    startDate:
-      days[0]?.date ?? dateStringOf(aiStart ? new Date(aiStart) : new Date()),
-    dayCount: Math.max(days.length, 2),
-    departure:
-      planDays[0]?.checkpoints.find((c) => c.type === "departure")?.name ?? "",
+  // 「続きの行程を提案」フォームの初期値(iOS の PlanExtensionView と同じ):
+  // 出発地 = 今のプランの最終地点(最後の日の最後のチェックポイント。無ければ
+  // 1 日目の出発チェックポイント)、出発日時 = 最終日の翌日 9:00
+  // (日が無ければ出発予定 ?? 開始 ?? 今日)。目的地は入力してもらうので初期値を入れない
+  const lastDay = planDays[planDays.length - 1];
+  const lastPlace =
+    lastDay?.checkpoints[lastDay.checkpoints.length - 1] ??
+    planDays[0]?.checkpoints.find((c) => c.type === "departure");
+  const planStart = trip.departure_at ?? trip.started_at;
+  const planStartDate = planStart ? new Date(planStart) : null;
+  const extensionDefaults: PlanExtensionDefaults = {
+    departure: lastPlace
+      ? {
+          name: lastPlace.name,
+          latitude: lastPlace.latitude,
+          longitude: lastPlace.longitude,
+        }
+      : null,
+    departureDate: lastDay
+      ? nextDate(lastDay.date)
+      : dateStringOf(planStartDate ?? new Date()),
+    departureTime:
+      !lastDay && planStartDate ? timeStringOf(planStartDate) : "09:00",
   };
   // 編集フォームの初期値。出発予定は表示 TZ の壁時計に割って渡す(保存時も同じ扱い)
   const departureDate = trip.departure_at ? new Date(trip.departure_at) : null;
@@ -256,7 +269,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       days={planDays}
       // 移動手段は車に固定(古い旅行の null も car として AI に渡す)
       transport={trip.transport ?? "car"}
-      aiDefaults={aiDefaults}
+      extensionDefaults={extensionDefaults}
       header={header}
       footer={footer}
     />

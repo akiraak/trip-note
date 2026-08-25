@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createTripAction, startTripOutlineAction } from "./actions";
+import { createTripAction } from "./actions";
 import { TripOutlineStep } from "./trip-outline-step";
 import { PlaceLink, type LinkedPlace } from "../[id]/place-link";
+import { startTripOutlineAction } from "../outline-actions";
 import type { TripOutlineInput } from "@/lib/ai";
 
 // 旅行の作成フォーム(iOS の TripCreateView と同じ項目。移動手段は車固定)。

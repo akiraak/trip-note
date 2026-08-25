@@ -6,11 +6,8 @@ import type Database from "better-sqlite3";
 import {
   AI_MODELS,
   DEFAULT_AI_MODEL_ID,
-  buildPlanPrompt,
   buildTripOutlinePrompt,
   getAiModel,
-  parsePlanInput,
-  parsePlanSuggestion,
   parseTripOutlineInput,
   parseTripOutlineSuggestion,
   setAiModel,
@@ -69,50 +66,6 @@ describe("AI モデル設定", () => {
   });
 });
 
-describe("parsePlanInput", () => {
-  const valid = {
-    departure: "東京駅",
-    destination: "自宅",
-    startDate: "2026-09-01",
-    dayCount: 3,
-    transport: "car",
-    request: "温泉に入りたい",
-  };
-
-  it("正常な入力を受け付ける", () => {
-    expect(parsePlanInput(valid)).toEqual(valid);
-  });
-
-  it("transport / request は省略できる", () => {
-    const input = parsePlanInput({
-      departure: "東京駅",
-      destination: "自宅",
-      startDate: "2026-09-01",
-      dayCount: 1,
-    });
-    expect(input.transport).toBeNull();
-    expect(input.request).toBeNull();
-  });
-
-  it("出発地・到着予定地が空なら拒否する", () => {
-    expect(() => parsePlanInput({ ...valid, departure: " " })).toThrow(
-      /出発地/,
-    );
-    expect(() => parsePlanInput({ ...valid, destination: "" })).toThrow(
-      /到着予定地/,
-    );
-  });
-
-  it("開始日の形式と日数の範囲を検証する", () => {
-    expect(() => parsePlanInput({ ...valid, startDate: "9/1" })).toThrow(
-      /YYYY-MM-DD/,
-    );
-    expect(() => parsePlanInput({ ...valid, dayCount: 0 })).toThrow(/日数/);
-    expect(() => parsePlanInput({ ...valid, dayCount: 31 })).toThrow(/日数/);
-    expect(() => parsePlanInput({ ...valid, dayCount: 1.5 })).toThrow(/日数/);
-  });
-});
-
 describe("parseTripOutlineInput", () => {
   const valid = {
     destination: "シカゴ",
@@ -167,69 +120,6 @@ describe("parseTripOutlineInput", () => {
     expect(() =>
       parseTripOutlineInput({ ...valid, departureTime: "25:00" }),
     ).toThrow(/HH:mm/);
-  });
-});
-
-describe("parsePlanSuggestion", () => {
-  const day = {
-    date: "2026-09-01",
-    title: "松本周辺を観光して泊",
-    area: "松本市",
-    checkpoints: [
-      { type: "departure", name: "東京駅", note: "" },
-      { type: "sightseeing", name: "松本城", note: "国宝" },
-    ],
-  };
-
-  it("正常な応答をパースし、空文字 note は null に寄せる", () => {
-    const suggestion = parsePlanSuggestion({ days: [day] });
-    expect(suggestion.days).toHaveLength(1);
-    expect(suggestion.days[0].checkpoints[0].note).toBeNull();
-    expect(suggestion.days[0].checkpoints[1].note).toBe("国宝");
-  });
-
-  it("チェックポイントの概算座標を通し、不正・片方だけは null に寄せる", () => {
-    const suggestion = parsePlanSuggestion({
-      days: [
-        {
-          ...day,
-          checkpoints: [
-            { type: "sightseeing", name: "松本城", note: "", latitude: 36.2381, longitude: 137.969 },
-            { type: "lodging", name: "宿", note: "", latitude: 36.26 },
-            { type: "cafe", name: "喫茶店", note: "", latitude: 91, longitude: 137 },
-          ],
-        },
-      ],
-    });
-    const checkpoints = suggestion.days[0].checkpoints;
-    expect([checkpoints[0].latitude, checkpoints[0].longitude]).toEqual([36.2381, 137.969]);
-    expect([checkpoints[1].latitude, checkpoints[1].longitude]).toEqual([null, null]);
-    expect([checkpoints[2].latitude, checkpoints[2].longitude]).toEqual([null, null]);
-  });
-
-  it("許可リスト外の種別は other に寄せる", () => {
-    const suggestion = parsePlanSuggestion({
-      days: [
-        {
-          ...day,
-          checkpoints: [{ type: "onsen", name: "浅間温泉", note: "" }],
-        },
-      ],
-    });
-    expect(suggestion.days[0].checkpoints[0].type).toBe("other");
-  });
-
-  it("構造が不正なら throw する", () => {
-    expect(() => parsePlanSuggestion(null)).toThrow(/解釈/);
-    expect(() => parsePlanSuggestion({ days: [] })).toThrow(/解釈/);
-    expect(() =>
-      parsePlanSuggestion({ days: [{ ...day, date: "9月1日" }] }),
-    ).toThrow(/解釈/);
-    expect(() =>
-      parsePlanSuggestion({
-        days: [{ ...day, checkpoints: [{ type: "cafe", name: "" }] }],
-      }),
-    ).toThrow(/解釈/);
   });
 });
 
@@ -321,26 +211,6 @@ describe("parseTripOutlineSuggestion", () => {
         candidates: [{ ...candidate, nights: [{ area: "松本", name: "" }] }],
       }),
     ).toThrow(/解釈/);
-  });
-});
-
-describe("buildPlanPrompt", () => {
-  it("入力の全項目をプロンプトに含める", () => {
-    const { system, user } = buildPlanPrompt({
-      departure: "東京駅",
-      destination: "自宅",
-      startDate: "2026-09-01",
-      dayCount: 3,
-      transport: "car",
-      request: "温泉に入りたい",
-    });
-    expect(system).toContain("departure");
-    expect(user).toContain("東京駅");
-    expect(user).toContain("自宅");
-    expect(user).toContain("2026-09-01");
-    expect(user).toContain("3日");
-    expect(user).toContain("car");
-    expect(user).toContain("温泉に入りたい");
   });
 });
 
