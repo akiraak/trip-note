@@ -2,6 +2,27 @@
 
 ## 2026-08-25
 
+- アプリで写真やビデオを撮影したら iOS の写真アプリで見れるようにする（既存分の書き出しも含む）
+  [plan](docs/plans/archive/save-captures-to-photo-library.md)
+  - 記録バーの📷で撮ったものは**アプリの中にしか残らなかった**ので、撮影と同時に写真アプリ
+    （カメラロール）にも別のコピーとして入れる。`UIImagePickerController` のカメラは
+    撮影結果をライブラリに自動保存しないため、`PHAssetCreationRequest` で明示的に書く
+  - 権限は**追加専用**（`NSPhotoLibraryAddUsageDescription` / `.addOnly`）。「旅ログ」アルバムを
+    作る案は読み書き権限が要るので見送り、保存先はカメラロールのみにした
+  - 写真アプリ側の日付・場所は `creationDate` / `location` で明示的に付ける。ファイル自身の
+    メタデータに依存しないので、EXIF の無い動画や古いメディアでも撮った日の位置に並ぶ
+  - 保存は**おまけの書き出し**で、失敗しても記録側（`MediaEntity`）は必ず残す。権限拒否は
+    初回だけ記録バーに案内を出して以後は黙る（毎回出すと撮影のたびに邪魔になる）
+  - `PHAssetResourceCreationOptions.shouldMoveFile` は既定（false）のまま。true にすると
+    元ファイルを持って行かれ、動画は直後の `MediaImporter.importVideo` が失敗する
+  - `Domain/PhotoExifWriter.swift`（新規）で `DateTimeOriginal` / `OffsetTimeOriginal` と GPS を
+    書いた JPEG を作る。写真アプリから他アプリへ書き出しても撮影日時・場所が残る
+  - ついでに、アプリ内カメラ撮影の `MediaEntity` にも撮影位置が付くようにした
+    （`LocationRecorder.lastRecordedCoordinate` = 記録中の直近の点。単発測位はしない）
+  - **既存分の書き出しは一度きりの後始末**として、`#if DEBUG` の一時コードを実機で 1 回流して
+    削除した（恒久機能にすると出どころを区別できず二重取り込みの温床になるため）
+  - iOS のみ。**スキーマ・API 契約・Web は変更なし**（撮影は iOS 固有の操作）
+
 - 旅行画面の既存の予定にさらに場所と出発時間を入れてプランを追加する
   [plan](docs/plans/archive/plan-extension.md)
   - 例: シアトル → シカゴのプランを作った旅行に「シアトルまで帰る」区間を足せるようにした

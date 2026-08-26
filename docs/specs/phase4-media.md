@@ -238,6 +238,18 @@ iOS → サーバの一方向アップロードのまま、削除だけ双方向
     (`TEST_RUNNER_TRIPNOTE_TEST_SERVER_URL` / `TEST_RUNNER_TRIPNOTE_TEST_API_KEY`。
     UI テストはシミュレータ内で動くので、付けないと届かず skip される)
 
+## 検証結果(2026-08-25 / 写真アプリへの保存)
+
+- iOS ユニットテスト 212 件成功(`PhotoExifWriterTests`: 書いた EXIF を
+  `MediaImporter.exifDate` / `exifCoordinate` で読み戻して一致すること、
+  南緯・西経の符号、座標なしで GPS を書かないこと)。Release 構成のビルドも成功
+- 実機確認(iPhone 14 Pro): 撮影 → 写真アプリの「最近の項目」に出る・撮影日時と撮影地が付く・
+  動画も再生できてアプリ内の MEDIA にも残る(`shouldMoveFile` の取り違えなし)
+- **既存分の書き出しは一度きりの後始末として実施した**(実機で 1 回実行して完了)。
+  対応前に撮ったメディアを `PHAssetCreationRequest` で書き出す一時コードを
+  `#if DEBUG` で入れ、実行を見届けてから削除した。恒久機能としては持たない
+  (必要になったら作り直す)
+
 ## 将来課題(スコープ外)
 
 - trip 削除(tombstone)時のメディアファイル GC。個別削除は

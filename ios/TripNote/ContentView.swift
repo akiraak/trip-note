@@ -8,10 +8,6 @@ struct ContentView: View {
     @Environment(MediaImporter.self) private var importer
     @Environment(ActiveTripContext.self) private var activeTrip
     @Environment(\.scenePhase) private var scenePhase
-    #if DEBUG
-    // 【一時コード】PhotoLibraryBackfill の対象を数えるためだけに使う(実行後に消す)
-    @Environment(\.modelContext) private var modelContext
-    #endif
     // 削除済み(tombstone)は表示しない。未出発(startedAt nil)は先頭に来る
     @Query(
         filter: #Predicate<TripEntity> { $0.deletedAt == nil },
@@ -139,10 +135,6 @@ struct ContentView: View {
             recorder.ensureRecording()
             recorder.startWatchdog()
             loadPendingShare()
-            #if DEBUG
-            // 【一時コード】写真アプリ保存の対応前に撮った分の書き出し(実行後に消す)
-            await PhotoLibraryBackfill.runIfNeeded(modelContext: modelContext, store: importer.store)
-            #endif
             if !recorder.isRecording {
                 await sync.syncNow()
             }
