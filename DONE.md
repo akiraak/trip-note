@@ -1,5 +1,32 @@
 # DONE - 完了済みタスク
 
+## 2026-08-25
+
+- 旅行画面の既存の予定にさらに場所と出発時間を入れてプランを追加する
+  [plan](docs/plans/archive/plan-extension.md)
+  - 例: シアトル → シカゴのプランを作った旅行に「シアトルまで帰る」区間を足せるようにした
+  - 旅行作成時の「日数・宿泊地候補」(`/api/ai/trip-outline`)が既に同じことをしており、
+    足りないのは出発点だけだった（採用が常に 1 日目起点・`trip.destination` 固定だった）ので、
+    **採用の起点と到着地名を引数化**して導線を足しただけ。AI・スキーマ・エンドポイントは増やしていない
+  - Web `AdoptOutline` に `startDate` / `destination`、iOS `PlanEditor.adopt(_ candidate:)` に
+    `startDate` / `destinationName` を追加（省略時は従来どおり）。既存の日と重なる日付は既存の日を
+    再利用する現行ロジックがそのまま効くので、最終日と同じ日に出発しても日が二重にならない
+  - iOS は `Views/PlanExtensionView.swift`(新規シート)を旅行詳細のプラン末尾のボタンから開く。
+    出発地はプランの最終地点を自動で使い(`PlanEditor.lastPlace` ?? 1 日目の出発チェックポイント)、
+    入力は目的地と出発日時(既定は最終日の翌日 9:00)だけ。候補の表示は作成時と共用に切り出した
+    (`Views/TripOutlineCandidates.swift`)
+  - Web は同じ導線を旅行詳細のボタン行の上にインライン展開(`trips/[id]/plan-extension.tsx`)。
+    候補表示・ジョブのポーリング・Server Action を `trips/` 直下へ切り出して作成画面と共用
+    (`outline-candidates.tsx` / `outline-map.tsx` / `outline-actions.ts` / `use-outline-job.ts`)
+  - `trips.destination` は書き換えない（追加区間の到着地は最終日の `destination` チェックポイント）
+  - **あわせて「AI で行程を提案」(`/api/ai/plan`)を関連コードごと削除**（続きの追加ができれば
+    使わず、似た導線が 2 つ並んで紛らわしいため）。`ai_jobs.kind` は `trip_outline` のみになった
+    （DB の check 制約は据え置き）。`docs/specs/server-api.md` を追従
+  - iOS 204 テスト緑 / Web 200 テスト緑 + lint・build 通過。実機と Web で 1 往復
+    （目的地と出発日時 → 候補 → 採用 → 最終日の続きに並ぶ）を確認済み
+  - 本番反映済み（g3plus。API・env・compose の変更は無く `git pull` → rebuild のみ。
+    `/api/ai/plan` は 404、`/api/ai/jobs` の `kind` は `trip_outline` のみを受け付ける）
+
 ## 2026-08-24
 
 - クライアント側で GPS の on/off を保存し、on なのに動いていなければ自動で再開する(iOS)
