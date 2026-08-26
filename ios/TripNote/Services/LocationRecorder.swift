@@ -42,6 +42,15 @@ final class LocationRecorder: NSObject {
         authorizationStatus = manager.authorizationStatus
     }
 
+    /// 直近に記録した点の座標。撮影したメディアに撮影位置を付けるために外から読む
+    /// (記録していない・まだ 1 点も無い間は nil。撮影のたびに単発測位はしない)
+    var lastRecordedCoordinate: MediaCoordinate.Coordinate? {
+        guard let lastRecorded else { return nil }
+        return MediaCoordinate.Coordinate(
+            latitude: lastRecorded.latitude, longitude: lastRecorded.longitude
+        )
+    }
+
     // MARK: - 記録の開始 / 停止
 
     /// 指定した旅行への記録を開始する(旅行詳細画面から呼ぶ)。

@@ -40,6 +40,9 @@ enum RecordingBarState {
         var locationError: String?
         var isLocationDenied: Bool = false
         var isImporting: Bool = false
+        /// 撮影まわりの知らせ(写真アプリへの保存に失敗した等)。
+        /// 記録そのものは動いているので、位置情報のエラーより後に出す
+        var mediaError: String?
         /// 記録中だが位置情報が長く途切れている(LocationRecorder.isStalled)
         var isStalled: Bool = false
     }
@@ -90,6 +93,9 @@ enum RecordingBarState {
         }
         if input.isLocationDenied {
             return .error(message: deniedText, showsSettings: true)
+        }
+        if let error = input.mediaError {
+            return .error(message: error, showsSettings: false)
         }
         if isRecording {
             // 自動の入れ直しでも戻らないときだけ知らせる(短い途切れは黙って直すので出さない)

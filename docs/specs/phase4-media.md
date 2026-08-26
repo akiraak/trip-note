@@ -27,8 +27,34 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
   後から trip に紐付ける主動線**で、シミュレータでの E2E 確認も兼ねる
   (記録中の撮影は画面下の記録バーの📷から)。撮影時刻は EXIF(`DateTimeOriginal`)/
   動画の `creationDate` から取り、取れなければ現在時刻
-- **権限**: `NSCameraUsageDescription` / `NSMicrophoneUsageDescription`(動画の音声)。
-  PhotosPicker は out-of-process のため写真ライブラリ権限は不要
+- **権限**: `NSCameraUsageDescription` / `NSMicrophoneUsageDescription`(動画の音声)/
+  `NSPhotoLibraryAddUsageDescription`(下の「写真アプリへの保存」)。
+  PhotosPicker は out-of-process のため写真ライブラリの**読み取り**権限は不要
+
+### 写真アプリへの保存(撮影分)
+
+記録バーの📷で撮ったものは**アプリの中にしか残らない**ため、撮影と同時に iOS の写真アプリ
+(カメラロール)にも**別のコピー**として入れる。アプリ内の `MediaEntity` は今までどおり残るので、
+両方に持つことになる。
+
+- 対象は `CameraPicker` 経由の撮影のみ。`PhotosPicker` で取り込んだものは**元々ライブラリに
+  ある**ので保存しない(同じ写真が二重に増える)
+- `Services/PhotoLibrarySaver.swift` が `PHAssetCreationRequest` で追加する。権限は**追加専用**
+  (`.addOnly`)。アルバムの作成・取得には読み書き権限が要るため、保存先はカメラロールのみ
+- 写真アプリ側の**日付・場所は `creationDate` / `location` で明示的に付ける**。
+  ファイル自身のメタデータに依存しないので、動画や EXIF の無い画像でも正しい日付・場所で並ぶ
+- `PHAssetResourceCreationOptions.shouldMoveFile` は**既定(false)のまま**。true にすると
+  元ファイルを持って行かれ、動画は直後の `MediaImporter.importVideo` が失敗する
+- 保存は**おまけの書き出し**で、失敗しても記録側は必ず残す(`importPhoto` / `importVideo` は
+  必ず実行する)。権限拒否は**初回だけ**記録バーに案内を出し、以後は黙る
+  (`UserDefaults` の `photoLibrary.deniedNoticeShown`)。その他の失敗は記録バーに一時的に出す
+- ON/OFF の設定は無い(アプリに設定画面が無いため)。拒否されたら保存しないだけ
+- **写真の EXIF**: `UIImage` からの再エンコードは EXIF を持たないため、
+  `Domain/PhotoExifWriter.swift` が `DateTimeOriginal` / `OffsetTimeOriginal` と GPS を書いた
+  JPEG(縮小なし・品質 0.95)を作って渡す。写真アプリから他アプリへ書き出しても撮影日時・
+  場所が残る。書式は読み側(`MediaCaptureTime` / `MediaCoordinate`)に合わせてある
+- **運用上の注意**: 写真アプリに入ったものを後から MEDIA セクションの「写真・動画を追加」
+  (`PhotosPicker`)で選ぶと、アプリ内に**二重の `MediaEntity`** ができる。重複検出はしない
 
 ### 保存形式(圧縮方針)
 
@@ -49,8 +75,9 @@ iOS / Web の閲覧画面と地図上で見られるようにする。
   **地図では記録点への紐付けよりこちらを優先する**(iOS は `MediaEntity.displayCoordinate`、
   Web は `coalesce(m.latitude, p.latitude)`)。
   ライブラリ取り込みは JPEG 再エンコードで EXIF が落ちるので元データから先に読み、
-  動画は mp4 変換前の元ファイルから読む。アプリ内カメラ撮影は UIImage 経由で
-  EXIF を持たないため位置は付かない(記録中なら記録点に紐付く)
+  動画は mp4 変換前の元ファイルから読む。アプリ内カメラ撮影は UIImage 経由で EXIF を
+  持たないため、**記録中の直近の記録点**(`LocationRecorder.lastRecordedCoordinate`)を
+  撮影位置として付ける(記録していなければ nil。撮影のたびに単発測位はしない)
 - 紐付け先の点は「その trip の記録点のうち takenAt に最も近いもの」
   (`Domain/MediaAttachment.swift` の純関数。記録中の撮影なら実質直近の点)。点が無ければ nil
 - **記録範囲の外は 30 分まで**(`MediaAttachment.outsideTolerance`)。記録の

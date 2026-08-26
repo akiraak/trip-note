@@ -154,6 +154,37 @@ struct RecordingBarStateTests {
         #expect(content.detail == .error(message: "保存に失敗しました", showsSettings: false))
     }
 
+    @Test func 撮影まわりの知らせは記録中の実績より優先して出す() throws {
+        let recording = trip("記録中", startedAt: Date())
+        let content = try #require(
+            RecordingBarState.content(
+                for: .init(
+                    recordingTrip: recording,
+                    recordedPointCount: 5,
+                    mediaError: PhotoLibrarySaver.deniedMessage
+                )
+            )
+        )
+        #expect(
+            content.detail
+                == .error(message: PhotoLibrarySaver.deniedMessage, showsSettings: false)
+        )
+    }
+
+    @Test func 位置情報のエラーは撮影の知らせより優先して出す() throws {
+        let recording = trip("記録中", startedAt: Date())
+        let content = try #require(
+            RecordingBarState.content(
+                for: .init(
+                    recordingTrip: recording,
+                    locationError: "保存に失敗しました",
+                    mediaError: "写真アプリへの保存に失敗しました"
+                )
+            )
+        )
+        #expect(content.detail == .error(message: "保存に失敗しました", showsSettings: false))
+    }
+
     @Test func 取り込み中は記録中でも取り込みを優先して出す() throws {
         let recording = trip("記録中", startedAt: Date())
         let content = try #require(

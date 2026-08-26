@@ -8,6 +8,10 @@ struct ContentView: View {
     @Environment(MediaImporter.self) private var importer
     @Environment(ActiveTripContext.self) private var activeTrip
     @Environment(\.scenePhase) private var scenePhase
+    #if DEBUG
+    // 【一時コード】PhotoLibraryBackfill の対象を数えるためだけに使う(実行後に消す)
+    @Environment(\.modelContext) private var modelContext
+    #endif
     // 削除済み(tombstone)は表示しない。未出発(startedAt nil)は先頭に来る
     @Query(
         filter: #Predicate<TripEntity> { $0.deletedAt == nil },
@@ -30,6 +34,13 @@ struct ContentView: View {
     @State private var captureTrip: TripEntity?
     /// カメラの無い環境で記録バーの撮影ボタンの代わりに出る PhotosPicker の選択
     @State private var barPickerItems: [PhotosPickerItem] = []
+    /// 写真アプリへの保存(おまけの書き出し)の知らせ。記録バーの 2 行目に一時的に出す
+    @State private var photoLibraryNotice: String?
+
+    /// 権限拒否の案内を出したか。毎回出すと撮影のたびに邪魔になるので初回だけ出す
+    private static let deniedNoticeKey = "photoLibrary.deniedNoticeShown"
+    /// 知らせを出しておく時間(過ぎたら記録中の表示に戻す)
+    private static let noticeDuration: Duration = .seconds(8)
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -128,6 +139,10 @@ struct ContentView: View {
             recorder.ensureRecording()
             recorder.startWatchdog()
             loadPendingShare()
+            #if DEBUG
+            // 【一時コード】写真アプリ保存の対応前に撮った分の書き出し(実行後に消す)
+            await PhotoLibraryBackfill.runIfNeeded(modelContext: modelContext, store: importer.store)
+            #endif
             if !recorder.isRecording {
                 await sync.syncNow()
             }
@@ -194,6 +209,7 @@ struct ContentView: View {
                 isLocationDenied: recorder.authorizationStatus == .denied
                     || recorder.authorizationStatus == .restricted,
                 isImporting: importer.isImporting,
+                mediaError: photoLibraryNotice,
                 isStalled: recorder.isStalled
             )
         )
@@ -220,12 +236,59 @@ struct ContentView: View {
         let target = captureTrip ?? barContent?.trip
         captureTrip = nil
         guard let result, let trip = target else { return }
+        let takenAt = Date()
+        // 撮影位置は記録中の直近の点(記録していなければ付かない)
+        let coordinate = recorder.lastRecordedCoordinate
         Task {
             switch result {
             case .photo(let image):
-                await importer.importPhoto(image, into: trip, takenAt: Date())
+                // 写真アプリ用は縮小なしの JPEG(アプリ内保存の圧縮版とは別物)。
+                // 書き出したファイル自身にも撮影日時・位置が残るよう EXIF を焼き込む
+                if let exported = await PhotoExifWriter.jpegData(
+                    from: image, takenAt: takenAt, coordinate: coordinate, quality: 0.95
+                ) {
+                    await saveToPhotoLibrary {
+                        try await PhotoLibrarySaver.savePhoto(
+                            data: exported, takenAt: takenAt, coordinate: coordinate
+                        )
+                    }
+                }
+                await importer.importPhoto(
+                    image, into: trip, takenAt: takenAt, coordinate: coordinate
+                )
             case .video(let url):
-                await importer.importVideo(at: url, into: trip, takenAt: Date())
+                // importVideo は先頭でこの一時ファイルを移動するので、書き出しを待ってから呼ぶ
+                await saveToPhotoLibrary {
+                    try await PhotoLibrarySaver.saveVideo(
+                        at: url, takenAt: takenAt, coordinate: coordinate
+                    )
+                }
+                await importer.importVideo(at: url, into: trip, takenAt: takenAt)
+            }
+        }
+    }
+
+    /// 写真アプリへの保存はおまけなので、失敗しても知らせるだけでアプリ内の取り込みは続ける
+    private func saveToPhotoLibrary(_ save: () async throws -> Void) async {
+        do {
+            try await save()
+        } catch PhotoLibrarySaver.SaveError.denied {
+            guard !UserDefaults.standard.bool(forKey: Self.deniedNoticeKey) else { return }
+            UserDefaults.standard.set(true, forKey: Self.deniedNoticeKey)
+            showPhotoLibraryNotice(PhotoLibrarySaver.deniedMessage)
+        } catch {
+            showPhotoLibraryNotice(error.localizedDescription)
+        }
+    }
+
+    /// 記録バーに一時的に知らせを出す。出しっぱなしにすると記録中の実績が隠れ続けるため、
+    /// しばらくしたら自分で消す(その間に新しい知らせが来たらそちらを優先する)
+    private func showPhotoLibraryNotice(_ message: String) {
+        photoLibraryNotice = message
+        Task { @MainActor in
+            try? await Task.sleep(for: Self.noticeDuration)
+            if photoLibraryNotice == message {
+                photoLibraryNotice = nil
             }
         }
     }
