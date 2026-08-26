@@ -23,7 +23,7 @@ import { formatDistance } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
 import { dayMapPoints, type DayMapData } from "@/lib/plan-map";
 import { buildLegs, totalLegMeters, type ResolvedLeg } from "@/lib/route-legs";
-import type { CheckpointType } from "@/lib/types";
+import type { PlanCheckpoint, PlanDay } from "@/lib/trip-plan";
 
 // 旅行詳細のプラン(日別)表示・編集。データは server component (page.tsx) から
 // 受け取り、変更は Server Actions 経由。アクションが revalidatePath するので
@@ -31,25 +31,9 @@ import type { CheckpointType } from "@/lib/types";
 // 地図は画面いっぱいの 1 枚(TripMap)に集約したので、日カードにミニ地図は持たない。
 // 代わりに日の見出しを押すとその日へ地図が寄る
 
-export type PlanCheckpoint = {
-  id: string;
-  type: CheckpointType;
-  name: string;
-  latitude: number | null;
-  longitude: number | null;
-  planned_time: string | null;
-  note: string | null;
-};
-
-export type PlanDay = {
-  id: string;
-  date: string;
-  title: string | null;
-  note: string | null;
-  /** 前泊地を出発する時刻 "HH:MM"(iOS で設定して同期されてくる) */
-  departure_time: string | null;
-  checkpoints: PlanCheckpoint[];
-};
+// 日・チェックポイントの型は読み出し側(lib/trip-plan.ts)が正。
+// 従来どおりここからも参照できるように再エクスポートする
+export type { PlanCheckpoint, PlanDay };
 
 /** 続きの行程を提案するフォームの初期値(出発地 = 今のプランの最終地点) */
 export type PlanExtensionDefaults = {

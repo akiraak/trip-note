@@ -195,6 +195,105 @@ describe("POST /api/sync", () => {
     expect(pulled.days[0].deleted_at).toBe("2026-08-20T12:00:00.000Z");
   });
 
+  // tombstone は LWW の外: 一度削除された行は復活せず、親が削除済みなら子も
+  // 削除済みになる(孤児チェックポイントを作らない。
+  // docs/plans/deleted-checkpoint-on-map.md)
+  it("削除済みの行は、新しい updated_at で送り直しても復活しない", async () => {
+    await push({ trips: [trip()], days: [day()], checkpoints: [checkpoint()] });
+    await push({
+      checkpoints: [
+        checkpoint({
+          deleted_at: "2026-08-20T12:00:00.000Z",
+          updated_at: "2026-08-20T12:00:00.000Z",
+        }),
+      ],
+    });
+    // 削除を知らないクライアントが、あとから生きた行を送ってくる
+    await push({
+      checkpoints: [
+        checkpoint({ name: "編集した名前", updated_at: "2026-08-20T13:00:00.000Z" }),
+      ],
+    });
+
+    const pulled = await (await pull()).json();
+    expect(pulled.checkpoints[0].deleted_at).toBe("2026-08-20T12:00:00.000Z");
+    // 削除以外の編集は LWW どおり反映される
+    expect(pulled.checkpoints[0].name).toBe("編集した名前");
+  });
+
+  it("古い updated_at の tombstone でも削除は反映される", async () => {
+    await push({ trips: [trip()], days: [day()], checkpoints: [checkpoint()] });
+    // 受け側で並べ替えなどがあって updated_at が進んでいる状態
+    await push({
+      checkpoints: [checkpoint({ sort_order: 3, updated_at: "2026-08-21T10:00:00.000Z" })],
+    });
+    // そこへ、それより前に行われた削除が届く(LWW なら負けてしまう)
+    await push({
+      checkpoints: [
+        checkpoint({
+          deleted_at: "2026-08-20T18:00:00.000Z",
+          updated_at: "2026-08-20T18:00:00.000Z",
+        }),
+      ],
+    });
+
+    const pulled = await (await pull()).json();
+    expect(pulled.checkpoints[0].deleted_at).toBe("2026-08-20T18:00:00.000Z");
+    // 再配布されるようサーバ時刻で updated_at が進む
+    expect(pulled.checkpoints[0].updated_at > "2026-08-21T10:00:00.000Z").toBe(true);
+  });
+
+  it("親の日が削除済みなら、生きたチェックポイントを送っても削除済みで入る", async () => {
+    await push({ trips: [trip()], days: [day()] });
+    await push({
+      days: [
+        day({
+          deleted_at: "2026-08-20T12:00:00.000Z",
+          updated_at: "2026-08-20T12:00:00.000Z",
+        }),
+      ],
+    });
+    await push({
+      checkpoints: [checkpoint({ updated_at: "2026-08-20T13:00:00.000Z" })],
+    });
+
+    const pulled = await (await pull()).json();
+    expect(pulled.checkpoints).toHaveLength(1);
+    expect(pulled.checkpoints[0].deleted_at).toBe("2026-08-20T12:00:00.000Z");
+  });
+
+  it("日の削除を受け取ったら、サーバに残っているチェックポイントも道連れにする", async () => {
+    await push({ trips: [trip()], days: [day()], checkpoints: [checkpoint()] });
+    // 日の tombstone だけ届く(子の push が失敗した・LWW で負けた場合)
+    await push({
+      days: [
+        day({
+          deleted_at: "2026-08-20T12:00:00.000Z",
+          updated_at: "2026-08-20T12:00:00.000Z",
+        }),
+      ],
+    });
+
+    const pulled = await (await pull()).json();
+    expect(pulled.checkpoints[0].deleted_at).not.toBeNull();
+  });
+
+  it("旅行の削除を受け取ったら、日とチェックポイントも道連れにする", async () => {
+    await push({ trips: [trip()], days: [day()], checkpoints: [checkpoint()] });
+    await push({
+      trips: [
+        trip({
+          deleted_at: "2026-08-20T12:00:00.000Z",
+          updated_at: "2026-08-20T12:00:00.000Z",
+        }),
+      ],
+    });
+
+    const pulled = await (await pull()).json();
+    expect(pulled.days[0].deleted_at).not.toBeNull();
+    expect(pulled.checkpoints[0].deleted_at).not.toBeNull();
+  });
+
   it("親の無い days / checkpoints はスキップして数を返す", async () => {
     await push({ trips: [trip()] });
     const res = await push({

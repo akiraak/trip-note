@@ -179,6 +179,156 @@ struct PlanPullTests {
         #expect(!checkpoint.needsSync)
     }
 
+    // MARK: - tombstone は LWW の外(削除は解除しない・親が消えたら子も消す)
+    // docs/plans/deleted-checkpoint-on-map.md
+
+    private func checkpointRecord(
+        id: UUID,
+        trip: TripEntity,
+        day: TripDayEntity,
+        name: String = "サーバ側の編集",
+        updatedAt: Date,
+        deletedAt: Date? = nil
+    ) throws -> CheckpointPullRecord {
+        let deleted = deletedAt.map { "\"\(SyncDateFormat.string(from: $0))\"" } ?? "null"
+        return try decode(CheckpointPullRecord.self, """
+        { "id": "\(id.uuidString)", "trip_id": "\(trip.id.uuidString)",
+          "trip_day_id": "\(day.id.uuidString)", "type": "sightseeing",
+          "name": "\(name)", "latitude": 36.0, "longitude": 138.0,
+          "planned_time": null, "note": null, "sort_order": 0,
+          "updated_at": "\(SyncDateFormat.string(from: updatedAt))",
+          "deleted_at": \(deleted) }
+        """)
+    }
+
+    @Test func 削除済みのチェックポイントは生きたレコードが来ても復活しない() throws {
+        let trip = TripEntity(title: "t")
+        let day = TripDayEntity(date: "2026-09-01", trip: trip)
+        let checkpoint = CheckpointEntity(
+            type: .cafe,
+            name: "消した店",
+            updatedAt: Date(timeIntervalSince1970: 60),
+            trip: trip,
+            tripDay: day
+        )
+        checkpoint.deletedAt = Date(timeIntervalSince1970: 60)
+        // 削除を知らないクライアントの編集が、より新しい updated_at で返ってくる
+        let record = try checkpointRecord(
+            id: checkpoint.id, trip: trip, day: day,
+            updatedAt: Date(timeIntervalSince1970: 120)
+        )
+        #expect(PlanPull.apply(record, to: checkpoint, day: day))
+        #expect(checkpoint.deletedAt == Date(timeIntervalSince1970: 60))
+        // 削除以外の編集は LWW どおり反映される
+        #expect(checkpoint.name == "サーバ側の編集")
+    }
+
+    // 本番で実際に起きていたケース: ローカルで並べ替えなどをして updatedAt が
+    // 進んでいると、サーバの削除が LWW で負けて永久に取り込まれなかった
+    @Test func 古いレコードでもtombstoneは取り込む() throws {
+        let trip = TripEntity(title: "t")
+        let day = TripDayEntity(date: "2026-08-27", trip: trip)
+        let checkpoint = CheckpointEntity(
+            type: .lodging,
+            name: "ラピッドシティ市街のホテル",
+            updatedAt: Date(timeIntervalSince1970: 120),
+            trip: trip,
+            tripDay: day
+        )
+        // 削除は「ローカルの最終更新より前」に行われている
+        let record = try checkpointRecord(
+            id: checkpoint.id, trip: trip, day: day,
+            name: "ラピッドシティ市街のホテル",
+            updatedAt: Date(timeIntervalSince1970: 60),
+            deletedAt: Date(timeIntervalSince1970: 60)
+        )
+        // LWW としては負ける(本体は上書きしない)が、削除だけは取り込む
+        #expect(!PlanPull.apply(record, to: checkpoint, day: day))
+        #expect(checkpoint.deletedAt == Date(timeIntervalSince1970: 60))
+        #expect(checkpoint.updatedAt == Date(timeIntervalSince1970: 120))
+    }
+
+    @Test func 日と旅行も古いレコードのtombstoneを取り込む() throws {
+        let day = TripDayEntity(date: "2026-08-27", updatedAt: Date(timeIntervalSince1970: 120))
+        let dayRecord = try decode(TripDayPullRecord.self, """
+        { "id": "\(day.id.uuidString)", "trip_id": "\(UUID().uuidString)",
+          "date": "2026-08-27", "title": null, "note": null,
+          "departure_time": null,
+          "updated_at": "1970-01-01T00:01:00.000Z",
+          "deleted_at": "1970-01-01T00:01:00.000Z" }
+        """)
+        #expect(!PlanPull.apply(dayRecord, to: day))
+        #expect(day.deletedAt == Date(timeIntervalSince1970: 60))
+
+        let trip = TripEntity(title: "ローカル", updatedAt: Date(timeIntervalSince1970: 120))
+        let tripRec = try tripRecord(
+            updatedAt: Date(timeIntervalSince1970: 60),
+            deletedAt: Date(timeIntervalSince1970: 60),
+            id: trip.id
+        )
+        #expect(!PlanPull.apply(tripRec, to: trip))
+        #expect(trip.deletedAt == Date(timeIntervalSince1970: 60))
+        #expect(trip.title == "ローカル")
+    }
+
+    @Test func 親の日が削除済みならチェックポイントも削除済みになる() throws {
+        let trip = TripEntity(title: "t")
+        let day = TripDayEntity(date: "2026-09-01", trip: trip)
+        day.deletedAt = Date(timeIntervalSince1970: 60)
+        let checkpoint = CheckpointEntity(
+            type: .lodging,
+            name: "岐阜の宿",
+            updatedAt: Date(timeIntervalSince1970: 0),
+            trip: trip,
+            tripDay: day
+        )
+        let record = try checkpointRecord(
+            id: checkpoint.id, trip: trip, day: day,
+            updatedAt: Date(timeIntervalSince1970: 120)
+        )
+        #expect(PlanPull.apply(record, to: checkpoint, day: day))
+        #expect(checkpoint.deletedAt == Date(timeIntervalSince1970: 60))
+        // 新規作成でも親の tombstone を継ぐ
+        let made = PlanPull.makeCheckpoint(record, trip: trip, day: day)
+        #expect(made.deletedAt == Date(timeIntervalSince1970: 60))
+    }
+
+    @Test func 削除済みの日に残ったチェックポイントは道連れにされる() throws {
+        let trip = TripEntity(title: "t")
+        let day = TripDayEntity(date: "2026-09-01", trip: trip)
+        let alive = CheckpointEntity(type: .cafe, name: "生き残り", trip: trip, tripDay: day)
+        alive.needsSync = false
+        let already = CheckpointEntity(type: .cafe, name: "削除済み", trip: trip, tripDay: day)
+        already.deletedAt = Date(timeIntervalSince1970: 30)
+        day.checkpoints = [alive, already]
+
+        // 日が生きているうちは何もしない
+        #expect(PlanPull.cascadeDelete(in: day) == 0)
+        #expect(alive.deletedAt == nil)
+
+        day.deletedAt = Date(timeIntervalSince1970: 60)
+        #expect(PlanPull.cascadeDelete(in: day, now: Date(timeIntervalSince1970: 90)) == 1)
+        #expect(alive.deletedAt == Date(timeIntervalSince1970: 60))
+        #expect(alive.updatedAt == Date(timeIntervalSince1970: 90))
+        // サーバへ伝えるため needsSync は立てる
+        #expect(alive.needsSync)
+        // 元から削除済みの行の削除時刻は動かさない
+        #expect(already.deletedAt == Date(timeIntervalSince1970: 30))
+    }
+
+    @Test func 削除済みの旅行の日も削除済みで作られる() throws {
+        let trip = TripEntity(title: "t")
+        trip.deletedAt = Date(timeIntervalSince1970: 60)
+        let record = try decode(TripDayPullRecord.self, """
+        { "id": "\(UUID().uuidString)", "trip_id": "\(trip.id.uuidString)",
+          "date": "2026-09-01", "title": null, "note": null,
+          "departure_time": null,
+          "updated_at": "1970-01-01T00:02:00.000Z", "deleted_at": null }
+        """)
+        let day = PlanPull.makeDay(record, trip: trip)
+        #expect(day.deletedAt == Date(timeIntervalSince1970: 60))
+    }
+
     @Test func makeCheckpointは関連を張りneedsSyncが下りている() throws {
         let trip = TripEntity(title: "t")
         let day = TripDayEntity(date: "2026-09-01", trip: trip)

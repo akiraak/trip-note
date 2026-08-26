@@ -4,7 +4,7 @@ import { DeleteMedia } from "./delete-media";
 import { DeleteTrip } from "./delete-trip";
 import { EditTrip } from "./edit-trip";
 import { EndTrip } from "./end-trip";
-import { type PlanDay, type PlanExtensionDefaults } from "./plan-section";
+import { type PlanExtensionDefaults } from "./plan-section";
 import { TripCanvas } from "./trip-canvas";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime, TIME_ZONE } from "@/lib/format";
@@ -12,13 +12,12 @@ import { dateStringOf, nextDate, timeStringOf } from "@/lib/plan";
 import { formatDistance, totalDistance } from "@/lib/geo";
 import { buildLegs, legKey } from "@/lib/route-legs";
 import { readCachedLegs } from "@/lib/routing";
+import { readTripPlan } from "@/lib/trip-plan";
 import {
   tripStatus,
-  type Checkpoint,
   type LocationPoint,
   type Media,
   type Trip,
-  type TripDay,
 } from "@/lib/types";
 
 export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
@@ -63,40 +62,13 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       longitude: m.marker_longitude as number,
     }));
 
-  // プラン(日別チェックポイント)。tombstone は表示しない
-  const days = db
-    .prepare(
-      "select * from trip_days where trip_id = ? and deleted_at is null order by date",
-    )
-    .all(id) as TripDay[];
-  const checkpoints = db
-    .prepare(
-      `select * from checkpoints where trip_id = ? and deleted_at is null
-       order by sort_order, created_at`,
-    )
-    .all(id) as Checkpoint[];
-  const checkpointsByDay = new Map<string, Checkpoint[]>();
-  for (const checkpoint of checkpoints) {
-    const list = checkpointsByDay.get(checkpoint.trip_day_id) ?? [];
-    list.push(checkpoint);
-    checkpointsByDay.set(checkpoint.trip_day_id, list);
-  }
-  const planDays: PlanDay[] = days.map((day) => ({
-    id: day.id,
-    date: day.date,
-    title: day.title,
-    note: day.note,
-    departure_time: day.departure_time,
-    checkpoints: (checkpointsByDay.get(day.id) ?? []).map((c) => ({
-      id: c.id,
-      type: c.type,
-      name: c.name,
-      latitude: c.latitude,
-      longitude: c.longitude,
-      planned_time: c.planned_time,
-      note: c.note,
-    })),
-  }));
+  // プラン(日別チェックポイント)。日カード・地図のピン・破線ルートは同じ集合から作る
+  // (tombstone は日・チェックポイントとも除外済み。lib/trip-plan.ts を参照)
+  const {
+    days: planDays,
+    markers: checkpointMarkers,
+    route: planRoute,
+  } = readTripPlan(id);
   // 「続きの行程を提案」フォームの初期値(iOS の PlanExtensionView と同じ):
   // 出発地 = 今のプランの最終地点(最後の日の最後のチェックポイント。無ければ
   // 1 日目の出発チェックポイント)、出発日時 = 最終日の翌日 9:00
@@ -129,25 +101,6 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
     departureTime: departureDate ? timeStringOf(departureDate) : null,
     destination: trip.destination ?? "",
   };
-  const checkpointMarkers = checkpoints
-    .filter((c) => c.latitude !== null && c.longitude !== null)
-    .map((c) => ({
-      id: c.id,
-      type: c.type,
-      name: c.name,
-      latitude: c.latitude as number,
-      longitude: c.longitude as number,
-    }));
-  // プランのルート用の座標列。checkpointMarkers は trip 全体を sort_order で並べたもので
-  // 日をまたぐ順序が保証されないため、日付順 → 日内 sort_order 順で別に組む
-  const planRoute = planDays.flatMap((day) =>
-    day.checkpoints
-      .filter((c) => c.latitude !== null && c.longitude !== null)
-      .map((c) => ({
-        latitude: c.latitude as number,
-        longitude: c.longitude as number,
-      })),
-  );
   // 日ごとのレグ(前泊地起点 + その日の訪問順)は、この全体レグ列の部分集合になる。
   // キャッシュ済みの分を初期値として渡し、初回描画から道路形状で描く(OSRM は呼ばない)
   const cachedLegs = readCachedLegs(
@@ -170,7 +123,7 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
         tripId={trip.id}
         initial={editInitial}
         timeZone={TIME_ZONE}
-        firstDayDate={days[0]?.date ?? null}
+        firstDayDate={planDays[0]?.date ?? null}
       />
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
         <Stat label="開始">

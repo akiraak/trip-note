@@ -93,6 +93,9 @@ final class SyncEngine {
         for record in response.days {
             if let day = fetchDay(id: record.id) {
                 PlanPull.apply(record, to: day)
+                // 削除済みの日にチェックポイントが残っていたら道連れにする
+                // (孤児を作らない。docs/plans/deleted-checkpoint-on-map.md)
+                PlanPull.cascadeDelete(in: day)
             } else if record.deletedAt == nil, let trip = fetchTrip(id: record.tripId) {
                 modelContext.insert(PlanPull.makeDay(record, trip: trip))
             }

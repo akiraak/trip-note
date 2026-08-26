@@ -158,6 +158,39 @@ const MIGRATIONS: string[] = [
   alter table media add column latitude real;
   alter table media add column longitude real;
   `,
+  // 親が削除済みなのに生きている行(孤児)の掃除。
+  // 日の削除と子の編集が別クライアントで前後すると、子の tombstone が LWW で
+  // 負けて生き残ることがあった。表示側(lib/trip-plan.ts)と同期側(api/sync)は
+  // 対処済みなので、ここでは残っている行を tombstone に揃える。
+  // updated_at も進めて、次の pull で iOS 側にも削除を伝える
+  // (docs/plans/deleted-checkpoint-on-map.md)
+  `
+  update trip_days set
+    deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  where deleted_at is null
+    and trip_id in (select id from trips where deleted_at is not null);
+
+  update checkpoints set
+    deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  where deleted_at is null
+    and trip_day_id in (select id from trip_days where deleted_at is not null);
+  `,
+  // 取りこぼされた削除を配り直す。
+  // pull は updated_at > since の行しか返さないため、クライアントが一度
+  // 取りこぼした削除(ローカルの updated_at が進んでいて LWW で負けた等)は
+  // 二度と届かず、そのクライアントにだけ削除済みの行が残り続ける。
+  // tombstone 行の updated_at を進めて、次の pull で必ず配り直す
+  // (削除済みという事実は変えないので、表示に影響はない)
+  `
+  update trips set updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    where deleted_at is not null;
+  update trip_days set updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    where deleted_at is not null;
+  update checkpoints set updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    where deleted_at is not null;
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする
