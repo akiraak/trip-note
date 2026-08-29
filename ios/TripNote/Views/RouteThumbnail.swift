@@ -77,24 +77,14 @@ struct RouteThumbnail: View {
         }
     }
 
-    /// 長い記録点列をサムネイル用に間引く(形は保ちつつ描画点数を抑える)
-    static func sampled(_ coordinates: [RoutePoint], limit: Int = 80) -> [RoutePoint] {
-        guard coordinates.count > limit else { return coordinates }
-        let step = Double(coordinates.count - 1) / Double(limit - 1)
-        return (0..<limit).map { coordinates[Int((Double($0) * step).rounded())] }
-    }
 }
 
 extension TripEntity {
-    /// サムネイルに出す座標列。記録があれば実績の軌跡、無ければプランのチェックポイント
-    var thumbnailRoute: [RoutePoint] {
-        let recorded = sortedPoints.map {
-            RoutePoint(latitude: $0.latitude, longitude: $0.longitude)
-        }
-        if !recorded.isEmpty {
-            return RouteThumbnail.sampled(recorded)
-        }
-        return sortedDays.flatMap { day in
+    /// 記録が無い旅行のサムネイルに出す、プランのチェックポイント座標列。
+    /// 実績の軌跡は points を全読みするため body から直接は読まず、
+    /// TrackSnapshot(バックグラウンド読み出し)を使う(docs/plans/trip-screen-freeze.md)
+    var planThumbnailRoute: [RoutePoint] {
+        sortedDays.flatMap { day in
             day.sortedCheckpoints.compactMap { checkpoint in
                 guard
                     let latitude = checkpoint.latitude,

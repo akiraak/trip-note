@@ -158,7 +158,13 @@ struct ContentView: View {
                     }
                     ForEach(trips) { trip in
                         NavigationLink(value: trip) {
-                            TripCard(trip: trip, isRecording: isRecording(trip))
+                            TripCard(
+                                trip: trip,
+                                isRecording: isRecording(trip),
+                                // 記録中の旅行だけ約 200 点ごとにサムネイルを読み直す
+                                trackRefreshKey: isRecording(trip)
+                                    ? recorder.recordedPointCount / 200 : -1
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -373,11 +379,19 @@ private struct TripCard: View {
     let trip: TripEntity
     /// 記録の意思ではなく実際に記録が動いているか(ContentView が判定して渡す)
     let isRecording: Bool
+    /// 軌跡の読み直しキー(記録中の旅行だけ変わる。それ以外は -1 で開いたとき 1 回)
+    let trackRefreshKey: Int
+
+    @Environment(\.modelContext) private var modelContext
+    /// 記録点のスナップショット。body から trip.points を読むと記録中は
+    /// 点の追加のたびに全旅行の行が再計算されて固まる(docs/plans/trip-screen-freeze.md)
+    @State private var track: TrackSnapshot = .empty
+    @State private var isTrackLoaded = false
 
     var body: some View {
         HStack(spacing: 0) {
             RouteThumbnail(
-                coordinates: trip.thumbnailRoute,
+                coordinates: thumbnailCoordinates,
                 color: trip.startedAt == nil ? Theme.accent : Theme.done
             )
             .frame(width: 96)
@@ -401,6 +415,20 @@ private struct TripCard: View {
         .background(Theme.panel)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line, lineWidth: 1))
+        .task(id: trackRefreshKey) {
+            track = await TrackLoader.load(
+                tripId: trip.id,
+                container: modelContext.container,
+                displayLimit: TrackLoader.thumbnailDisplayLimit
+            )
+            isTrackLoaded = true
+        }
+    }
+
+    /// サムネイルの座標列。記録があれば軌跡(スナップショット)、無ければプラン
+    private var thumbnailCoordinates: [RoutePoint] {
+        let recorded = track.segments.flatMap { $0 }
+        return recorded.isEmpty ? trip.planThumbnailRoute : recorded
     }
 
     @ViewBuilder
@@ -421,10 +449,17 @@ private struct TripCard: View {
             let startedText = startedAt.formatted(
                 .dateTime.year().month().day().hour().minute()
             )
-            let distance = ContentView.formatDistance(trip.totalDistanceMeters)
-            Text("\(startedText) · \(trip.points.count) 地点 · \(distance)")
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+            if isTrackLoaded {
+                let distance = ContentView.formatDistance(track.distanceMeters)
+                Text("\(startedText) · \(track.pointCount) 地点 · \(distance)")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            } else {
+                // スナップショット読み込み中は 0 地点のチラつきを出さない
+                Text(startedText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
         } else if let first = trip.sortedDays.first,
                   let date = PlanEditor.parseDate(first.date) {
             // プラン中はプランの期間を出す(地点数・距離は 0 なので出さない)

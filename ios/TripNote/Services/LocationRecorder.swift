@@ -205,9 +205,18 @@ final class LocationRecorder: NSObject {
         // 中断していた間のエラー(権限が無い等)は、再開できた時点で用済み
         lastError = nil
         activeTrip = trip
-        let points = trip.sortedPoints
+        // sortedPoints + totalDistanceMeters だと全点を 2 回並べ替えるため、
+        // SQL ソートの 1 回のフェッチで数・距離・直近点をまとめて出す
+        let tripId = trip.id
+        let descriptor = FetchDescriptor<LocationPointEntity>(
+            predicate: #Predicate { $0.trip?.id == tripId },
+            sortBy: [SortDescriptor(\.recordedAt)]
+        )
+        let points = (try? modelContext.fetch(descriptor)) ?? []
         recordedPointCount = points.count
-        totalDistanceMeters = trip.totalDistanceMeters
+        totalDistanceMeters = Geo.totalDistance(
+            coordinates: points.map { ($0.latitude, $0.longitude) }
+        )
         lastRecorded = points.last.map {
             LocationSample(
                 latitude: $0.latitude,

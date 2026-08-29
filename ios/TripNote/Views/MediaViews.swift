@@ -2,6 +2,22 @@ import AVKit
 import CoreTransferable
 import SwiftUI
 
+/// サムネイル画像のプロセス内キャッシュ。
+/// 記録中は view の再評価が毎秒起きるため、そのたびにディスクから読み直さない
+/// (サムネイルは一度書いたら変わらないので無効化は不要)。
+/// 使うのは view の body だけなので MainActor に置く
+@MainActor
+enum ThumbnailCache {
+    private static let cache = NSCache<NSString, UIImage>()
+
+    static func image(atPath path: String) -> UIImage? {
+        if let cached = cache.object(forKey: path as NSString) { return cached }
+        guard let image = UIImage(contentsOfFile: path) else { return nil }
+        cache.setObject(image, forKey: path as NSString)
+        return image
+    }
+}
+
 /// グリッド・地図マーカー用の正方形サムネイル
 struct MediaThumbnail: View {
     let media: MediaEntity
@@ -12,7 +28,7 @@ struct MediaThumbnail: View {
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 let path = store.url(for: media.thumbnailFileName).path(percentEncoded: false)
-                if let image = UIImage(contentsOfFile: path) {
+                if let image = ThumbnailCache.image(atPath: path) {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()

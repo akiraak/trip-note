@@ -1,5 +1,9 @@
 # TODO
 
+- 旅行画面を開いた直後に固まって操作できない（記録点数万件で毎秒全点再計算）[plan](docs/plans/trip-screen-freeze.md)
+  - [x] 記録点のスナップショット化（TrackSnapshot / TrackLoader）とユニットテスト
+  - [x] 旅行画面・地図・一覧をスナップショット参照に切り替え
+  - [ ] 実機確認（画面が固まらない・撮影ボタンが反応する）
 - アプリの各日の地図に写真を載せる。詳細の方にも載せる
 - 削除したチェックポイントが地図に表示されるバグ [plan](docs/plans/deleted-checkpoint-on-map.md)
   - [ ] Phase 1: 再現条件の確定（孤児チェックポイントの実測 / iOS の再現）

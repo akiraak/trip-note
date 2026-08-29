@@ -26,6 +26,12 @@ struct TripDetailView: View {
     @State private var showsPlanExtension = false
     @State private var detent: SheetDetent = .medium
     @Environment(\.dismiss) private var dismiss
+    /// 記録点(軌跡)のスナップショット。body から trip.points を読むと、記録中は
+    /// 点の追加のたびに全点の再計算が main で走って画面が固まるため、
+    /// バックグラウンドで固めた値だけを描く(docs/plans/trip-screen-freeze.md)
+    @State private var track: TrackSnapshot = .empty
+    /// スナップショットを一度でも読み終えたか(空表示の文言はそれまで出さない)
+    @State private var isTrackLoaded = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -49,6 +55,15 @@ struct TripDetailView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         // 記録バーの対象をこの旅行にする(撮影・記録の開始はバーから行う)
         .activeTrip(trip)
+        // 軌跡の読み直し。記録中は約 100 点(≒ 1km)ごと、それ以外は開いたとき 1 回
+        .task(id: trackRefreshKey) {
+            track = await TrackLoader.load(
+                tripId: trip.id,
+                container: modelContext.container,
+                displayLimit: TrackLoader.detailDisplayLimit
+            )
+            isTrackLoaded = true
+        }
         .navigationDestination(for: TripDayEntity.self) { day in
             TripDayDetailView(day: day)
         }
@@ -126,13 +141,14 @@ struct TripDetailView: View {
 
     // MARK: - 地図
 
-    /// GPS 切断・記録停止中を線で結ばないよう、時間ギャップで区間分けして描く
+    /// 軌跡の読み直しキー。記録中は recordedPointCount が約 100 点進むごとに変わる
+    private var trackRefreshKey: Int {
+        isRecordingThisTrip ? recorder.recordedPointCount / 100 : -1
+    }
+
+    /// スナップショット(区間分割・間引き済み)の描画用座標列
     private var segments: [[CLLocationCoordinate2D]] {
-        TrackSegmenter.split(trip.sortedPoints, recordedAt: \.recordedAt).map { segment in
-            segment.map {
-                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
-            }
-        }
+        track.segments.map { $0.map(\.clCoordinate) }
     }
 
     @ViewBuilder
@@ -140,15 +156,18 @@ struct TripDetailView: View {
         let checkpointPins = checkpointAnnotations
         if segments.isEmpty && checkpointPins.isEmpty {
             // 軌跡もチェックポイントも無いうちは、地図の代わりに理由を出す
+            // (スナップショットの読み込みが終わるまでは文言を出さない)
             Theme.canvas
                 .overlay {
-                    VStack(spacing: 8) {
-                        Image(systemName: "map")
-                            .font(.system(size: 28))
-                        Text("地図に出す地点がありません")
-                            .font(.subheadline)
+                    if isTrackLoaded {
+                        VStack(spacing: 8) {
+                            Image(systemName: "map")
+                                .font(.system(size: 28))
+                            Text("地図に出す地点がありません")
+                                .font(.subheadline)
+                        }
+                        .foregroundStyle(Theme.line)
                     }
-                    .foregroundStyle(Theme.line)
                 }
                 .ignoresSafeArea()
         } else {
@@ -255,8 +274,17 @@ struct TripDetailView: View {
                 } ?? "—"
             )
             StatCell(label: "目的地", value: trip.destination ?? "—", isNumeric: false)
-            StatCell(label: "地点数", value: "\(trip.points.count)")
-            StatCell(label: "総距離", value: ContentView.formatDistance(trip.totalDistanceMeters))
+            // 記録中は LocationRecorder の増分値(毎秒更新・O(1))、それ以外はスナップショット値
+            StatCell(
+                label: "地点数",
+                value: "\(isRecordingThisTrip ? recorder.recordedPointCount : track.pointCount)"
+            )
+            StatCell(
+                label: "総距離",
+                value: ContentView.formatDistance(
+                    isRecordingThisTrip ? recorder.totalDistanceMeters : track.distanceMeters
+                )
+            )
         }
         .padding(.vertical, 6)
         .listRowSeparator(.hidden)

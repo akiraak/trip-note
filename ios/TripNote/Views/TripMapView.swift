@@ -143,6 +143,14 @@ struct TripMapView: View {
             mapView
                 .onAppear { placeCamera(in: proxy.size) }
                 .onChange(of: proxy.size) { _, size in placeCamera(in: size) }
+                // 軌跡はスナップショットの読み込み完了後に届くため、
+                // 空の状態で当てた初期位置は中身が来た時点で当て直す
+                .onChange(of: displayedCoordinates.isEmpty) { _, isEmpty in
+                    if !isEmpty {
+                        didPlaceCamera = false
+                        placeCamera(in: proxy.size)
+                    }
+                }
         }
     }
 
@@ -226,7 +234,8 @@ struct TripMapView: View {
     private func annotationThumbnail(_ media: MediaEntity) -> some View {
         let path = store.url(for: media.thumbnailFileName).path(percentEncoded: false)
         Group {
-            if let image = UIImage(contentsOfFile: path) {
+            // 再評価のたびにディスクから読み直さない(記録中は毎秒再評価されるため)
+            if let image = ThumbnailCache.image(atPath: path) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
