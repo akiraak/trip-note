@@ -9,5 +9,10 @@
   - [x] Phase 6: 削除が片方に届かない欠陥の修正（本番実データで判明。iOS / Web / 配り直し）
   - [ ] Phase 7: デプロイして iOS で同期し、3 日目から消えることを確認
   - [ ] Phase 5: iOS の地図の更新漏れ対応（残っていれば）
-- 家の外から自宅サーバのg3plusをデプロイする方法を考える
+- 家の外から自宅サーバのg3plusをデプロイする（Tailscale）[plan](docs/plans/remote-deploy.md)
+  - [ ] Step 1: g3plus と開発機に Tailscale を入れる（家で 1 回。sudo が要るので手作業）
+  - [ ] Step 2: 管理画面でキー有効期限を無効化 + MagicDNS（+ 必要なら subnet router）
+  - [ ] Step 3: ~/.ssh/config に g3plus の入り口を足す
+  - [ ] Step 4: 外部ネットワークから ssh とデプロイが通ることを確認
+  - [ ] Step 5: g3plus-ops の CLAUDE.md に接続情報を追記
 - 旅行画面の地図のチェックポイントにも情報のテキストを表示
