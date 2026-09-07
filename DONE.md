@@ -1,5 +1,21 @@
 # DONE - 完了済みタスク
 
+## 2026-09-07
+
+- vibeboard を upstream 最新に更新する（Tasks / Files タブ、run-vibeboard.sh）
+  [plan](docs/plans/archive/vibeboard-update.md)
+  - vibeboard/README.md の「upstream の取り込み直し」手順どおり再 degit + `npm install`。親リポで `vibeboard/` を
+    触ったコミットは初回 vendor だけだったので、再適用するローカル改変は無かった
+  - 新機能: `Tasks` タブ（TODO.md のタスクを Claude Code セッションへ投函して実行 / 説明 / 削除）、
+    `Files` タブ（`Root` タブは廃止）、TODO.md のツリー表示、同じ root の旧プロセス自動停止、
+    postinstall でルートの `run-vibeboard.sh` を自動配置
+  - `init` で `CLAUDE.md` のマーカー内スニペットを最新化し、`.claude/settings.json` に
+    SessionStart / SessionEnd の hook（`vibeboard/scripts/session-hook.mjs`）を書いた。
+    Claude Code を起動し直すと Tasks タブの送り先に「登録済み」で出る
+  - `npm test` 38 件 pass。`./run-vibeboard.sh` で起動し `/` と `/api/todo/TODO.md` の応答を確認
+  - `TODO.md` の書式は変えていない。親項目がチェックボックス無しなので新ツリーでは親子にならない
+    （新ルールに合わせて `- [ ]` 化するかは別途判断）
+
 ## 2026-08-25
 
 - アプリで写真やビデオを撮影したら iOS の写真アプリで見れるようにする（既存分の書き出しも含む）
