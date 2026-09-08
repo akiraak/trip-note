@@ -61,7 +61,6 @@ export function TripMap({
   planRoute = [],
   cachedLegs,
   focus = null,
-  mediaBasePath = "/media",
   resolveLegs = true,
   className = "h-80 w-full",
 }: {
@@ -74,9 +73,7 @@ export function TripMap({
   cachedLegs?: Record<string, ResolvedLeg>;
   /** 寄せたい範囲(日を選んだときのその日の範囲)。null なら旅行全体のまま */
   focus?: [[number, number], [number, number]] | null;
-  /** 写真マーカーのリンク先の先頭(`${mediaBasePath}/${id}`)。共有ページは /share/<token>/media */
-  mediaBasePath?: string;
-  /** false なら未解決レグを取りに行かず、キャッシュ済み以外は直線のまま描く(共有ページ) */
+  /** false なら未解決レグを取りに行かず、キャッシュ済み以外は直線のまま描く(共有ページの先頭の地図) */
   resolveLegs?: boolean;
   className?: string;
 }) {
@@ -218,12 +215,12 @@ export function TripMap({
     // 撮影地点のサムネイルマーカー(クリックで原本を開く)
     for (const m of media) {
       const anchor = document.createElement("a");
-      anchor.href = `${mediaBasePath}/${m.id}`;
+      anchor.href = `/media/${m.id}`;
       anchor.target = "_blank";
       anchor.rel = "noreferrer";
       if (m.type === "photo") {
         const img = document.createElement("img");
-        img.src = `${mediaBasePath}/${m.id}`;
+        img.src = `/media/${m.id}`;
         img.alt = "";
         img.className =
           "h-10 w-10 rounded-md border-2 border-white object-cover shadow-md";
@@ -245,7 +242,7 @@ export function TripMap({
       mapRef.current = null;
       map?.remove();
     };
-  }, [points, media, checkpoints, mediaBasePath]);
+  }, [points, media, checkpoints]);
 
   // 初回の流し込みと、レグが解決したときの差し替え(地図は作り直さない)
   useEffect(() => {

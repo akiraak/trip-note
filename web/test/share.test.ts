@@ -91,20 +91,32 @@ function seedCheckpoint(over: Record<string, unknown> = {}) {
 }
 
 function seedMedia(over: Record<string, unknown> = {}) {
+  const id = (over.id as string) ?? "media-1";
   getDb()
     .prepare(
       `insert into media (id, trip_id, type, storage_path, taken_at, deleted_at)
        values (@id, @trip_id, @type, @storage_path, @taken_at, @deleted_at)`,
     )
     .run({
-      id: "media-1",
       trip_id: "trip-1",
       type: "photo",
-      storage_path: "media-1.jpg",
-      taken_at: "2026-09-01T10:00:00.000Z",
+      storage_path: `${id}.jpg`,
+      taken_at: "2026-09-01T18:00:00.000Z",
       deleted_at: null,
       ...over,
+      id,
     });
+}
+
+/** 表示 TZ で 9/1 に入る記録点 2 つ */
+function seedPoints() {
+  getDb()
+    .prepare(
+      `insert into location_points (id, trip_id, latitude, longitude, recorded_at)
+       values ('p1', 'trip-1', 36.0, 137.0, '2026-09-01T17:00:00.000Z'),
+              ('p2', 'trip-1', 36.1, 137.1, '2026-09-01T18:00:00.000Z')`,
+    )
+    .run();
 }
 
 function tripRow(id = "trip-1") {
@@ -169,21 +181,14 @@ describe("findSharedTrip / readSharedTrip", () => {
     expect(readSharedTrip(again)).toBeNull();
   });
 
-  it("旅行の情報・記録点・メディア・プラン・キャッシュ済みレグを返し、tombstone は含めない", () => {
-    getDb()
-      .prepare(
-        `insert into location_points (id, trip_id, latitude, longitude, recorded_at)
-         values ('p1', 'trip-1', 36.0, 137.0, '2026-09-01T00:00:00.000Z'),
-                ('p2', 'trip-1', 36.1, 137.1, '2026-09-01T00:10:00.000Z')`,
-      )
-      .run();
+  it("旅行の情報・記録点・全体の地図・キャッシュ済みレグを返し、tombstone は含めない", () => {
+    seedPoints();
     seedDay();
     seedDay({ id: "day-gone", date: "2026-09-02", deleted_at: OLD });
     seedCheckpoint();
     seedCheckpoint({ id: "cp-gone", deleted_at: OLD, sort_order: 1 });
     seedCheckpoint({ id: "cp-orphan", trip_day_id: "day-gone", sort_order: 0 });
     seedMedia();
-    seedMedia({ id: "media-old", taken_at: "2026-08-31T10:00:00.000Z" });
     seedMedia({ id: "media-gone", deleted_at: OLD });
 
     const token = issueShareToken("trip-1");
@@ -200,16 +205,65 @@ describe("findSharedTrip / readSharedTrip", () => {
     // トークンや内部列は返さない
     expect(shared!.trip).not.toHaveProperty("share_token");
     expect(shared!.points.map((p) => p.recorded_at)).toEqual([
-      "2026-09-01T00:00:00.000Z",
-      "2026-09-01T00:10:00.000Z",
+      "2026-09-01T17:00:00.000Z",
+      "2026-09-01T18:00:00.000Z",
     ]);
-    // 撮影時刻の新しい順、tombstone 除外
-    expect(shared!.media.map((m) => m.id)).toEqual(["media-1", "media-old"]);
-    expect(shared!.media[0].marker).toBeNull();
-    expect(shared!.plan.days.map((d) => d.id)).toEqual(["day-1"]);
-    expect(shared!.plan.days[0].checkpoints.map((c) => c.id)).toEqual(["cp-1"]);
-    expect(shared!.plan.markers.map((m) => m.id)).toEqual(["cp-1"]);
+    // 親の日が tombstone のチェックポイント(孤児)は全体の地図にも出さない
+    expect(shared!.markers.map((m) => m.id)).toEqual(["cp-1"]);
+    expect(shared!.route).toHaveLength(1);
+    expect(shared!.days.map((d) => d.id)).toEqual(["day-1"]);
+    expect(shared!.days[0].places).toEqual(["松本城"]);
     expect(shared!.cachedLegs).toEqual({});
+  });
+
+  it("写真・動画と記録点を日ごとに配り、件数を種類ごとに数える", () => {
+    seedPoints();
+    seedDay();
+    seedDay({ id: "day-2", date: "2026-09-02" });
+    seedCheckpoint();
+    seedCheckpoint({ id: "cp-2", trip_day_id: "day-2", latitude: 36.3, longitude: 138.0 });
+    // 表示 TZ(America/Los_Angeles)で 9/1 の写真 2 枚と 9/2 の動画 1 本
+    seedMedia({ id: "m-1", taken_at: "2026-09-01T17:00:00.000Z" });
+    seedMedia({ id: "m-2", taken_at: "2026-09-01T20:00:00.000Z" });
+    seedMedia({ id: "m-3", taken_at: "2026-09-02T18:00:00.000Z", type: "video" });
+
+    const shared = readSharedTrip(issueShareToken("trip-1"))!;
+    expect(shared.days.map((d) => d.media.map((m) => m.id))).toEqual([
+      ["m-1", "m-2"],
+      ["m-3"],
+    ]);
+    expect(shared.otherMedia).toEqual([]);
+    expect(shared.photoCount).toBe(2);
+    expect(shared.videoCount).toBe(1);
+    // 記録点は日ごとに複製せず、全体の配列の範囲で渡す
+    expect(shared.days[0]).toMatchObject({ trackStart: 0, trackEnd: 2 });
+    expect(shared.days[1]).toMatchObject({ trackStart: 0, trackEnd: 0 });
+    // その日のルートの起点は前の日の最後の座標つきチェックポイント
+    expect(shared.days[0].anchor).toBeNull();
+    expect(shared.days[1].anchor).toEqual({ latitude: 36.2384, longitude: 137.969 });
+  });
+
+  it("どの日にも当たらない写真は otherMedia に回して落とさない", () => {
+    seedDay();
+    // 旅行の日が無い日付の写真(日を消した後に残った分など)
+    seedMedia({ id: "m-early", taken_at: "2026-08-30T18:00:00.000Z" });
+    seedMedia({ id: "m-on-day", taken_at: "2026-09-01T18:00:00.000Z" });
+    seedMedia({ id: "m-broken", taken_at: "not-a-date" });
+
+    const shared = readSharedTrip(issueShareToken("trip-1"))!;
+    expect(shared.days[0].media.map((m) => m.id)).toEqual(["m-on-day"]);
+    expect(shared.otherMedia.map((m) => m.id).sort()).toEqual([
+      "m-broken",
+      "m-early",
+    ]);
+    expect(shared.photoCount).toBe(3);
+  });
+
+  it("日が 1 つも無ければ写真は全部 otherMedia に入る", () => {
+    seedMedia({ id: "m-1" });
+    const shared = readSharedTrip(issueShareToken("trip-1"))!;
+    expect(shared.days).toEqual([]);
+    expect(shared.otherMedia.map((m) => m.id)).toEqual(["m-1"]);
   });
 });
 
