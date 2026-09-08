@@ -1,5 +1,14 @@
 # DONE - 完了済みタスク
 
+## 2026-09-08
+
+- TODO.md の親項目に `[ ]` を付け、vibeboard init のルールにも明記する
+  [plan](docs/plans/archive/todo-checkbox-rule.md)
+  - vibeboard の Tasks タブは `- [ ]` 等のチェックボックス行だけをタスクとして拾う。親項目に `[ ]` が無かったため
+    親 6 件がツリーから落ち、9/7 に足した「旅行の工程と写真が見れるページ」が表示されていなかった
+  - `vibeboard init` が書くスニペット（と README の写し）に「親項目も `- [ ] 文面`」「チェックボックスの無い行は
+    メモ扱いで Tasks タブに出ない」と例を追記し、`init --no-hooks` で `CLAUDE.md` に反映。**upstream 側の修正が必要**
+
 ## 2026-09-07
 
 - vibeboard を upstream 最新に更新する（update コマンド追加分）

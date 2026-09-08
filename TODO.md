@@ -1,11 +1,11 @@
 # TODO
 
-- 旅行画面を開いた直後に固まって操作できない（記録点数万件で毎秒全点再計算）[plan](docs/plans/trip-screen-freeze.md)
+- [ ] 旅行画面を開いた直後に固まって操作できない（記録点数万件で毎秒全点再計算）[plan](docs/plans/trip-screen-freeze.md)
   - [x] 記録点のスナップショット化（TrackSnapshot / TrackLoader）とユニットテスト
   - [x] 旅行画面・地図・一覧をスナップショット参照に切り替え
   - [ ] 実機確認（画面が固まらない・撮影ボタンが反応する）
-- アプリの各日の地図に写真を載せる。詳細の方にも載せる
-- 削除したチェックポイントが地図に表示されるバグ [plan](docs/plans/deleted-checkpoint-on-map.md)
+- [ ] アプリの各日の地図に写真を載せる。詳細の方にも載せる
+- [ ] 削除したチェックポイントが地図に表示されるバグ [plan](docs/plans/deleted-checkpoint-on-map.md)
   - [ ] Phase 1: 再現条件の確定（孤児チェックポイントの実測 / iOS の再現）
   - [x] Phase 2: Web 旅行詳細の地図から、親の日が削除済みのチェックポイントを除く
   - [x] Phase 3: 同期で孤児チェックポイントが生まれないようにする（iOS / Web）
@@ -13,12 +13,12 @@
   - [x] Phase 6: 削除が片方に届かない欠陥の修正（本番実データで判明。iOS / Web / 配り直し）
   - [ ] Phase 7: デプロイして iOS で同期し、3 日目から消えることを確認
   - [ ] Phase 5: iOS の地図の更新漏れ対応（残っていれば）
-- 家の外から自宅サーバのg3plusをデプロイする（Tailscale）[plan](docs/plans/remote-deploy.md)
+- [ ] 家の外から自宅サーバのg3plusをデプロイする（Tailscale）[plan](docs/plans/remote-deploy.md)
   - [ ] Step 1: g3plus と開発機に Tailscale を入れる（家で 1 回。sudo が要るので手作業）
   - [ ] Step 2: 管理画面でキー有効期限を無効化 + MagicDNS（+ 必要なら subnet router）
   - [ ] Step 3: ~/.ssh/config に g3plus の入り口を足す
   - [ ] Step 4: 外部ネットワークから ssh とデプロイが通ることを確認
   - [ ] Step 5: g3plus-ops の CLAUDE.md に接続情報を追記
-- 旅行画面の地図のチェックポイントにも情報のテキストを表示
-- 旅行の工程と写真が見れるページを作る（Web の共有リンクで誰でも見られるようにする）
+- [ ] 旅行画面の地図のチェックポイントにも情報のテキストを表示
+- [ ] 旅行の工程と写真が見れるページを作る（Web の共有リンクで誰でも見られるようにする）
   - 決定: ログイン不要。旅行ごとの共有リンク（推測できないトークン付き URL）を知っている人なら誰でも工程と写真を見られる形にする
