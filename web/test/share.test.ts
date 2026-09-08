@@ -6,6 +6,7 @@ import type Database from "better-sqlite3";
 import { getDb } from "@/lib/db";
 import {
   findSharedTrip,
+  readShareMeta,
   generateShareToken,
   issueShareToken,
   readSharedMedia,
@@ -264,6 +265,42 @@ describe("findSharedTrip / readSharedTrip", () => {
     const shared = readSharedTrip(issueShareToken("trip-1"))!;
     expect(shared.days).toEqual([]);
     expect(shared.otherMedia.map((m) => m.id)).toEqual(["m-1"]);
+  });
+});
+
+describe("readShareMeta", () => {
+  it("OGP に要る分だけを返す(表紙は旅行の最初の写真)", () => {
+    seedDay();
+    seedDay({ id: "day-2", date: "2026-09-03" });
+    seedMedia({ id: "m-late", taken_at: "2026-09-03T18:00:00.000Z" });
+    seedMedia({ id: "m-first", taken_at: "2026-09-01T18:00:00.000Z" });
+    seedMedia({ id: "m-video", taken_at: "2026-09-01T19:00:00.000Z", type: "video" });
+    seedMedia({ id: "m-gone", taken_at: "2026-08-31T18:00:00.000Z", deleted_at: OLD });
+
+    const meta = readShareMeta(issueShareToken("trip-1"));
+    expect(meta).toEqual({
+      title: "松本旅行",
+      firstDate: "2026-09-01",
+      lastDate: "2026-09-03",
+      dayCount: 2,
+      photoCount: 2,
+      videoCount: 1,
+      coverMediaId: "m-first",
+    });
+  });
+
+  it("写真が動画しか無ければ表紙は null(動画はプレビュー画像にできない)", () => {
+    seedMedia({ id: "m-video", type: "video" });
+    const meta = readShareMeta(issueShareToken("trip-1"));
+    expect(meta?.coverMediaId).toBeNull();
+    expect(meta?.videoCount).toBe(1);
+  });
+
+  it("不一致・停止済みのトークンは null", () => {
+    const token = issueShareToken("trip-1");
+    expect(readShareMeta("no-such-token-0000000000")).toBeNull();
+    revokeShareToken("trip-1");
+    expect(readShareMeta(token)).toBeNull();
   });
 });
 

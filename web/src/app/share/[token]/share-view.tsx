@@ -5,6 +5,7 @@ import { PhotoLightbox } from "./photo-lightbox";
 import { ShareDayMap } from "./share-day-map";
 import { TripMap } from "@/app/trips/[id]/trip-map";
 import { formatDayWithWeekday, formatPointTime } from "@/lib/format";
+import { shareSummaryLine } from "@/lib/share-summary";
 import type { SharedDay, SharedMedia, SharedTrackPoint, SharedTrip } from "@/lib/share";
 
 // 共有ページの本体(docs/plans/share-page-redesign.md)。
@@ -117,17 +118,14 @@ export function ShareView({
 /** 旅行名と、期間・日数・写真の件数の 1 行 */
 function TripHeading({ shared }: { shared: SharedTrip }) {
   const { trip, days, photoCount, videoCount } = shared;
-  const parts: string[] = [];
-  if (days.length > 0) {
-    const first = days[0].date.replace(/-/g, "/");
-    const last = days[days.length - 1].date.slice(5).replace(/-/g, "/");
-    parts.push(days.length === 1 ? first : `${first} – ${last}`);
-    parts.push(`${days.length}日間`);
-  }
-  const total = photoCount + videoCount;
-  if (total > 0) {
-    parts.push(videoCount === 0 ? `写真 ${total} 枚` : `写真・動画 ${total} 件`);
-  }
+  // 文面は OGP の説明文と同じものを使う(lib/share-summary.ts)
+  const summary = shareSummaryLine({
+    firstDate: days[0]?.date ?? null,
+    lastDate: days[days.length - 1]?.date ?? null,
+    dayCount: days.length,
+    photoCount,
+    videoCount,
+  });
   // 地図の右上には MapLibre のズームボタンが出るので、ここには何も置かない
   // (旅ログの表記はフッタに置いてある)
   return (
@@ -135,10 +133,8 @@ function TripHeading({ shared }: { shared: SharedTrip }) {
       <h1 className="truncate text-xl font-semibold lg:text-[26px]">
         {trip.title}
       </h1>
-      {parts.length > 0 && (
-        <p className="tabular text-xs text-muted lg:text-[13px]">
-          {parts.join(" · ")}
-        </p>
+      {summary && (
+        <p className="tabular text-xs text-muted lg:text-[13px]">{summary}</p>
       )}
     </div>
   );

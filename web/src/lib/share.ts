@@ -5,6 +5,7 @@ import { dateStringOf } from "./plan";
 import { buildLegs, legKey, type ResolvedLeg } from "./route-legs";
 import { readCachedLegs } from "./routing";
 import { dayMapPoints } from "./plan-map";
+import { type ShareSummary } from "./share-summary";
 import { readTripPlan, type CheckpointMarker, type PlanRoutePoint } from "./trip-plan";
 import type { Media, Trip } from "./types";
 
@@ -216,6 +217,50 @@ export function readSharedTrip(token: string): SharedTrip | null {
     photoCount: media.filter((item) => item.type === "photo").length,
     videoCount: media.filter((item) => item.type === "video").length,
     cachedLegs,
+  };
+}
+
+/** OGP タグ用の軽い読み出しの結果。ページ本体(readSharedTrip)は記録点を全部読むので分けてある */
+export type ShareMeta = ShareSummary & {
+  title: string;
+  /** プレビュー画像に使う写真の id(旅行の最初の 1 枚)。写真が無ければ null */
+  coverMediaId: string | null;
+};
+
+/// OGP タグを組むのに要る分だけを読む。generateMetadata から呼ぶので、
+/// 記録点やプランは読まない(readSharedTrip と同じ処理を 2 回走らせないため)
+export function readShareMeta(token: string): ShareMeta | null {
+  const trip = findSharedTrip(token);
+  if (!trip) return null;
+  const db = getDb();
+  const days = db
+    .prepare(
+      `select count(*) as count, min(date) as first, max(date) as last
+       from trip_days where trip_id = ? and deleted_at is null`,
+    )
+    .get(trip.id) as { count: number; first: string | null; last: string | null };
+  const counts = db
+    .prepare(
+      `select type, count(*) as count from media
+       where trip_id = ? and deleted_at is null group by type`,
+    )
+    .all(trip.id) as { type: "photo" | "video"; count: number }[];
+  // プレビューは旅行の最初の写真(動画はプレビュー画像にできない)
+  const cover = db
+    .prepare(
+      `select id from media
+       where trip_id = ? and deleted_at is null and type = 'photo'
+       order by taken_at, id limit 1`,
+    )
+    .get(trip.id) as { id: string } | undefined;
+  return {
+    title: trip.title,
+    firstDate: days.first,
+    lastDate: days.last,
+    dayCount: days.count,
+    photoCount: counts.find((row) => row.type === "photo")?.count ?? 0,
+    videoCount: counts.find((row) => row.type === "video")?.count ?? 0,
+    coverMediaId: cover?.id ?? null,
   };
 }
 

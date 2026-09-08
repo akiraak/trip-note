@@ -378,6 +378,10 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
 - トークンは `randomBytes(18)` の base64url(24 文字)。形式は `[A-Za-z0-9_-]{16,64}`
 - 形式外・不一致・共有停止済み・旅行が削除済みは **404**(存在の有無を出し分けない)
 - `robots: noindex, nofollow`
+- **OGP タグを出す**(チャットに貼ったときのプレビュー)。`og:title` は旅行名、`og:description` は
+  「期間 · 日数 · 写真の枚数」、`og:image` は**その旅行の最初の写真**(`/share/<token>/media/<id>`。
+  Access を通さないのでプレビューを作る側から取れる)。写真が 1 枚も無ければ画像は付けず
+  `twitter:card` は `summary` になる。文面は `lib/share-summary.ts` で画面の見出しと共通
 - **道路形状レグはキャッシュ済み(`route_legs`)の分しか使わない**。未解決レグは直線で描く
   (公開経路から OSRM プロキシと Server Action を呼ばせないため)
 - 日数ぶんの地図は `IntersectionObserver` で遅延マウントする(WebGL コンテキストの上限対策)

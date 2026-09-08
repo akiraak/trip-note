@@ -62,3 +62,13 @@
   写真と動画の件数、前泊地の引き継ぎ
 - `npm run lint` / `npm run build`
 - 開発サーバで、電話幅（iframe 390px）と PC 幅の両方の組み、地図の描画、拡大表示の操作を確認する
+
+## 追記: チャットに貼ったときのプレビュー（OGP、2026-09-08）
+
+- `og:title` / `og:description` / `og:image` / `og:url` / `og:type` / `twitter:card` を出す
+- 画像は**その旅行の最初の写真**。配信元の `/share/<token>/media/<id>` は Access を通さないので、
+  プレビューを作る側から取れる。写真が無い旅行は画像なし（`twitter:card` は `summary`）
+- 本番の写真は中央値 1.49MB・最大 3.18MB（5MB 超えは 0 枚）なので、プレビュー用の縮小は作らず
+  元の画像をそのまま使う。これより大きい写真が増えたら縮小の口を足す
+- `generateMetadata` はページ本体とは別の軽い読み出し（`readShareMeta`）を使う。
+  `readSharedTrip` は記録点を全部読むので、同じ処理を 1 リクエストで 2 回走らせない

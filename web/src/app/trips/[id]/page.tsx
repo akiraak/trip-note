@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteMedia } from "./delete-media";
@@ -14,6 +13,7 @@ import { dateStringOf, nextDate, timeStringOf } from "@/lib/plan";
 import { formatDistance, totalDistance } from "@/lib/geo";
 import { buildLegs, legKey } from "@/lib/route-legs";
 import { readCachedLegs } from "@/lib/routing";
+import { requestOrigin } from "@/lib/request-origin";
 import { readTripPlan } from "@/lib/trip-plan";
 import {
   tripStatus,
@@ -236,18 +236,6 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       footer={footer}
     />
   );
-}
-
-/** リクエストの Host から自分の origin を組む(プロキシ・Tunnel 越しは x-forwarded-proto を見る) */
-async function requestOrigin(): Promise<string> {
-  const headerList = await headers();
-  const host = headerList.get("host") ?? "localhost:3000";
-  const proto =
-    headerList.get("x-forwarded-proto")?.split(",")[0].trim() ??
-    (host.startsWith("localhost") || host.startsWith("127.0.0.1")
-      ? "http"
-      : "https");
-  return `${proto}://${host}`;
 }
 
 function Stat({
