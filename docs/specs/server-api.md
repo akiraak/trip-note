@@ -381,6 +381,8 @@ Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必�
 - **道路形状レグはキャッシュ済み(`route_legs`)の分しか使わない**。未解決レグは直線で描く
   (公開経路から OSRM プロキシと Server Action を呼ばせないため)
 - 日数ぶんの地図は `IntersectionObserver` で遅延マウントする(WebGL コンテキストの上限対策)
+- 記録点は**表示用に間引いて**返す(`simplifyTrack`。Douglas-Peucker、許容誤差 15m。座標は 5 桁に丸め)。
+  数万点の旅行でページが十数 MB になるのを避けるため。線の形は変わらないが、距離や件数の計算には使わない
 - 発行・停止は Web の旅行詳細から(Server Action `issueShareLinkAction` / `revokeShareLinkAction`)。
   発行は冪等で、停止すると即座に 404 になる。**発行・停止で `updated_at` は動かさない**
   (`share_token` はサーバ専用の列で、`/api/sync` の push・pull の対象外)

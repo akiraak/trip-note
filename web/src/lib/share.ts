@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { getDb } from "./db";
+import { simplifyTrack } from "./geo";
 import { dateStringOf } from "./plan";
 import { buildLegs, legKey, type ResolvedLeg } from "./route-legs";
 import { readCachedLegs } from "./routing";
@@ -94,7 +95,8 @@ export type SharedTrip = {
     Trip,
     "id" | "title" | "started_at" | "ended_at" | "departure_at" | "destination"
   >;
-  /** 旅行全体の記録点(先頭の地図用。日ごとの地図は trackStart/trackEnd で切り出す) */
+  /** 旅行全体の記録点(先頭の地図用。日ごとの地図は trackStart/trackEnd で切り出す)。
+   *  **表示用に間引いてある**ので、距離や件数の計算には使わないこと */
   points: SharedTrackPoint[];
   /** 旅行全体のチェックポイント(先頭の地図用) */
   markers: CheckpointMarker[];
@@ -119,12 +121,20 @@ export function readSharedTrip(token: string): SharedTrip | null {
   const trip = findSharedTrip(token);
   if (!trip) return null;
   const db = getDb();
-  const points = db
+  // 記録点は数万件になり得る。共有ページは線の形しか使わないので、表示用に間引いてから
+  // 渡す(そのままだとページが十数 MB になり、リンクを開く人の通信量になる)。
+  // 座標も 5 桁(約 1m)に丸める
+  const recorded = db
     .prepare(
       `select latitude, longitude, recorded_at from location_points
        where trip_id = ? order by recorded_at`,
     )
     .all(trip.id) as SharedTrackPoint[];
+  const points: SharedTrackPoint[] = simplifyTrack(recorded).map((point) => ({
+    latitude: Math.round(point.latitude * 1e5) / 1e5,
+    longitude: Math.round(point.longitude * 1e5) / 1e5,
+    recorded_at: point.recorded_at,
+  }));
   const media = db
     .prepare(
       `select id, type, taken_at from media
