@@ -2,6 +2,15 @@
 
 ## 2026-09-07
 
+- vibeboard を upstream 最新に更新する（update コマンド追加分）
+  [plan](docs/plans/archive/vibeboard-update-2.md)
+  - 同日 2 回目。upstream に `vibeboard update`（再 degit → 同期 → `npm install` → `init` → `--restart`）、
+    Tasks タブの `プラン作成` と `commit & push`、折り畳みツリーが入ったので再 degit で取り込んだ。次回からは
+    `node vibeboard/dist/cli.js update --restart` で済む
+  - upstream の `run-vibeboard.sh` は bash 3.2（macOS 標準）だと空配列展開で落ちるので、
+    `${PASS[@]+"${PASS[@]}"}` 形に直した（ルートと `vibeboard/` の両方）。**upstream 側の修正が必要**
+  - 動いていた前版のサーバは新版を同じ root で起動してポートガードに止めさせた
+
 - vibeboard を upstream 最新に更新する（Tasks / Files タブ、run-vibeboard.sh）
   [plan](docs/plans/archive/vibeboard-update.md)
   - vibeboard/README.md の「upstream の取り込み直し」手順どおり再 degit + `npm install`。親リポで `vibeboard/` を
