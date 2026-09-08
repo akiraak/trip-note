@@ -20,6 +20,9 @@ export async function generateMetadata(
     title: trip ? `${trip.title} | 旅ログ` : "旅ログ",
     // 推測できない URL を検索エンジンに拾わせない
     robots: { index: false, follow: false },
+    // アイコンも /share/ の下から配る。既定の /icon.png は Access の配下なので、
+    // ログインしていない人には届かない(このページが要るものは全部 /share/ に置く)
+    icons: { icon: "/share/icon.png" },
   };
 }
 

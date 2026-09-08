@@ -34,7 +34,8 @@ iOS と Web は同じデータを見るので、**片方の画面にしか無い
 
 - Next.js 16 は書き方が学習データと異なる可能性があるので `web/node_modules/next/dist/docs/` を参照する
 - iOS のユニットテストはホストアプリが同じ @Model クラスで ModelContainer を作成済みのため、テスト側で 2 つ目のコンテナを作って insert すると SwiftData がクラッシュする。テストは unmanaged なエンティティ（コンテナ未挿入）で書く
-- maplibre-gl はバンドラ（Turbopack）経由だと自身の Web Worker を解決できず、GeoJSON レイヤが無エラーで描画されない。`public/` に配置したワーカー（`npm run copy-maplibre-worker`、predev/prebuild で自動実行）を `setWorkerUrl` で指定している
+- maplibre-gl はバンドラ（Turbopack）経由だと自身の Web Worker を解決できず、GeoJSON レイヤが無エラーで描画されない。`public/share/` に配置したワーカー（`npm run copy-maplibre-worker`、predev/prebuild で自動実行）を `setWorkerUrl` で指定している
+- **共有ページ（`/share/[token]`）が読み込むものは、すべて `/share/` の下に置く。** 本番は Cloudflare Access が `/share/*` だけを Bypass するので、ルート直下や `/_next/` から配ると、ログインしていない人にはその資材だけログイン画面が返り、素の HTML になる（2026-09-08 に実際に踏んだ）。CSS・JS は `next.config.ts` の `assetPrefix`（`/share/_assets`）と rewrite で、maplibre のワーカーとアイコンは `public/share/` で満たしている。共有ページに新しい資材を足すときは同じ場所に置く
 
 ## コマンド
 

@@ -42,6 +42,11 @@
   Bypass する `/share/*`）は GET / HEAD しか通らないので、Server Action は呼べない
 - 旅行名を地図に重ねる位置は左だけにする（右上は MapLibre のズームボタンが出る）。
   「旅ログ」の表記はフッタへ
+- **共有ページが読み込むものは全部 `/share/` の下に置く**。本番は Cloudflare Access が `/share/*` だけを
+  Bypass するので、既定の `/_next/static/` やルート直下から配ると、ログインしていない人には
+  資材だけログイン画面が返り素の HTML になる（2026-09-08 に他の PC の Edge で発覚）。
+  CSS・JS は `assetPrefix: "/share/_assets"` + rewrite、maplibre のワーカーとアイコンは `public/share/`。
+  残る例外は `/favicon.ico`（Next が全ページに入れる）だけで、`/share/icon.png` を宣言してあるため見た目に影響しない
 
 ## 影響範囲
 

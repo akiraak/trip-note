@@ -13,7 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     // copy-maplibre-worker が node_modules から配置する dist ファイル
-    "public/*.mjs",
+    // (共有ページのため public/share/ に置いている)
+    "public/**/*.mjs",
   ]),
 ]);
 

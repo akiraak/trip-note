@@ -20,9 +20,10 @@ web/.next/
 web/out/
 # SQLite データ(ローカル開発用)
 web/data/
-# npm run copy-maplibre-worker が node_modules から配置(コミットしない)
-web/public/maplibre-gl-worker.mjs
-web/public/maplibre-gl-shared.mjs
+# npm run copy-maplibre-worker が node_modules から配置(コミットしない)。
+# 共有ページのため /share/ の下から配る(web/src/lib/maplibre-setup.ts)
+web/public/share/maplibre-gl-worker.mjs
+web/public/share/maplibre-gl-shared.mjs
 
 # env
 .env

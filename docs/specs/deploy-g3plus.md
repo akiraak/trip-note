@@ -35,7 +35,9 @@ trip-note サーバ(`web/`)を g3plus(自宅サーバ)で動かすための契�
    - `trip.chobi.me/api` → ポリシー **Bypass**(Everyone)。API 自体が Bearer で認証する
    - `trip.chobi.me/share` → ポリシー **Bypass**(Everyone)。共有ページはログイン不要が要件で、
      推測できないトークンが唯一の条件。**アプリ側で `/share/*` は GET / HEAD 以外を 405 にしてある**
-     (`web/src/proxy.ts`。Server Action を無認証で叩かせないため)
+     (`web/src/proxy.ts`。Server Action を無認証で叩かせないため)。
+     **共有ページが読み込む CSS・JS・地図のワーカー・アイコンも全部 `/share/` の下から配っている**ので、
+     `/_next` などに Bypass を足す必要はない(`next.config.ts` の `assetPrefix` と `public/share/`)
    - `trip.chobi.me` → **Allow**(Google IdP / Emails)。閲覧 UI の唯一の認証
    - パスが具体的な方が優先されるため、`/api` と `/share` の Bypass を先に効かせられる
 3. トレードオフ: origin に直接届く相手(コンテナと同一 Docker ネットワーク)には閲覧 UI が

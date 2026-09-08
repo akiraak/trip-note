@@ -4,8 +4,10 @@ import { setWorkerUrl, type StyleSpecification } from "maplibre-gl";
 // (読み込み時に副作用として maplibre のワーカー URL を差し替えるため)。
 
 // バンドラ(Turbopack)経由だと maplibre が自身のワーカーを解決できないため、
-// public/ に置いたワーカー(npm run copy-maplibre-worker が配置)を明示する
-setWorkerUrl("/maplibre-gl-worker.mjs");
+// public/share/ に置いたワーカー(npm run copy-maplibre-worker が配置)を明示する。
+// **/share/ の下に置くのは共有ページのため**: 本番は Cloudflare Access が /share/* だけを
+// Bypass するので、ルート直下だとログインしていない人にワーカーが届かず地図が描けない
+setWorkerUrl("/share/maplibre-gl-worker.mjs");
 
 // OpenFreeMap のベクタタイル。登録・API キー不要で本番利用可、帰属表記はスタイル側に
 // 含まれる。選定経緯は docs/plans/archive/web-map-tiles-production.md
