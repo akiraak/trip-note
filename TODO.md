@@ -20,5 +20,15 @@
   - [ ] Step 4: 外部ネットワークから ssh とデプロイが通ることを確認
   - [ ] Step 5: g3plus-ops の CLAUDE.md に接続情報を追記
 - [ ] 旅行画面の地図のチェックポイントにも情報のテキストを表示
-- [ ] 旅行の工程と写真が見れるページを作る（Web の共有リンクで誰でも見られるようにする）
+- [~] 旅行の工程と写真が見れるページを作る（Web の共有リンクで誰でも見られるようにする）[plan](docs/plans/share-page.md)
   - 決定: ログイン不要。旅行ごとの共有リンク（推測できないトークン付き URL）を知っている人なら誰でも工程と写真を見られる形にする
+  - [x] Phase 1: 共有トークン（`trips.share_token`・発行 / 停止の Server Action・旅行詳細の共有リンク欄）
+  - [x] Phase 2: 共有ページ `/share/[token]`（地図・工程・写真の閲覧専用）と共有用メディア配信
+  - [x] Phase 3: `/share/*` は GET / HEAD 以外を 405 にする（Bypass 経路から Server Action を叩かせない）
+  - [x] Phase 4: 仕様（server-api / deploy-g3plus）と g3plus-ops の運用手順に Cloudflare Access の `/share` Bypass を追記
+  - [ ] Phase 5: Cloudflare Access に `trip.chobi.me/share` の Bypass を足し（手作業）、デプロイして外から見えることを確認
+    - Access アプリの追加は akiraak の手作業。未設定でも壊れず、共有リンクが Access のログイン配下に入るだけ
+    - デプロイは push → g3plus で git pull → rebuild（`share_token` のマイグレーションは起動時に自動適用）
+- [ ] iOS の旅行画面にも共有リンク（コピー・停止）を出す
+  - 派生元: 「旅行の工程と写真が見れるページを作る（Web の共有リンクで誰でも見られるようにする）」
+  - 共有トークンは今はサーバ専用列で iOS に同期していない。出すなら pull で返して SwiftData に持たせる必要がある

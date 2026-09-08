@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteMedia } from "./delete-media";
@@ -5,6 +6,7 @@ import { DeleteTrip } from "./delete-trip";
 import { EditTrip } from "./edit-trip";
 import { EndTrip } from "./end-trip";
 import { type PlanExtensionDefaults } from "./plan-section";
+import { ShareLink } from "./share-link";
 import { TripCanvas } from "./trip-canvas";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPointTime, TIME_ZONE } from "@/lib/format";
@@ -101,6 +103,11 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
     departureTime: departureDate ? timeStringOf(departureDate) : null,
     destination: trip.destination ?? "",
   };
+  // 共有リンクの絶対 URL。ブラウザ側で組むとハイドレーション前に出せないので、
+  // リクエストの Host から組んでそのまま渡す(本番は Cloudflare Tunnel が元の Host を通す)
+  const shareUrl = trip.share_token
+    ? `${await requestOrigin()}/share/${trip.share_token}`
+    : null;
   // 日ごとのレグ(前泊地起点 + その日の訪問順)は、この全体レグ列の部分集合になる。
   // キャッシュ済みの分を初期値として渡し、初回描画から道路形状で描く(OSRM は呼ばない)
   const cachedLegs = readCachedLegs(
@@ -147,6 +154,8 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
         <Stat label="地点数">{points.length}</Stat>
         <Stat label="総距離">{formatDistance(distance)}</Stat>
       </dl>
+      {/* ログイン不要の共有リンク(docs/plans/share-page.md)。発行・停止は Web だけ */}
+      <ShareLink tripId={trip.id} url={shareUrl} />
       {/* 終了は進行中のときだけ(iOS の TripDetailView と同じ条件・同じ位置) */}
       {status === "in_progress" && <EndTrip tripId={trip.id} />}
     </section>
@@ -227,6 +236,18 @@ export default async function TripDetailPage(props: PageProps<"/trips/[id]">) {
       footer={footer}
     />
   );
+}
+
+/** リクエストの Host から自分の origin を組む(プロキシ・Tunnel 越しは x-forwarded-proto を見る) */
+async function requestOrigin(): Promise<string> {
+  const headerList = await headers();
+  const host = headerList.get("host") ?? "localhost:3000";
+  const proto =
+    headerList.get("x-forwarded-proto")?.split(",")[0].trim() ??
+    (host.startsWith("localhost") || host.startsWith("127.0.0.1")
+      ? "http"
+      : "https");
+  return `${proto}://${host}`;
 }
 
 function Stat({

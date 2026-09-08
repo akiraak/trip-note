@@ -9,6 +9,7 @@ import {
 import { deleteMedia } from "@/lib/media";
 import * as plan from "@/lib/plan";
 import type { CheckpointInput } from "@/lib/plan";
+import { issueShareToken, revokeShareToken } from "@/lib/share";
 
 // プラン編集の Server Actions。ページと同じ保護範囲(本番は Cloudflare Access)で
 // 動くため Bearer 認証は使わない(/api/* の規約は変えない)。
@@ -194,6 +195,28 @@ export async function resolveGoogleMapsLinkAction(
 ): Promise<ResolveLinkResult> {
   try {
     return { ok: true, place: await resolveGoogleMapsLink(parseLinkInput(link)) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** 共有リンクを発行する(発行済みなら同じトークンのまま)。docs/plans/share-page.md */
+export async function issueShareLinkAction(tripId: string): Promise<ActionResult> {
+  try {
+    issueShareToken(tripId);
+    revalidateTrip(tripId);
+    return { ok: true };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** 共有を停止する(リンクは即座に 404 になる) */
+export async function revokeShareLinkAction(tripId: string): Promise<ActionResult> {
+  try {
+    revokeShareToken(tripId);
+    revalidateTrip(tripId);
+    return { ok: true };
   } catch (error) {
     return failure(error);
   }

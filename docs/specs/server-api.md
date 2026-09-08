@@ -24,6 +24,9 @@
 
 - `/api/*`: `Authorization: Bearer <API_SHARED_SECRET>` 必須(env `API_SHARED_SECRET` と定数時間比較)
 - 閲覧ページ(`/`, `/trips/[id]`): アプリ内認証なし。本番は前段の Cloudflare Access(Google IdP)で保護する
+- **共有ページ(`/share/[token]`)**: ログイン不要。本番は Cloudflare Access を **Bypass** し、
+  推測できないトークン(`trips.share_token`)を知っていることが唯一の条件。
+  書き込みをさせないため、`/share/*` は **GET / HEAD 以外を 405**(`web/src/proxy.ts`)
 - 単一ユーザー(共有プール)。user_id は持たない
 
 ## POST /api/sync
@@ -355,6 +358,28 @@ iOS アプリからのメディアアップロード(1 リクエスト 1 ファ�
 閲覧 UI(ブラウザ)向けのメディア配信。Bearer 不要(`/api/*` ではないので本番は
 Cloudflare Access の Allow 配下)。Range 対応(Safari の動画再生に必須)、
 `Cache-Control: private, max-age=31536000, immutable`。
+配信処理は `web/src/lib/media-stream.ts` で共有ページ向けと共通。
+
+## GET /share/[token]
+
+ログイン不要の共有ページ(HTML)。`trips.share_token` が一致する削除済みでない旅行の
+**工程と写真を閲覧専用**で表示する。表示する情報は Web の旅行詳細と同じ集合
+(地図〔記録トラック・チェックポイントのピン・プランの破線ルート・写真マーカー〕、
+旅行の情報、日カード、メディア一覧)で、編集・削除・AI 提案・旅行の終了の導線を持たない。
+
+- トークンは `randomBytes(18)` の base64url(24 文字)。形式は `[A-Za-z0-9_-]{16,64}`
+- 形式外・不一致・共有停止済み・旅行が削除済みは **404**(存在の有無を出し分けない)
+- `robots: noindex, nofollow`
+- **道路形状レグはキャッシュ済み(`route_legs`)の分しか使わない**。未解決レグは直線で描き
+  距離は直線距離込みの概算になる(公開経路から OSRM プロキシと Server Action を呼ばせないため)
+- 発行・停止は Web の旅行詳細から(Server Action `issueShareLinkAction` / `revokeShareLinkAction`)。
+  発行は冪等で、停止すると即座に 404 になる。**発行・停止で `updated_at` は動かさない**
+  (`share_token` はサーバ専用の列で、`/api/sync` の push・pull の対象外)
+
+## GET /share/[token]/media/[id]
+
+共有ページ向けのメディア配信。**そのトークンの旅行に属する削除済みでないメディアだけ**を返し、
+他は 404。Range 対応・キャッシュヘッダは `GET /media/[id]` と同じ(`lib/media-stream.ts` を共有)。
 
 ## クライアント(iOS)
 

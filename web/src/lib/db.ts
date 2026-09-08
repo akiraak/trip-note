@@ -191,6 +191,14 @@ const MIGRATIONS: string[] = [
   update checkpoints set updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     where deleted_at is not null;
   `,
+  // 共有リンク(Web の /share/[token])のトークン。null = 未共有。
+  // サーバ専用の列で iOS には同期しない(/api/sync の push・pull は列を明示している)。
+  // 発行・停止で updated_at は動かさない(docs/plans/share-page.md)
+  `
+  alter table trips add column share_token text;
+  create unique index trips_share_token_idx on trips (share_token)
+    where share_token is not null;
+  `,
 ];
 
 // dev サーバの HMR で接続が増殖しないよう globalThis にキャッシュする

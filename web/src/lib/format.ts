@@ -49,3 +49,11 @@ export function formatDayWithWeekday(dateString: string): string {
 export function formatPointTime(iso: string): string {
   return timeFormat.format(new Date(iso));
 }
+
+/** 時刻だけをブラウザのローカル TZ で出す(予定時刻・到着予想。iOS の端末基準と同じ。SSR とはずれ得る) */
+export function formatLocalTime(date: Date): string {
+  return date.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

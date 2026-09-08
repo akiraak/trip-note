@@ -18,7 +18,7 @@ import { PlaceLink } from "./place-link";
 import { useRouteLegs } from "./use-route-legs";
 import { arrivalEstimates } from "@/lib/arrival";
 import { CHECKPOINT_COLORS, CHECKPOINT_LABELS } from "@/lib/checkpoint-style";
-import { formatDayWithWeekday } from "@/lib/format";
+import { formatDayWithWeekday, formatLocalTime } from "@/lib/format";
 import { formatDistance } from "@/lib/geo";
 import { googleMapsSearchUrl } from "@/lib/google-maps";
 import { dayMapPoints, type DayMapData } from "@/lib/plan-map";
@@ -482,14 +482,6 @@ function DayForm({
       </div>
     </form>
   );
-}
-
-/** 時刻はブラウザのローカル TZ で出す(iOS の端末基準と同じ。SSR とはずれ得る) */
-function formatLocalTime(date: Date): string {
-  return date.toLocaleTimeString("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function CheckpointRow({

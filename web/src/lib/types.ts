@@ -9,6 +9,8 @@ export type Trip = {
   departure_at: string | null;
   /** 目的地(自由記述)。AI の日数・宿泊地候補出しの入力に使う */
   destination: string | null;
+  /** 共有リンク(/share/[token])のトークン。null = 未共有。サーバ専用で iOS には同期しない */
+  share_token: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;

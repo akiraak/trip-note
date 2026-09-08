@@ -31,10 +31,13 @@ trip-note サーバ(`web/`)を g3plus(自宅サーバ)で動かすための契�
 ホスト名: `trip.chobi.me`（2026-08-21 設定済み）
 
 1. **Tunnel hostname**: `trip.chobi.me` → `http://trip-note:3011`
-2. **Access(2 アプリケーション)**:
+2. **Access(3 アプリケーション)**:
    - `trip.chobi.me/api` → ポリシー **Bypass**(Everyone)。API 自体が Bearer で認証する
+   - `trip.chobi.me/share` → ポリシー **Bypass**(Everyone)。共有ページはログイン不要が要件で、
+     推測できないトークンが唯一の条件。**アプリ側で `/share/*` は GET / HEAD 以外を 405 にしてある**
+     (`web/src/proxy.ts`。Server Action を無認証で叩かせないため)
    - `trip.chobi.me` → **Allow**(Google IdP / Emails)。閲覧 UI の唯一の認証
-   - パスが具体的な方が優先されるため、`/api` の Bypass を先に効かせられる
+   - パスが具体的な方が優先されるため、`/api` と `/share` の Bypass を先に効かせられる
 3. トレードオフ: origin に直接届く相手(コンテナと同一 Docker ネットワーク)には閲覧 UI が
    無認証になる(ai-secretary の /admin と同じ整理。ホストポートは非公開にしてある)
 
@@ -45,4 +48,9 @@ trip-note サーバ(`web/`)を g3plus(自宅サーバ)で動かすための契�
 curl -s -o /dev/null -w '%{http_code}\n' https://trip.chobi.me/api/sync -X POST -d '{}'
 curl -s https://trip.chobi.me/api/sync -X POST \
   -H "Authorization: Bearer $API_SHARED_SECRET" -H 'Content-Type: application/json' -d '{}'
+# 共有ページ: ログイン不要で 200(未発行・停止済みのトークンは 404)/ POST は 405
+curl -s -o /dev/null -w '%{http_code}\n' https://trip.chobi.me/share/<token>
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://trip.chobi.me/share/<token>
+# 閲覧 UI は従来どおり Access のログインへ(302)
+curl -s -o /dev/null -w '%{http_code}\n' https://trip.chobi.me/trips/
 ```

@@ -102,6 +102,12 @@ export function useRouteLegs(
   legs: Leg[],
   /** SSR で渡された解決済みレグ(page.tsx の readCachedLegs)。取りに行かずに使う */
   prefilled?: Record<string, ResolvedLeg>,
+  {
+    resolve = true,
+  }: {
+    /** false なら未解決レグを取りに行かない(共有ページ。公開経路から Server Action を呼ばせない) */
+    resolve?: boolean;
+  } = {},
 ): Record<string, ResolvedLeg> {
   // legs / prefilled は毎レンダー別物になり得るので、effect の依存には
   // キー列(= 区間の並び)を使い、中身は ref 経由で読む
@@ -126,11 +132,13 @@ export function useRouteLegs(
     const update = () => setResolved(lookup(legsRef.current));
     listeners.add(update);
     update();
-    enqueue(legsRef.current);
+    if (resolve) {
+      enqueue(legsRef.current);
+    }
     return () => {
       listeners.delete(update);
     };
-  }, [signature]);
+  }, [signature, resolve]);
 
   return resolved;
 }
